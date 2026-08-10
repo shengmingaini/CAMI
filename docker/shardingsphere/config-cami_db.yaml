@@ -1,0 +1,98 @@
+databaseName: cami_db
+
+dataSources:
+  ds_0:
+    url: "jdbc:mysql://mysql-shard-1:3306/cami_shard_1?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai"
+    username: root
+    password: cami_dev_2026
+    connectionTimeoutMilliseconds: 30000
+    idleTimeoutMilliseconds: 60000
+    maxLifetimeMilliseconds: 1800000
+    maxPoolSize: 50
+    minPoolSize: 5
+  ds_1:
+    url: "jdbc:mysql://mysql-shard-2:3306/cami_shard_2?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai"
+    username: root
+    password: cami_dev_2026
+    connectionTimeoutMilliseconds: 30000
+    idleTimeoutMilliseconds: 60000
+    maxLifetimeMilliseconds: 1800000
+    maxPoolSize: 50
+    minPoolSize: 5
+
+rules:
+  - !SHARDING
+    tables:
+      player_base:
+        actualDataNodes: ds_${0..1}.player_base
+        databaseStrategy:
+          standard:
+            shardingColumn: player_id
+            shardingAlgorithmName: player_id_inline
+        tableStrategy:
+          none:
+      player_inventory:
+        actualDataNodes: ds_${0..1}.player_inventory
+        databaseStrategy:
+          standard:
+            shardingColumn: player_id
+            shardingAlgorithmName: player_id_inline
+        tableStrategy:
+          none:
+      player_currency:
+        actualDataNodes: ds_${0..1}.player_currency
+        databaseStrategy:
+          standard:
+            shardingColumn: player_id
+            shardingAlgorithmName: player_id_inline
+        tableStrategy:
+          none:
+      player_equipment:
+        actualDataNodes: ds_${0..1}.player_equipment
+        databaseStrategy:
+          standard:
+            shardingColumn: player_id
+            shardingAlgorithmName: player_id_inline
+        tableStrategy:
+          none:
+      player_quest:
+        actualDataNodes: ds_${0..1}.player_quest
+        databaseStrategy:
+          standard:
+            shardingColumn: player_id
+            shardingAlgorithmName: player_id_inline
+        tableStrategy:
+          none:
+      player_skill:
+        actualDataNodes: ds_${0..1}.player_skill
+        databaseStrategy:
+          standard:
+            shardingColumn: player_id
+            shardingAlgorithmName: player_id_inline
+        tableStrategy:
+          none:
+      player_mail:
+        actualDataNodes: ds_${0..1}.player_mail
+        databaseStrategy:
+          standard:
+            shardingColumn: player_id
+            shardingAlgorithmName: player_id_inline
+        tableStrategy:
+          none:
+      player_social:
+        actualDataNodes: ds_${0..1}.player_social
+        databaseStrategy:
+          standard:
+            shardingColumn: player_id
+            shardingAlgorithmName: player_id_inline
+        tableStrategy:
+          none:
+    defaultDatabaseStrategy:
+      none:
+    defaultTableStrategy:
+      none:
+    shardingAlgorithms:
+      player_id_inline:
+        type: INLINE
+        props:
+          algorithm-expression: ds_${player_id % 2}

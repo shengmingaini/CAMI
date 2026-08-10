@@ -1,0 +1,106 @@
+// common.fbs — CAMI 共享类型与枚举 (FlatBuffers)
+//
+// 所有消息 schema 均 `include "common.fbs";` 复用此处定义。
+// 本文件为纯库文件（被 include），不含 root_type。
+// 版本: v1.0.0 (Day 3 — 协议基础优先)
+
+namespace CAMI.Common;
+
+// ---- 基础几何（struct 仅含标量/内嵌 struct，零开销）----
+struct Vec3 {
+  x: float;
+  y: float;
+  z: float;
+}
+
+struct Quat {
+  x: float;
+  y: float;
+  z: float;
+  w: float;
+}
+
+// ---- 标识类型约定（FlatBuffers 无 typedef，使用标量别名）----
+//   EntityId  : uint64  — 玩家/怪物/NPC/物品 唯一 ID
+//   Timestamp : uint64  — 毫秒 epoch（UTC）
+//   PlayerId  : uint64  — 同 EntityId 命名空间，玩家专属
+
+// ---- 枚举 ----
+enum MoveState : ubyte {
+  Idle = 0,
+  Walk = 1,
+  Run = 2,
+  Jump = 3,
+  Swim = 4,
+  Fall = 5,
+}
+
+enum LodLevel : ubyte {
+  LOD0 = 0,   // 0-30m  完整属性 (~47B)
+  LOD1 = 1,   // 30-80m 关键属性 (~10B)
+  LOD2 = 2,   // 80-200m 最小属性 (~5B)
+}
+
+enum DamageType : ubyte {
+  Physical = 0,
+  Magic = 1,
+  Fire = 2,
+  Frost = 3,
+  Holy = 4,
+  Shadow = 5,
+  Poison = 6,
+  True = 7,   // 真实伤害，无视抗性
+}
+
+enum SkillResultCode : ubyte {
+  Success = 0,
+  InsufficientMana = 1,
+  OnCooldown = 2,
+  OutOfRange = 3,
+  Interrupt = 4,
+  InvalidTarget = 5,
+  Silenced = 6,
+}
+
+enum Gender : ubyte {
+  Male = 0,
+  Female = 1,
+  Unknown = 2,
+}
+
+enum ClassId : ubyte {
+  None = 0,        // 无职业（非玩家实体；AOI 中 Monster/NPC/DropItem 等）
+  Warrior = 1,
+  Mage = 2,
+  Priest = 3,
+  Rogue = 4,
+  Ranger = 5,
+}
+
+// ---- 通用复用表 ----
+
+// 角色核心属性快照（同步/纠偏用；高频轨道 A 不携此表，见 protocol-spec §7）
+table AttributeSnapshot {
+  hp: int32;
+  max_hp: int32;
+  mana: int32;
+  max_mana: int32;
+  level: uint16;
+  exp: uint32;
+  pos: Vec3;
+  yaw: float;            // 弧度
+}
+
+// Buff 快照（角色模块对外只读；详见架构 §4.2.2）
+table BuffSnapshot {
+  buff_id: uint32;
+  remaining_ms: uint32;
+  stacks: ubyte;
+}
+
+// 物品授予单元（任务奖励 / 经济发放 / 邮件附件复用，零 JSON）
+// 2026-08-12 补充以支持 quest/economy/social 三域（协议 v1）。
+table ItemGrant {
+  item_id: uint32;
+  count: uint32;
+}

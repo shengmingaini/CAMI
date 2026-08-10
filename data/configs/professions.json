@@ -1,0 +1,12 @@
+{
+  "data_version": 1,
+  "professions": [
+    {"profession_id": 1, "name_key": "prof.mining", "category": "PROF_GATHERING", "icon": "i_mining", "max_skill": 300, "is_primary": true, "gathering": true, "trainer_npc_ids": [], "tiers": [], "specializations": [], "gathers": [
+      {"node_id": 1, "name_key": "node.copper", "profession_id": 1, "skill_required": 1, "yields": [{"item_id": 6006, "count": 2, "chance_pct": 100}], "respawns_ms": 60000, "charges": 0, "balance": {"expected_yields_per_hour": 10.0, "source_weight": 0.5, "tolerance_pct": 0.15, "alert_channel": "econ-gather"}}
+    ]},
+    {"profession_id": 2, "name_key": "prof.blacksmithing", "category": "PROF_PRODUCTION", "icon": "i_bs", "max_skill": 300, "is_primary": true, "gathering": false, "trainer_npc_ids": [], "tiers": [], "specializations": [], "gathers": []}
+  ],
+  "recipes": [
+    {"recipe_id": 1, "profession_id": 2, "name_key": "recipe.copper_bar", "required_skill": 1, "outputs": [{"item_id": 6007, "count": 1, "chance_pct": 100}], "materials": [{"item_id": 6006, "count": 1, "consumed": true, "refund_on_fail": true}], "tools_required": [], "cooldown_ms": 0, "specialization_id": 0, "min_tier": "TIER_APPRENTICE", "difficulty": "DIFF_TRIVIAL", "learns_skill_min": 1, "learns_skill_max": 1, "balance": {"price_anchor_item_id": 6004, "output_value_estimate": 400, "material_cost_estimate": 200, "expected_daily_crafts_per_capita": 50, "sink_weight": 0.5, "tolerance_pct": 0.15, "alert_channel": "econ-profession"}}
+  ]
+}

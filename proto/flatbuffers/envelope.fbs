@@ -1,0 +1,93 @@
+// envelope.fbs — 可靠轨统一消息容器 (FlatBuffers, 轨道 B)
+//
+// MessageEnvelope 是所有可靠消息的根。body 为 union，自动生成枚举
+// `CAMI.MessageBody`（含 NONE=0 + 各成员），作为消息类型判别符（见 protocol-spec §4.1）。
+// 高频轨道 A（位压缩 UDP）不携此结构，见 protocol-spec §7。
+// 版本: v1.0.0 (Day 3 基础 + 2026-08-12 扩展：纳入 任务/经济/社交 域 union 成员 + proto_version 字段)
+
+include "common.fbs";
+include "login.fbs";
+include "movement.fbs";
+include "combat.fbs";
+include "aoi.fbs";
+include "quest.fbs";
+include "economy.fbs";
+include "social.fbs";
+
+namespace CAMI;
+
+// 消息体联合：成员顺序即枚举值顺序（NONE=0 后依次递增）。
+// 命名空间限定引用，避免不同文件同名表冲突。
+union MessageBody {
+  client_hello: CAMI.Login.ClientHello,
+  server_hello: CAMI.Login.ServerHello,
+  heartbeat: CAMI.Login.Heartbeat,
+  disconnect_notify: CAMI.Login.DisconnectNotify,
+  migrate_notify: CAMI.Login.MigrateNotify,
+
+  login_request: CAMI.Login.LoginRequest,
+  login_response: CAMI.Login.LoginResponse,
+  enter_world_request: CAMI.Login.EnterWorldRequest,
+  enter_world_response: CAMI.Login.EnterWorldResponse,
+
+  movement_snapshot: CAMI.Movement.MovementSnapshot,
+  correction: CAMI.Movement.Correction,
+
+  aoi_enter: CAMI.Aoi.AoiEnter,
+  aoi_leave: CAMI.Aoi.AoiLeave,
+  aoi_update: CAMI.Aoi.AoiUpdate,
+
+  skill_cast_intent: CAMI.Combat.SkillCastIntent,
+  skill_cast_result: CAMI.Combat.SkillCastResult,
+  damage_event: CAMI.Combat.DamageEvent,
+  buff_event: CAMI.Combat.BuffEvent,
+  combat_result: CAMI.Combat.CombatResult,
+
+  // —— 任务域 (0x4000/0x4400) ——
+  quest_accept_intent: CAMI.Quest.QuestAcceptIntent,
+  quest_turnin_intent: CAMI.Quest.QuestTurnInIntent,
+  quest_progress: CAMI.Quest.QuestProgress,
+  quest_reward_result: CAMI.Quest.QuestRewardResult,
+  quest_log_snapshot: CAMI.Quest.QuestLogSnapshot,
+
+  // —— 经济域 (0x5000/0x5400) ——
+  trade_intent: CAMI.Economy.TradeIntent,
+  shop_buy: CAMI.Economy.ShopBuy,
+  shop_sell: CAMI.Economy.ShopSell,
+  auction_list: CAMI.Economy.AuctionList,
+  auction_bid: CAMI.Economy.AuctionBid,
+  mail_send: CAMI.Economy.MailSend,
+  trade_result: CAMI.Economy.TradeResult,
+  shop_result: CAMI.Economy.ShopResult,
+  auction_update: CAMI.Economy.AuctionUpdate,
+  mail_list: CAMI.Economy.MailList,
+  currency_granted: CAMI.Economy.CurrencyGranted,
+
+  // —— 社交域 (0x6000/0x6400) ——
+  friend_add: CAMI.Social.FriendAdd,
+  guild_create: CAMI.Social.GuildCreate,
+  party_invite: CAMI.Social.PartyInvite,
+  chat_send: CAMI.Social.ChatSend,
+  friend_list: CAMI.Social.FriendList,
+  guild_info: CAMI.Social.GuildInfo,
+  party_update: CAMI.Social.PartyUpdate,
+  chat_broadcast: CAMI.Social.ChatBroadcast,
+  achievement_update: CAMI.Social.AchievementUpdate,
+  reputation_update: CAMI.Social.ReputationUpdate,
+}
+
+// 统一信封
+//   proto_version: 协议版本号（与握手 ClientHello.proto_version 对齐，v1=1）
+//   seq        : 每连接每方向单调递增序号（防重放，见 protocol-spec §6.3）
+//   request_id : 请求/响应关联（0 = 单向广播）
+//   flags      : bit0=加密, bit1=压缩, bit2=需响应
+//   body       : 联合消息体；实际类型由自动生成的 body_type 字段判别
+table MessageEnvelope {
+  proto_version: uint16;
+  seq: uint32;
+  request_id: uint32;
+  flags: uint8;
+  body: MessageBody;
+}
+
+root_type MessageEnvelope;

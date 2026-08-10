@@ -1,0 +1,87 @@
+// config_progression.proto — 天赋/专精/成就/称号配置 (Protobuf, proto3)
+//
+// 定义 WoW 级成长系统的"长期预设参数"：
+//   - 天赋树 TalentTree（职业/层级/依赖边/属性效果/脚本引用）
+//   - 专精 Specialization（职业分支/初始技能组）
+//   - 成就 Achievement（类别/判定脚本/奖励：经验/物品/称号/声望）
+//   - 称号 Title（解锁条件）
+// 被 character / social / quest 引用。复杂效果判定走 Lua 边界（script_ref），schema 只放静态参数。
+// 共享类型来自 common.proto（StatModifier/ClassType）。跨 ConfigSet 引用以裸 ID 表达。
+// 版本: v1.0.0 (Systems-Design Round)
+
+syntax = "proto3";
+
+package CAMI.Config;
+
+import "common.proto";
+
+// 成就类别
+enum AchievementCategory {
+  ACH_GENERAL = 0;
+  ACH_COMBAT = 1;
+  ACH_QUEST = 2;
+  ACH_EXPLORATION = 3;
+  ACH_PVP = 4;
+  ACH_PROFESSION = 5;
+  ACH_REPUTATION = 6;
+  ACH_WORLD_EVENT = 7;
+}
+
+// 天才节点
+message TalentNode {
+  uint32 talent_id = 1;
+  uint32 tree_id = 2;
+  uint32 row = 3;                              // 层级（依赖上一行）
+  uint32 col = 4;
+  repeated uint32 requires_talent = 5;         // 前置依赖节点
+  uint32 cost_points = 6;
+  repeated CAMI.Common.StatModifier effects = 7; // 直接属性效果
+  string script_ref = 8;                       // 复杂效果走 Lua
+}
+
+// 天赋树
+message TalentTreeConfig {
+  uint32 tree_id = 1;
+  CAMI.Common.ClassType class = 2;
+  uint32 max_points = 3;
+  repeated TalentNode nodes = 4;
+}
+
+// 专精
+message SpecializationConfig {
+  uint32 spec_id = 1;
+  CAMI.Common.ClassType class = 2;
+  string name_key = 3;
+  repeated uint32 initial_skill_ids = 4;       // 初始技能组（引用 config_skills）
+}
+
+// 成就
+message AchievementConfig {
+  uint32 achievement_id = 1;
+  AchievementCategory category = 2;
+  string name_key = 3;
+  string criteria_script_ref = 4;              // 判定条件走 Lua（数据驱动）
+  uint32 reward_xp = 5;
+  repeated uint32 reward_item_ids = 6;         // 引用 config_items
+  uint32 reward_title_id = 7;                  // 引用 TitleConfig
+  int32 reward_rep_faction = 8;                // 引用 FactionConfig.faction_id（裸 ID）
+  int32 reward_rep_value = 9;
+}
+
+// 称号
+message TitleConfig {
+  uint32 title_id = 1;
+  string name_key = 2;
+  string unlock_condition_key = 3;
+}
+
+// ============================================================
+// 进度配置全集（加载/热更单元）
+// ============================================================
+message ProgressionConfigSet {
+  uint32 data_version = 1;
+  repeated TalentTreeConfig talent_trees = 2;
+  repeated SpecializationConfig specializations = 3;
+  repeated AchievementConfig achievements = 4;
+  repeated TitleConfig titles = 5;
+}

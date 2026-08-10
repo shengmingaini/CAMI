@@ -1,0 +1,60 @@
+// config_loot.proto — 掉落系统配置 (Protobuf, proto3)
+//
+// 定义 WoW 级掉落所需的预设参数：掉落表(LootTable)、品质权重分布、按次数/个人CD
+// 限制的掉落规则、Bonus Roll、分配模式。被 creatures / quests / 世界事件引用。
+// 品质/类型枚举来自 config_items.proto；奖励条目复用 common.ItemReward 思路但扩展权重。
+// 版本: v1.0.0 (Systems-Design Round)
+
+syntax = "proto3";
+
+package CAMI.Config;
+
+import "config_items.proto";
+
+// 队伍分配模式
+enum LootDistributionMode {
+  LOOT_FREE_FOR_ALL = 0;        // 自由拾取
+  LOOT_ROUND_ROBIN = 1;         // 轮流
+  LOOT_MASTER_LOOT = 2;         // 队长分配
+  LOOT_GROUP_LOOT = 3;          // 队伍分配
+  LOOT_NEED_BEFORE_GREED = 4;   // 需求优先于贪婪
+}
+
+// 掉落条目（带权重 + 可选显式掉率）
+message LootItemEntry {
+  uint32 item_id = 1;                       // 引用 config_items.ItemConfig
+  uint32 weight = 2;                        // 相对权重（与 chance_pct 二选一）
+  CAMI.Config.ItemQuality min_quality = 3;  // 该条目生效的最低品质
+  uint32 chance_pct = 4;                    // 显式掉率（0 = 改用权重）
+}
+
+// 掉落表
+message LootTable {
+  uint32 loot_table_id = 1;
+  string name_key = 2;
+  repeated LootItemEntry entries = 3;
+  uint32 drop_count_min = 4;                // 每次掉落个数下限
+  uint32 drop_count_max = 5;                // 每次掉落个数上限
+  uint32 max_drops_per_actor = 6;           // 单生物总掉落上限
+  CAMI.Config.ItemQuality quality_cap = 7;  // 品质上限
+  float bonus_roll_chance = 8;              // Bonus Roll 额外机会 (0~1)
+  // —— 平衡校验路径 ——
+  repeated CAMI.Config.ItemQuality expected_quality_dist = 9; // 预期品质分布（模拟对比）
+}
+
+// 掉落规则（次数上限 / 个人CD / 分配模式）
+message LootRule {
+  uint32 rule_id = 1;
+  LootDistributionMode mode = 2;
+  uint32 personal_cooldown_sec = 3;         // 个人冷却
+  uint32 attempt_limit = 4;                 // 次数上限（如周限）
+}
+
+// ============================================================
+// 掉落配置全集（加载/热更单元）
+// ============================================================
+message LootTableSet {
+  uint32 data_version = 1;
+  repeated LootTable tables = 2;
+  repeated LootRule rules = 3;
+}

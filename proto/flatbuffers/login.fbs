@@ -1,0 +1,86 @@
+// login.fbs — 连接/握手/登录/心跳/迁移 (MsgID 域 0x0000 / 0x1000)
+//
+// 轨道 B（可靠 FlatBuffers）。握手密钥协商流程见 protocol-spec §6.1。
+// 版本: v1.0.0 (Day 3)
+
+include "common.fbs";
+
+namespace CAMI.Login;
+
+// ---- 握手（AES-128-GCM 会话密钥协商，见 protocol-spec §6）----
+table ClientHello {
+  x25519_pub: [ubyte];     // 客户端临时公钥 (32B)
+  client_nonce: [ubyte];   // 12B
+  proto_version: uint16;
+}
+
+table ServerHello {
+  x25519_pub: [ubyte];     // 服务端临时公钥 (32B)
+  server_nonce: [ubyte];   // 12B
+  token: [ubyte];          // 时间戳签名，防重放
+}
+
+// ---- 登录 ----
+table LoginRequest {
+  account: string;         // 账号（或平台 openid）
+  token: string;           // 鉴权令牌（由中心网关校验）
+  client_version: string;  // 客户端构建号
+}
+
+enum LoginResult : ubyte {
+  Ok = 0,
+  BadToken = 1,
+  Banned = 2,
+  ServerFull = 3,          // 触发背压 RED 时
+  VersionMismatch = 4,
+}
+
+table CharListEntry {
+  player_id: uint64;
+  name: string;
+  class_id: CAMI.Common.ClassId;
+  gender: CAMI.Common.Gender;
+  level: uint16;
+}
+
+table LoginResponse {
+  result: LoginResult;
+  chars: [CharListEntry];  // 角色列表
+}
+
+// ---- 进入世界 ----
+table EnterWorldRequest {
+  player_id: uint64;
+}
+
+table EnterWorldResponse {
+  result: LoginResult;
+  scene_id: uint32;
+  spawn_pos: CAMI.Common.Vec3;
+  spawn_yaw: float;
+  snapshot: CAMI.Common.AttributeSnapshot;  // 初始属性
+}
+
+// ---- 连接生命周期（见 protocol-spec §8）----
+table Heartbeat {
+  client_ts: uint64;       // 客户端毫秒时间戳
+}
+
+enum DisconnectReason : ubyte {
+  ClientInitiated = 0,
+  Timeout = 1,
+  ServerShutdown = 2,
+  Kick = 3,
+  Migrated = 4,           // 连接迁移走 QUIC 连接迁移，不走此路径
+}
+
+table DisconnectNotify {
+  reason: DisconnectReason;
+  detail: string;
+}
+
+// GameNode 宕机时，网关将连接上下文迁移到新节点（QUIC 连接 ID 不变）
+table MigrateNotify {
+  new_gateway_id: uint32;
+  context_token: uint64;  // 旧网关下发的会话上下文令牌
+}

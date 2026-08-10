@@ -1,0 +1,25 @@
+{
+  "data_version": 1,
+  "battlegrounds": [
+    {"bg_id": 3001, "name_key": "pvp.warsong", "zone_id": 3001, "players_per_side": 10, "duration_limit_sec": 1200, "win_condition_type": 2, "reward_currency_id": 3, "reward_amount_base": 300, "conquest_reward": 0, "queue_ref": "queue.wsg"}
+  ],
+  "arenas": [
+    {"arena_id": 3002, "name_key": "pvp.nagrand", "zone_id": 3002, "team_size": 2, "season_id": 1, "rating_floor": 0}
+  ],
+  "seasons": [
+    {"season_id": 1, "name_key": "pvp.season1", "start_date": "2026-09-01", "end_date": "2026-12-01", "conquest_cap_weekly": 1500, "conquest_cap_total": 3000, "rating_reset": true}
+  ],
+  "ranks": [
+    {"rank_id": 1, "name_key": "rank.honor.private",   "type": "PVP_BATTLEGROUND", "rating_threshold": 0,    "currency_reward_id": 3, "currency_reward_amount": 0},
+    {"rank_id": 2, "name_key": "rank.honor.sergeant",  "type": "PVP_BATTLEGROUND", "rating_threshold": 5000, "currency_reward_id": 3, "currency_reward_amount": 0},
+    {"rank_id": 3, "name_key": "rank.arena.duelist",   "type": "PVP_ARENA",        "rating_threshold": 2000, "currency_reward_id": 4, "currency_reward_amount": 0}
+  ],
+  "ladders": [
+    {"type": "PVP_BATTLEGROUND", "division_count": 5, "mmr_initial": 1000.0, "mmr_k_factor": 24.0, "promotion_threshold": 3.0},
+    {"type": "PVP_ARENA",        "division_count": 5, "mmr_initial": 0.0,    "mmr_k_factor": 32.0, "promotion_threshold": 3.0}
+  ],
+  "balance": [
+    {"currency_id": 3, "expected_per_match": 300.0, "weekly_cap": 75000.0,  "tolerance_pct": 0.10, "alert_channel": "econ-pvp"},
+    {"currency_id": 4, "expected_per_match": 150.0, "weekly_cap": 1500.0, "tolerance_pct": 0.10, "alert_channel": "econ-pvp"}
+  ]
+}

@@ -1,0 +1,52 @@
+// config_vendors.proto — 商店 NPC 配置 (Protobuf, proto3)
+//
+// 定义 WoW 级 NPC 商店的预设参数：商店目录（vendor_id）、售卖/回购条目、售价倍率、回购率。
+// 经济语义：玩家向 NPC 购买 = 货币汇（vendor_buy）；玩家向 NPC 卖回 = 货币源 + 物品汇（vendor_sell）。
+// 价格权威：服务端以 config_items.sell_price 为基准，本表 price_override/price_multiplier 在其上叠加；
+// 客户端不信任本地价（见 economy.fbs 头注）。
+// 共享/引用：CurrencyType 来自 config_balance.proto；item_id/faction_id 以裸 uint32 引用其他 ConfigSet（防环）。
+// 版本: v1.0.0 (Systems-Design Round — 商店 Vendors)
+
+syntax = "proto3";
+
+package CAMI.Config;
+
+import "config_balance.proto";   // 复用 CurrencyType 枚举
+
+// 商店类型
+enum VendorType {
+  VENDOR_GENERAL = 0;
+  VENDOR_EQUIPMENT = 1;
+  VENDOR_REAGENT = 2;
+  VENDOR_FOOD = 3;
+  VENDOR_REPUTATION = 4;         // 声望商人（价格受阵营折扣影响）
+  VENDOR_AMMO = 5;
+}
+
+// 售卖条目
+message VendorItemEntry {
+  uint32 item_id = 1;            // 引用 config_items.ItemConfig.item_id
+  CurrencyType currency = 2;     // 售卖币种（默认 GOLD）
+  uint64 price_override = 3;     // 覆盖默认售价（0 = 用 sell_price × multiplier）
+  uint32 stock_limit = 4;        // 库存上限（0 = 无限）
+  bool is_buyback = 5;           // 是否允许玩家卖回（回购）
+}
+
+// 商店 NPC 配置
+message VendorConfig {
+  uint32 vendor_id = 1;
+  string name_key = 2;
+  VendorType vendor_type = 3;
+  uint32 faction_id = 4;         // 引用 config_reputation.FactionConfig.faction_id（声望折扣）
+  float price_multiplier = 5;    // 售价倍率（作用于 sell_price；声望折扣在此之外叠加）
+  float buyback_rate = 6;        // 回购率（占售价比例，如 0.25）
+  repeated VendorItemEntry items = 7;
+}
+
+// ============================================================
+// 商店配置全集（加载/热更单元）
+// ============================================================
+message VendorConfigSet {
+  uint32 data_version = 1;
+  repeated VendorConfig vendors = 2;
+}

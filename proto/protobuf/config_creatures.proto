@@ -1,0 +1,71 @@
+// config_creatures.proto — 生物/NPC 模板配置 (Protobuf, proto3)
+//
+// 定义 WoW 级世界内容的"实体模板"：怪物/NPC 的属性预设、技能组、AI 行为、
+// 掉落表引用、金钱掉落范围、等级缩放、难度倍率。被 quest / combat / loot / economy 引用。
+// 是"数万行预设参数"的最大承载之一。
+// 共享类型来自 common.proto（StatModifier）；技能/商店引用以裸 ID 指向其他 ConfigSet。
+// 版本: v1.0.0 (Systems-Design Round)
+
+syntax = "proto3";
+
+package CAMI.Config;
+
+import "common.proto";
+
+// 生物类型
+enum CreatureType {
+  CREATURE_UNKNOWN = 0;
+  CREATURE_HUMANOID = 1;
+  CREATURE_BEAST = 2;
+  CREATURE_UNDEAD = 3;
+  CREATURE_ELEMENTAL = 4;
+  CREATURE_DRAGONKIN = 5;
+  CREATURE_DEMON = 6;
+  CREATURE_MECHANICAL = 7;
+  CREATURE_GIANT = 8;
+}
+
+// 阵营
+enum CreatureFaction {
+  FACTION_HOSTILE = 0;
+  FACTION_NEUTRAL = 1;
+  FACTION_FRIENDLY = 2;
+  FACTION_CONTESTED = 3;
+}
+
+// AI 行为
+enum AiBehavior {
+  AI_PASSIVE = 0;
+  AI_AGGRESSIVE = 1;
+  AI_DEFENSIVE = 2;
+  AI_ASSIST = 3;
+  AI_CASTER = 4;
+}
+
+// 生物/NPC 模板
+message CreatureTemplate {
+  uint32 creature_id = 1;
+  string name_key = 2;
+  CreatureType type = 3;
+  CreatureFaction faction = 4;
+  uint32 min_level = 5;
+  uint32 max_level = 6;
+  repeated CAMI.Common.StatModifier base_stats = 7;  // 属性预设（按等级缩放）
+  float level_scaling = 8;                            // 等级缩放系数
+  repeated uint32 skill_ids = 9;                      // 引用 config_skills.SkillConfig
+  AiBehavior ai = 10;
+  uint32 loot_table_id = 11;                          // 引用 config_loot.LootTable
+  uint32 gold_min = 12;                               // 金钱掉落范围
+  uint32 gold_max = 13;
+  float difficulty_mult = 14;                          // 难度倍率（英雄/史诗）
+  bool is_npc = 15;                                   // true=NPC(可交互/任务)，false=怪物
+  string npc_vendor_id = 16;                          // 若是商人，引用商店目录（待建 config_vendors）
+}
+
+// ============================================================
+// 生物配置全集（加载/热更单元）
+// ============================================================
+message CreatureConfigSet {
+  uint32 data_version = 1;
+  repeated CreatureTemplate creatures = 2;
+}

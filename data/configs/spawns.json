@@ -1,0 +1,12 @@
+{
+  "data_version": 1,
+  "spawns": [
+    {"spawn_id": 8001, "zone_id": 1001, "creature_template_id": 5001, "position": {"x": 200.0, "y": 200.0, "z": 0.0}, "wander_radius": 30.0, "respawn_sec": 30, "max_alive": 20, "group_size": 3, "condition": {"min_level": 1, "max_level": 0}, "pool_id": 0},
+    {"spawn_id": 8002, "zone_id": 1002, "creature_template_id": 5002, "position": {"x": 300.0, "y": 300.0, "z": 0.0}, "wander_radius": 20.0, "respawn_sec": 45, "max_alive": 15, "group_size": 2, "condition": {"min_level": 5, "max_level": 0}, "pool_id": 0}
+  ],
+  "pools": [],
+  "density": [
+    {"zone_id": 1001, "target_kills_per_player_hour": 30, "tolerance_pct": 0.15, "alert_channel": "econ-density"},
+    {"zone_id": 1002, "target_kills_per_player_hour": 20, "tolerance_pct": 0.15, "alert_channel": "econ-density"}
+  ]
+}

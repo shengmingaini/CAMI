@@ -1,0 +1,32 @@
+// config_currencies.proto — 币种全量元数据 (Protobuf, proto3)
+//
+// 定义 WoW 级"多币种"系统的显示与规则元数据：币种清单（名称/图标/周上限/可获取/可丢失）、
+// 异常告警通道。币种枚举 CurrencyType 的定义权威在 config_balance.proto（与网络侧
+// economy.fbs.CurrencyType 值镜像一致）；本文件只承载每个币种的呈现与平衡元数据。
+// 被 economy（源汇/商店/拍卖）、social（PvP 奖励）引用。
+// 版本: v1.0.0 (Systems-Design Round — 币种全量)
+
+syntax = "proto3";
+
+package CAMI.Config;
+
+import "config_balance.proto";   // 复用 CurrencyType 枚举（单一权威，避免重复定义）
+
+// 单币种元数据
+message CurrencyConfig {
+  CurrencyType currency_type = 1;  // 引用 config_balance.CurrencyType（值镜像 economy.fbs）
+  string name_key = 2;            // i18n 名称 key
+  string icon = 3;                // 资源 key
+  uint32 weekly_cap = 4;          // 周获取上限（0 = 无上限）
+  bool can_earn = 5;              // 是否可获取
+  bool can_lose = 6;              // 是否可丢失（死亡/分解/退还）
+  string alert_channel = 7;       // 异常流量告警通道（如 "econ-currency"）
+}
+
+// ============================================================
+// 币种配置全集（加载/热更单元）
+// ============================================================
+message CurrencyConfigSet {
+  uint32 data_version = 1;
+  repeated CurrencyConfig currencies = 2;
+}

@@ -1,0 +1,83 @@
+// config_spawns.proto — 刷新 / 种群 配置 (Protobuf, proto3)
+//
+// 定义 WoW 级生物分布：刷新点(SpawnEntry，落于 ZoneConfig.bounds_* 内)、刷新池(SpawnPool，
+// 池内按权重出怪、受 max_active 限制)、刷新条件(等级/相位/世界事件/时段)、密度平衡。
+// 密度直接连经济源：击杀 -> 掉落源（config_loot），故 SpawnDensityBalance 与经济源汇对账。
+//
+// 跨集引用一律裸 uint32 ID（防 import 环）：
+//   zone_id -> config_zones；creature_template_id -> config_creatures；
+//   SpawnCondition.required_event_ids -> config_world_events。
+// 版本: v1.0.0 (Systems-Design Round — Spawns)
+
+syntax = "proto3";
+
+package CAMI.Config;
+
+import "common.proto";
+
+// ============================================================
+// 刷新条件（时间/相位/事件）
+// ============================================================
+
+message SpawnCondition {
+  uint32 min_level = 1;                  // 玩家等级下限（影响是否可见/可打）
+  uint32 max_level = 2;                  // 玩家等级上限（0 = 不限）
+  uint32 required_phase_group_id = 3;    // 所需相位（ZoneConfig.phase_group_ids）
+  repeated uint32 required_event_ids = 4;// 仅某世界事件期间出现（config_world_events）
+  uint32 time_of_day_min = 5;            // 出现时段起点（0-23）
+  uint32 time_of_day_max = 6;            // 出现时段终点（0-23；max<min 视为跨午夜）
+}
+
+// ============================================================
+// 刷新点
+// ============================================================
+
+message SpawnEntry {
+  uint32 spawn_id = 1;
+  uint32 zone_id = 2;                     // 所属区域（config_zones，落于 bounds_* 内）
+  uint32 creature_template_id = 3;        // 生物模板（config_creatures）
+  CAMI.Common.Vec3 position = 4;          // 刷新点（或区域中心）
+  float wander_radius = 5;                // 游荡半径（米）
+  uint32 respawn_sec = 6;                 // 重生时间（秒）
+  uint32 max_alive = 7;                   // 同区同时存活上限
+  uint32 group_size = 8;                  // 成组数量（如狼群 3-5）
+  SpawnCondition condition = 9;           // 出现条件
+  uint32 pool_id = 10;                    // 所属刷新池（0 = 独立，不入池）
+}
+
+// ============================================================
+// 刷新池（WoW spawn pool：池内按权重出怪，受 max_active 限制）
+// ============================================================
+
+message SpawnPoolEntry {
+  uint32 spawn_id = 1;                    // 引用 SpawnEntry
+  uint32 weight = 2;                      // 出怪权重
+}
+
+message SpawnPool {
+  uint32 pool_id = 1;
+  string name_key = 2;
+  uint32 max_active = 3;                  // 池内同时存活上限
+  repeated SpawnPoolEntry entries = 4;
+}
+
+// ============================================================
+// 密度平衡（连接经济源：击杀 = 掉落源）
+// ============================================================
+
+message SpawnDensityBalance {
+  uint32 zone_id = 1;                          // 区域（config_zones）
+  float target_kills_per_player_hour = 2;      // 目标人均击杀/小时
+  float tolerance_pct = 3;
+  string alert_channel = 4;
+}
+
+// ============================================================
+// 配置全集（加载/热更单元）
+// ============================================================
+message SpawnConfigSet {
+  uint32 data_version = 1;
+  repeated SpawnEntry spawns = 2;
+  repeated SpawnPool pools = 3;
+  repeated SpawnDensityBalance density = 4;
+}

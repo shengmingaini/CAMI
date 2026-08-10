@@ -1,0 +1,311 @@
+# CAMI Local Development Environment (v2.0 — Tech Stack Verification)
+#
+# Usage:
+#   docker compose -f docker/docker-compose.yml up -d
+#   bash docker/redis/init-cluster.sh   # initialize Redis cluster
+#
+# Services:
+#   Redis Cluster  — 6 nodes (3 master + 3 slave), ports 7000-7005
+#   MySQL          — 2 shard DBs + 1 global DB, ports 3306-3308
+#   ShardingSphere — Proxy with PlayerID sharding, port 3309
+#   Kafka          — single node for async messaging, port 9092
+#   Monitoring     — Prometheus (9090) + Grafana (3000)
+
+version: "3.8"
+
+services:
+  # ================================================================
+  # Redis Cluster — 3 Master + 3 Slave
+  # ================================================================
+  redis-node-1:
+    image: redis:7-alpine
+    command: >
+      redis-server
+      --port 7000
+      --cluster-enabled yes
+      --cluster-config-file nodes.conf
+      --cluster-node-timeout 5000
+      --cluster-announce-hostname redis-node-1
+      --cluster-announce-port 7000
+      --cluster-announce-bus-port 17000
+      --appendonly yes
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+    ports:
+      - "7000:7000"
+      - "17000:17000"
+    volumes:
+      - redis-1-data:/data
+      - ./redis/init-cluster.sh:/scripts/init-cluster.sh:ro
+    networks:
+      - cami-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "7000", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 5
+
+  redis-node-2:
+    image: redis:7-alpine
+    command: >
+      redis-server
+      --port 7001
+      --cluster-enabled yes
+      --cluster-config-file nodes.conf
+      --cluster-node-timeout 5000
+      --cluster-announce-hostname redis-node-2
+      --cluster-announce-port 7001
+      --cluster-announce-bus-port 17001
+      --appendonly yes
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+    ports:
+      - "7001:7001"
+      - "17001:17001"
+    volumes:
+      - redis-2-data:/data
+    networks:
+      - cami-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "7001", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 5
+
+  redis-node-3:
+    image: redis:7-alpine
+    command: >
+      redis-server
+      --port 7002
+      --cluster-enabled yes
+      --cluster-config-file nodes.conf
+      --cluster-node-timeout 5000
+      --cluster-announce-hostname redis-node-3
+      --cluster-announce-port 7002
+      --cluster-announce-bus-port 17002
+      --appendonly yes
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+    ports:
+      - "7002:7002"
+      - "17002:17002"
+    volumes:
+      - redis-3-data:/data
+    networks:
+      - cami-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "7002", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 5
+
+  redis-node-4:
+    image: redis:7-alpine
+    command: >
+      redis-server
+      --port 7003
+      --cluster-enabled yes
+      --cluster-config-file nodes.conf
+      --cluster-node-timeout 5000
+      --cluster-announce-hostname redis-node-4
+      --cluster-announce-port 7003
+      --cluster-announce-bus-port 17003
+      --appendonly yes
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+    ports:
+      - "7003:7003"
+      - "17003:17003"
+    volumes:
+      - redis-4-data:/data
+    networks:
+      - cami-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "7003", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 5
+
+  redis-node-5:
+    image: redis:7-alpine
+    command: >
+      redis-server
+      --port 7004
+      --cluster-enabled yes
+      --cluster-config-file nodes.conf
+      --cluster-node-timeout 5000
+      --cluster-announce-hostname redis-node-5
+      --cluster-announce-port 7004
+      --cluster-announce-bus-port 17004
+      --appendonly yes
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+    ports:
+      - "7004:7004"
+      - "17004:17004"
+    volumes:
+      - redis-5-data:/data
+    networks:
+      - cami-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "7004", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 5
+
+  redis-node-6:
+    image: redis:7-alpine
+    command: >
+      redis-server
+      --port 7005
+      --cluster-enabled yes
+      --cluster-config-file nodes.conf
+      --cluster-node-timeout 5000
+      --cluster-announce-hostname redis-node-6
+      --cluster-announce-port 7005
+      --cluster-announce-bus-port 17005
+      --appendonly yes
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+    ports:
+      - "7005:7005"
+      - "17005:17005"
+    volumes:
+      - redis-6-data:/data
+    networks:
+      - cami-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "7005", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 5
+
+  # ================================================================
+  # MySQL — 2 shard DBs + 1 global DB
+  # ================================================================
+  mysql-shard-1:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: cami_dev_2026
+      MYSQL_DATABASE: cami_shard_1
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql-1-data:/var/lib/mysql
+      - ./mysql/init-shard.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - cami-net
+    command: --default-authentication-plugin=mysql_native_password --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+
+  mysql-shard-2:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: cami_dev_2026
+      MYSQL_DATABASE: cami_shard_2
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql-2-data:/var/lib/mysql
+      - ./mysql/init-shard.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - cami-net
+    command: --default-authentication-plugin=mysql_native_password --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+
+  # Independent DB for auction house and guild
+  mysql-global:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: cami_dev_2026
+      MYSQL_DATABASE: cami_global
+    ports:
+      - "3308:3306"
+    volumes:
+      - mysql-global-data:/var/lib/mysql
+      - ./mysql/init-global.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - cami-net
+    command: --default-authentication-plugin=mysql_native_password --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+
+  # ================================================================
+  # ShardingSphere Proxy — PlayerID-based sharding
+  # ================================================================
+  shardingsphere-proxy:
+    image: apache/shardingsphere-proxy:5.5.0
+    depends_on:
+      - mysql-shard-1
+      - mysql-shard-2
+    ports:
+      - "3309:3307"
+    volumes:
+      - ./shardingsphere/server.yaml:/opt/shardingsphere-proxy/conf/server.yaml
+      - ./shardingsphere/config-cami_db.yaml:/opt/shardingsphere-proxy/conf/config-cami_db.yaml
+      - ./shardingsphere/ext-lib:/opt/shardingsphere-proxy/ext-lib
+    networks:
+      - cami-net
+    environment:
+      - JVM_OPTS=-Xmx256m -Xms256m
+
+  # ================================================================
+  # Kafka — single node for local dev
+  # ================================================================
+  kafka:
+    image: confluentinc/cp-kafka:latest
+    depends_on:
+      - zookeeper
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    ports:
+      - "9092:9092"
+    networks:
+      - cami-net
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:latest
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+    ports:
+      - "2181:2181"
+    networks:
+      - cami-net
+
+  # ================================================================
+  # Monitoring
+  # ================================================================
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+    networks:
+      - cami-net
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: cami_dev
+    depends_on:
+      - prometheus
+    networks:
+      - cami-net
+
+volumes:
+  redis-1-data:
+  redis-2-data:
+  redis-3-data:
+  redis-4-data:
+  redis-5-data:
+  redis-6-data:
+  mysql-1-data:
+  mysql-2-data:
+  mysql-global-data:
+
+networks:
+  cami-net:
+    driver: bridge

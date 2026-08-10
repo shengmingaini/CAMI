@@ -1,0 +1,69 @@
+// config_skills.proto — 技能配置表 (Protobuf, proto3)
+//
+// 架构规约 §2；combat.md §1.2：技能数值由 Lua 热更脚本产出，本 schema 仅放静态参数
+// 与对脚本的引用（script_ref）。被 combat 模块读取以做冷却/射程/法力/合法性校验与
+// 静态 fallback 数值。共享类型（DamageType/StatType/EffectConfig/ClassType）来自 common.proto。
+// 版本: v1.0.0 (Day 3 — 方案 B)
+
+syntax = "proto3";
+
+package CAMI.Config;
+
+import "common.proto";
+
+// 技能大类
+enum SkillType {
+  SKILL_UNKNOWN = 0;
+  SKILL_ATTACK = 1;
+  SKILL_HEAL = 2;
+  SKILL_BUFF = 3;
+  SKILL_DEBUFF = 4;
+  SKILL_SUMMON = 5;
+  SKILL_TELEPORT = 6;
+  SKILL_PASSIVE = 7;
+}
+
+// 目标选择
+enum TargetType {
+  TARGET_NONE = 0;
+  TARGET_SELF = 1;
+  TARGET_ENEMY = 2;
+  TARGET_FRIENDLY = 3;
+  TARGET_POINT = 4;     // 地面指定点
+  TARGET_AOE = 5;       // 以目标/点为中心的范围
+}
+
+// 单技能配置
+message SkillConfig {
+  uint32 skill_id = 1;                      // 主键
+  string name_key = 2;
+  string description_key = 3;
+  SkillType skill_type = 4;
+  CAMI.Common.DamageType damage_type = 5;   // 伤害/治疗学派（复用跨服共享枚举）
+  TargetType target_type = 6;
+
+  uint32 cooldown_ms = 7;                   // 技能冷却
+  uint32 cast_time_ms = 8;                  // 施法时间（0 = 瞬发）
+  uint32 gcd_ms = 9;                       // 公共冷却
+  int32  mana_cost = 10;                    // 法力消耗（负 = 回蓝）
+  float  range = 11;                        // 施法距离
+  float  radius = 12;                       // AOE 半径（0 = 单目标）
+  uint32 max_targets = 13;                  // 最大作用数（AOE）
+
+  // —— 数值（实际结算由 Lua 算；以下为静态可见参数 / fallback）——
+  int32  base_value = 14;                   // 基础伤害/治疗
+  float  coefficient = 15;                   // 强度系数（法术强度/攻击强度）
+  CAMI.Common.StatType scaling_stat = 16;   // 缩放属性
+
+  repeated CAMI.Common.EffectConfig effects = 17;     // 触发的 buff/debuff/dot
+  repeated CAMI.Common.ClassType required_class = 18; // 职业限制（空 = 无）
+
+  string script_ref = 19;                   // 关联 Lua 技能脚本 key（热更边界）
+  string icon = 20;
+}
+
+// 技能配置全集（加载/热更单元）
+message SkillConfigSet {
+  uint32 data_version = 1;
+  repeated SkillConfig skills = 2;
+}

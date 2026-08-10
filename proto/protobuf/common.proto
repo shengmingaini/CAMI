@@ -1,0 +1,104 @@
+// common.proto — CAMI 跨服/配置共享类型 (Protobuf, proto3)
+//
+// 架构规约 §2：配置序列化与跨服协议使用 Protobuf 3.x。
+// 本文件为库文件，被 cross_server.proto 及各配置表 proto 复用。
+// 版本: v1.0.0 (Day 3 — 协议基础优先)
+
+syntax = "proto3";
+
+package CAMI.Common;
+
+// 三维坐标（配置/跨服用浮点；高频轨道 A 用定点位压缩，见 protocol-spec §7）
+message Vec3 {
+  float x = 1;
+  float y = 2;
+  float z = 3;
+}
+
+// 实体引用（跨服事件携带）
+message EntityRef {
+  uint64 id = 1;       // 全局唯一实体 ID
+  string kind = 2;     // "player" | "guild" | "zone" ...
+}
+
+enum DamageType {
+  PHYSICAL = 0;
+  MAGIC = 1;
+  FIRE = 2;
+  FROST = 3;
+  HOLY = 4;
+  SHADOW = 5;
+  POISON = 6;
+  TRUE_DMG = 7;
+}
+
+// ============================================================
+// 配置表共享类型（数据驱动静态配置，proto3）
+// 被 config_items.proto / config_skills.proto / config_quests.proto 复用。
+// 注意：这些类型描述"静态配置数据"，非网络消息，亦非跨服事件。
+// ============================================================
+
+// 职业（物品/技能职业限制；角色模块细化阶段的职业系统亦引用此枚举）
+enum ClassType {
+  CLASS_NONE = 0;
+  CLASS_WARRIOR = 1;
+  CLASS_MAGE = 2;
+  CLASS_PRIEST = 3;
+  CLASS_ROGUE = 4;
+  CLASS_HUNTER = 5;
+}
+
+// 属性类型（装备加成 / 技能缩放 / 天赋 / 食物等统一引用）
+enum StatType {
+  STAT_NONE = 0;
+  STAT_HP = 1;
+  STAT_MANA = 2;
+  STAT_STRENGTH = 3;
+  STAT_AGILITY = 4;
+  STAT_INTELLECT = 5;
+  STAT_STAMINA = 6;
+  STAT_ARMOR = 7;
+  STAT_ATTACK_POWER = 8;
+  STAT_SPELL_POWER = 9;
+  STAT_CRIT_RATING = 10;
+  STAT_HASTE_RATING = 11;
+  STAT_HIT_RATING = 12;
+  STAT_DODGE_RATING = 13;
+  STAT_MOVE_SPEED_PCT = 14;
+}
+
+// 属性修正（装备 / 天赋 / 食物等）
+message StatModifier {
+  StatType stat = 1;   // 作用属性
+  int32  flat = 2;     // 固定加成（如 +50 力量）
+  float  pct  = 3;     // 百分比加成（+5% 写作 0.05）
+}
+
+// 效果类型（物品使用 / 技能施放触发的即时或持续效果）
+enum EffectType {
+  EFFECT_NONE = 0;
+  EFFECT_HEAL = 1;
+  EFFECT_DAMAGE = 2;
+  EFFECT_BUFF = 3;
+  EFFECT_DEBUFF = 4;
+  EFFECT_TELEPORT = 5;
+  EFFECT_SUMMON = 6;
+}
+
+// 可复用效果配置（物品 on_use / 技能 on_cast 引用或内联）
+message EffectConfig {
+  EffectType type = 1;
+  int32  value = 2;             // 数值（治疗量 / 伤害量 / buff 层数）
+  uint32 duration_ms = 3;       // 持续时间（0 = 瞬发）
+  uint32 tick_interval_ms = 4;  // 周期结算间隔（HOT/DOT；0 = 一次性）
+  DamageType damage_type = 5;   // 伤害型效果的类型
+  uint32 buff_id = 6;           // BUFF/DEBUFF 效果引用的 buff 配置 ID
+  float  radius = 7;            // 范围效果半径（0 = 单目标）
+}
+
+// 物品奖励（任务 / 成就 / 商店统一引用）
+message ItemReward {
+  uint32 item_id = 1;
+  uint32 count = 2;
+  uint32 chance_pct = 3;   // 概率（100 = 必给）
+}

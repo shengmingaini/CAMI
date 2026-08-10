@@ -1,0 +1,504 @@
+{
+  "data_version": 1,
+  "combat": {
+    "attack_power_coef": 0.5,
+    "spell_power_coef": 0.5,
+    "armor_mitigation_k": 105.6,
+    "armor_mitigation_level_adj": 0.0,
+    "crit_damage_multiplier": 2.0,
+    "pvp_resilience_coef": 0.01,
+    "pvp_damage_dealt_coef": 0.9,
+    "pvp_damage_taken_coef": 0.9,
+    "balance_note": "基准战斗常数 v1"
+  },
+  "xp_curve": [
+    {
+      "level": 1,
+      "xp_required": 400,
+      "rest_bonus_cap_pct": 1.5
+    },
+    {
+      "level": 2,
+      "xp_required": 900,
+      "rest_bonus_cap_pct": 1.5
+    },
+    {
+      "level": 3,
+      "xp_required": 1400,
+      "rest_bonus_cap_pct": 1.5
+    },
+    {
+      "level": 4,
+      "xp_required": 2100,
+      "rest_bonus_cap_pct": 1.5
+    },
+    {
+      "level": 5,
+      "xp_required": 2800,
+      "rest_bonus_cap_pct": 1.5
+    },
+    {
+      "level": 6,
+      "xp_required": 3520,
+      "rest_bonus_cap_pct": 1.5
+    },
+    {
+      "level": 7,
+      "xp_required": 4260,
+      "rest_bonus_cap_pct": 1.5
+    },
+    {
+      "level": 8,
+      "xp_required": 5020,
+      "rest_bonus_cap_pct": 1.5
+    },
+    {
+      "level": 9,
+      "xp_required": 5800,
+      "rest_bonus_cap_pct": 1.5
+    },
+    {
+      "level": 10,
+      "xp_required": 6600,
+      "rest_bonus_cap_pct": 1.5
+    },
+    {
+      "level": 11,
+      "xp_required": 7420,
+      "rest_bonus_cap_pct": 1.5
+    },
+    {
+      "level": 12,
+      "xp_required": 8260,
+      "rest_bonus_cap_pct": 1.5
+    },
+    {
+      "level": 13,
+      "xp_required": 9120,
+      "rest_bonus_cap_pct": 1.5
+    },
+    {
+      "level": 14,
+      "xp_required": 10000,
+      "rest_bonus_cap_pct": 1.5
+    },
+    {
+      "level": 15,
+      "xp_required": 10900,
+      "rest_bonus_cap_pct": 1.5
+    },
+    {
+      "level": 16,
+      "xp_required": 11820,
+      "rest_bonus_cap_pct": 1.5
+    },
+    {
+      "level": 17,
+      "xp_required": 12760,
+      "rest_bonus_cap_pct": 1.5
+    },
+    {
+      "level": 18,
+      "xp_required": 13720,
+      "rest_bonus_cap_pct": 1.5
+    },
+    {
+      "level": 19,
+      "xp_required": 14700,
+      "rest_bonus_cap_pct": 1.5
+    },
+    {
+      "level": 20,
+      "xp_required": 15700,
+      "rest_bonus_cap_pct": 1.5
+    },
+    {
+      "level": 21,
+      "xp_required": 16720,
+      "rest_bonus_cap_pct": 1.5
+    },
+    {
+      "level": 22,
+      "xp_required": 17760,
+      "rest_bonus_cap_pct": 1.5
+    },
+    {
+      "level": 23,
+      "xp_required": 18820,
+      "rest_bonus_cap_pct": 1.5
+    },
+    {
+      "level": 24,
+      "xp_required": 19900,
+      "rest_bonus_cap_pct": 1.5
+    },
+    {
+      "level": 25,
+      "xp_required": 21000,
+      "rest_bonus_cap_pct": 1.5
+    },
+    {
+      "level": 26,
+      "xp_required": 22120,
+      "rest_bonus_cap_pct": 1.5
+    },
+    {
+      "level": 27,
+      "xp_required": 23260,
+      "rest_bonus_cap_pct": 1.5
+    },
+    {
+      "level": 28,
+      "xp_required": 24420,
+      "rest_bonus_cap_pct": 1.5
+    },
+    {
+      "level": 29,
+      "xp_required": 25600,
+      "rest_bonus_cap_pct": 1.5
+    },
+    {
+      "level": 30,
+      "xp_required": 26800,
+      "rest_bonus_cap_pct": 1.5
+    },
+    {
+      "level": 31,
+      "xp_required": 28020,
+      "rest_bonus_cap_pct": 1.5
+    },
+    {
+      "level": 32,
+      "xp_required": 29260,
+      "rest_bonus_cap_pct": 1.5
+    },
+    {
+      "level": 33,
+      "xp_required": 30520,
+      "rest_bonus_cap_pct": 1.5
+    },
+    {
+      "level": 34,
+      "xp_required": 31800,
+      "rest_bonus_cap_pct": 1.5
+    },
+    {
+      "level": 35,
+      "xp_required": 33100,
+      "rest_bonus_cap_pct": 1.5
+    },
+    {
+      "level": 36,
+      "xp_required": 34420,
+      "rest_bonus_cap_pct": 1.5
+    },
+    {
+      "level": 37,
+      "xp_required": 35760,
+      "rest_bonus_cap_pct": 1.5
+    },
+    {
+      "level": 38,
+      "xp_required": 37120,
+      "rest_bonus_cap_pct": 1.5
+    },
+    {
+      "level": 39,
+      "xp_required": 38500,
+      "rest_bonus_cap_pct": 1.5
+    },
+    {
+      "level": 40,
+      "xp_required": 39900,
+      "rest_bonus_cap_pct": 1.5
+    },
+    {
+      "level": 41,
+      "xp_required": 41320,
+      "rest_bonus_cap_pct": 1.5
+    },
+    {
+      "level": 42,
+      "xp_required": 42760,
+      "rest_bonus_cap_pct": 1.5
+    },
+    {
+      "level": 43,
+      "xp_required": 44220,
+      "rest_bonus_cap_pct": 1.5
+    },
+    {
+      "level": 44,
+      "xp_required": 45700,
+      "rest_bonus_cap_pct": 1.5
+    },
+    {
+      "level": 45,
+      "xp_required": 47200,
+      "rest_bonus_cap_pct": 1.5
+    },
+    {
+      "level": 46,
+      "xp_required": 48720,
+      "rest_bonus_cap_pct": 1.5
+    },
+    {
+      "level": 47,
+      "xp_required": 50260,
+      "rest_bonus_cap_pct": 1.5
+    },
+    {
+      "level": 48,
+      "xp_required": 51820,
+      "rest_bonus_cap_pct": 1.5
+    },
+    {
+      "level": 49,
+      "xp_required": 53400,
+      "rest_bonus_cap_pct": 1.5
+    },
+    {
+      "level": 50,
+      "xp_required": 55000,
+      "rest_bonus_cap_pct": 1.5
+    },
+    {
+      "level": 51,
+      "xp_required": 56620,
+      "rest_bonus_cap_pct": 1.5
+    },
+    {
+      "level": 52,
+      "xp_required": 58260,
+      "rest_bonus_cap_pct": 1.5
+    },
+    {
+      "level": 53,
+      "xp_required": 59920,
+      "rest_bonus_cap_pct": 1.5
+    },
+    {
+      "level": 54,
+      "xp_required": 61600,
+      "rest_bonus_cap_pct": 1.5
+    },
+    {
+      "level": 55,
+      "xp_required": 63300,
+      "rest_bonus_cap_pct": 1.5
+    },
+    {
+      "level": 56,
+      "xp_required": 65020,
+      "rest_bonus_cap_pct": 1.5
+    },
+    {
+      "level": 57,
+      "xp_required": 66760,
+      "rest_bonus_cap_pct": 1.5
+    },
+    {
+      "level": 58,
+      "xp_required": 68520,
+      "rest_bonus_cap_pct": 1.5
+    },
+    {
+      "level": 59,
+      "xp_required": 70300,
+      "rest_bonus_cap_pct": 1.5
+    }
+  ],
+  "max_level": 60,
+  "economy_flows": [
+    {
+      "flow_id": "quest_reward_gold",
+      "direction": "FLOW_SOURCE",
+      "currency": "CURRENCY_GOLD",
+      "source_category": "quest_reward",
+      "per_capita_daily": 6000,
+      "leak_rate": 0.0,
+      "hoard_rate": 0.1,
+      "expected_daily_per_capita": 6000,
+      "tolerance_pct": 0.1,
+      "alert_channel": "econ-balance"
+    },
+    {
+      "flow_id": "mob_drop_gold",
+      "direction": "FLOW_SOURCE",
+      "currency": "CURRENCY_GOLD",
+      "source_category": "mob_drop",
+      "per_capita_daily": 5760,
+      "leak_rate": 0.0,
+      "hoard_rate": 0.05,
+      "expected_daily_per_capita": 5760,
+      "tolerance_pct": 0.1,
+      "alert_channel": "econ-balance"
+    },
+    {
+      "flow_id": "vendor_sell_gold",
+      "direction": "FLOW_SOURCE",
+      "currency": "CURRENCY_GOLD",
+      "source_category": "vendor_sell",
+      "per_capita_daily": 2000,
+      "leak_rate": 0.0,
+      "hoard_rate": 0.0,
+      "expected_daily_per_capita": 2000,
+      "tolerance_pct": 0.1,
+      "alert_channel": "econ-balance"
+    },
+    {
+      "flow_id": "pvp_battleground_honor",
+      "direction": "FLOW_SOURCE",
+      "currency": "CURRENCY_HONOR",
+      "source_category": "pvp_battleground",
+      "per_capita_daily": 5000,
+      "leak_rate": 0.0,
+      "hoard_rate": 0.0,
+      "expected_daily_per_capita": 5000,
+      "tolerance_pct": 0.1,
+      "alert_channel": "econ-pvp"
+    },
+    {
+      "flow_id": "pvp_arena_conquest",
+      "direction": "FLOW_SOURCE",
+      "currency": "CURRENCY_CONQUEST",
+      "source_category": "pvp_arena",
+      "per_capita_daily": 200,
+      "leak_rate": 0.0,
+      "hoard_rate": 0.0,
+      "expected_daily_per_capita": 200,
+      "tolerance_pct": 0.1,
+      "alert_channel": "econ-pvp"
+    },
+    {
+      "flow_id": "world_event_token",
+      "direction": "FLOW_SOURCE",
+      "currency": "CURRENCY_TOKEN",
+      "source_category": "world_event",
+      "per_capita_daily": 480,
+      "leak_rate": 0.0,
+      "hoard_rate": 0.0,
+      "expected_daily_per_capita": 480,
+      "tolerance_pct": 0.1,
+      "alert_channel": "econ-event"
+    },
+    {
+      "flow_id": "vendor_buy_gold",
+      "direction": "FLOW_SINK",
+      "currency": "CURRENCY_GOLD",
+      "source_category": "vendor_buy",
+      "per_capita_daily": 7000,
+      "leak_rate": 0.0,
+      "hoard_rate": 0.0,
+      "expected_daily_per_capita": 7000,
+      "tolerance_pct": 0.1,
+      "alert_channel": "econ-balance"
+    },
+    {
+      "flow_id": "repair_gold",
+      "direction": "FLOW_SINK",
+      "currency": "CURRENCY_GOLD",
+      "source_category": "repair",
+      "per_capita_daily": 3000,
+      "leak_rate": 0.0,
+      "hoard_rate": 0.0,
+      "expected_daily_per_capita": 3000,
+      "tolerance_pct": 0.1,
+      "alert_channel": "econ-balance"
+    },
+    {
+      "flow_id": "ah_fee_gold",
+      "direction": "FLOW_SINK",
+      "currency": "CURRENCY_GOLD",
+      "source_category": "ah_fee",
+      "per_capita_daily": 800,
+      "leak_rate": 0.05,
+      "hoard_rate": 0.0,
+      "expected_daily_per_capita": 800,
+      "tolerance_pct": 0.1,
+      "alert_channel": "econ-balance"
+    },
+    {
+      "flow_id": "mail_fee_gold",
+      "direction": "FLOW_SINK",
+      "currency": "CURRENCY_GOLD",
+      "source_category": "mail_fee",
+      "per_capita_daily": 200,
+      "leak_rate": 0.0,
+      "hoard_rate": 0.0,
+      "expected_daily_per_capita": 200,
+      "tolerance_pct": 0.1,
+      "alert_channel": "econ-balance"
+    },
+    {
+      "flow_id": "training_gold",
+      "direction": "FLOW_SINK",
+      "currency": "CURRENCY_GOLD",
+      "source_category": "training",
+      "per_capita_daily": 600,
+      "leak_rate": 0.0,
+      "hoard_rate": 0.0,
+      "expected_daily_per_capita": 600,
+      "tolerance_pct": 0.1,
+      "alert_channel": "econ-balance"
+    },
+    {
+      "flow_id": "tax_gold",
+      "direction": "FLOW_SINK",
+      "currency": "CURRENCY_GOLD",
+      "source_category": "tax",
+      "per_capita_daily": 2160,
+      "leak_rate": 0.0,
+      "hoard_rate": 0.0,
+      "expected_daily_per_capita": 2160,
+      "tolerance_pct": 0.1,
+      "alert_channel": "econ-balance"
+    },
+    {
+      "flow_id": "vendor_buy_honor",
+      "direction": "FLOW_SINK",
+      "currency": "CURRENCY_HONOR",
+      "source_category": "vendor_buy",
+      "per_capita_daily": 5000,
+      "leak_rate": 0.0,
+      "hoard_rate": 0.0,
+      "expected_daily_per_capita": 5000,
+      "tolerance_pct": 0.1,
+      "alert_channel": "econ-pvp"
+    },
+    {
+      "flow_id": "vendor_buy_conquest",
+      "direction": "FLOW_SINK",
+      "currency": "CURRENCY_CONQUEST",
+      "source_category": "vendor_buy",
+      "per_capita_daily": 200,
+      "leak_rate": 0.0,
+      "hoard_rate": 0.0,
+      "expected_daily_per_capita": 200,
+      "tolerance_pct": 0.1,
+      "alert_channel": "econ-pvp"
+    },
+    {
+      "flow_id": "vendor_buy_token",
+      "direction": "FLOW_SINK",
+      "currency": "CURRENCY_TOKEN",
+      "source_category": "vendor_buy",
+      "per_capita_daily": 480,
+      "leak_rate": 0.0,
+      "hoard_rate": 0.0,
+      "expected_daily_per_capita": 480,
+      "tolerance_pct": 0.1,
+      "alert_channel": "econ-event"
+    }
+  ],
+  "repair_rates": [
+    {
+      "slot": "SLOT_MAINHAND",
+      "cost_per_durability": 2
+    },
+    {
+      "slot": "SLOT_CHEST",
+      "cost_per_durability": 4
+    }
+  ]
+}

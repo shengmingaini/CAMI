@@ -1,0 +1,69 @@
+// quest.fbs — 任务/进度/奖励 (MsgID 域 0x4000)
+//
+// 设计依据：quest.md §6。任务为 轨道 B 可靠消息（接取/交付低频、进度增量可靠下发）。
+// 仅描述网络契约；奖励结算逻辑在 quest 模块，经 character/economy 落地（ADR-002）。
+// 版本: v1.0.0 (2026-08-12, 协议 v1 — 补齐待建域)
+//
+// 域分配（6-bit opcode 仅用于轨道 A 高频；本域均为轨道 B）：
+//   0x4000 = 任务 C→S 意图
+//   0x4400 = 任务 S→C 结果/增量
+
+include "common.fbs";
+
+namespace CAMI.Quest;
+
+enum QuestStatus : ubyte {
+  Accepted = 0,     // 进行中
+  Complete = 1,     // 目标已达成，待交付
+  TurnedIn = 2,     // 已交付领奖
+}
+
+enum QuestTurnInResult : ubyte {
+  Ok = 0,
+  NotComplete = 1,     // 目标未达成
+  PrereqFail = 2,      // 前置/等级不满足
+  InventoryFull = 3,   // 背包已满（物品发放失败）
+}
+
+// 单任务运行态（首包全量 + 增量引用）
+table QuestLogEntry {
+  quest_id: uint32;
+  status: QuestStatus;
+  objective_progress: [uint32];   // 与 config_quests 的 objectives 对齐
+}
+
+// ---- C→S 意图 ----
+table QuestAcceptIntent {
+  player_id: uint64;
+  quest_id: uint32;
+  npc_key: string;       // 接取 NPC（与 config_quests.start_npc 对应）
+}
+
+table QuestTurnInIntent {
+  player_id: uint64;
+  quest_id: uint32;
+  npc_key: string;       // 交付 NPC（与 config_quests.end_npc 对应）
+  chosen_reward_index: uint32;  // 多选一奖励下标（choice_items），无则 0
+}
+
+// ---- S→C 结果/增量 ----
+table QuestProgress {
+  player_id: uint64;
+  quest_id: uint32;
+  objective_idx: uint32;
+  progress: uint32;      // 当前计数（增量下发，非全量重发）
+}
+
+table QuestRewardResult {
+  player_id: uint64;
+  quest_id: uint32;
+  result: QuestTurnInResult;
+  exp: uint64;           // 经验（经 character.applyExp）
+  money: uint64;         // 金钱（经 economy 发放）
+  items: [CAMI.Common.ItemGrant];  // 物品（经 economy 发放）
+}
+
+table QuestLogSnapshot {
+  player_id: uint64;
+  entries: [QuestLogEntry];   // 首包全量；后续仅 QuestProgress 差分
+}

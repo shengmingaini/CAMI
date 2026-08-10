@@ -1,0 +1,20 @@
+{
+  "name": "cami",
+  "version": "0.1.0",
+  "description": "Industrial MMORPG backend - 50K concurrent online",
+  "dependencies": [
+    "grpc",
+    "flatbuffers",
+    "protobuf",
+    "redis-plus-plus",
+    "sol2",
+    "lua",
+    "fmt",
+    "spdlog",
+    "gtest",
+    "boost-asio",
+    "openssl",
+    "abseil",
+    "jsoncpp"
+  ]
+}

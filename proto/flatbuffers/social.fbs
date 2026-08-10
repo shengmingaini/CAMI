@@ -1,0 +1,94 @@
+// social.fbs — 好友/公会/组队/聊天/声望/成就 (MsgID 域 0x6000)
+//
+// 设计依据：social.md §6。全部为 轨道 B 可靠消息；社交图谱存独立库（ADR-003），
+// 在线态缓存 L1。聊天内容经公共层 anti_cheat 脱敏后路由，social 仅做分发。
+// 版本: v1.0.0 (2026-08-12, 协议 v1 — 补齐待建域)
+//
+// 域分配：
+//   0x6000 = 社交 C→S 意图
+//   0x6400 = 社交 S→C 结果/广播
+
+include "common.fbs";
+
+namespace CAMI.Social;
+
+enum ChatChannel : ubyte {
+  Whisper = 0,    // 私聊（指定 to_id）
+  Party = 1,      // 队伍
+  Guild = 2,      // 公会
+  World = 3,      // 世界
+  System = 4,     // 系统
+}
+
+// ---- C→S 意图 ----
+table FriendAdd {
+  player_id: uint64;
+  target_id: uint64;
+}
+
+table GuildCreate {
+  leader_id: uint64;
+  name: string;
+}
+
+table PartyInvite {
+  leader_id: uint64;
+  target_id: uint64;
+}
+
+table ChatSend {
+  from_id: uint64;
+  channel: ChatChannel;
+  to_id: uint64;        // Whisper 时为目标，其余为 0
+  payload: string;      // 已脱敏（anti_cheat 预处理）
+}
+
+// ---- S→C 结果/广播 ----
+table FriendEntry {
+  friend_id: uint64;
+  online: bool;
+  note: string;
+}
+
+table FriendList {
+  player_id: uint64;
+  friends: [FriendEntry];
+}
+
+table GuildMember {
+  member_id: uint64;
+  rank: ubyte;          // 0=会长,1=官员,2=成员
+  online: bool;
+}
+
+table GuildInfo {
+  guild_id: uint32;
+  name: string;
+  members: [GuildMember];
+}
+
+table PartyUpdate {
+  party_id: uint64;
+  leader_id: uint64;
+  members: [uint64];
+}
+
+table ChatBroadcast {
+  channel: ChatChannel;
+  from_id: uint64;
+  from_name: string;
+  payload: string;
+}
+
+table AchievementUpdate {
+  player_id: uint64;
+  ach_id: uint32;
+  unlocked: bool;
+}
+
+table ReputationUpdate {
+  player_id: uint64;
+  faction: uint16;      // 声望阵营 ID
+  delta: int32;
+  new_value: int32;
+}

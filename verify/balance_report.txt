@@ -1,0 +1,72 @@
+CAMI 平衡校验报告
+数据目录: F:\AI\workbuddy\CAMI\data\configs
+  ℹ️  [LOAD] 已加载 13 个 ConfigSet: balance, creatures, currencies, items, loot, professions, pvp, reputation, spawns, stats, vendors, world_events, zones
+
+=== A. 引用完整性 (Referential Integrity) ===
+  ✅ [REF] 引用完整性扫描完成
+
+=== B. 经济源汇对账 (EconomyFlow — 闭合 GAP-4) ===
+  ✅ [flow:quest_reward_gold] CURRENCY_GOLD 0 实测 6000 ≈ 预期 6000 (±10%)
+  ✅ [flow:mob_drop_gold] CURRENCY_GOLD 0 实测 5760 ≈ 预期 5760 (±10%)
+  ✅ [flow:vendor_sell_gold] CURRENCY_GOLD 0 实测 2000 ≈ 预期 2000 (±10%)
+  ✅ [flow:pvp_battleground_honor] CURRENCY_HONOR 0 实测 5000 ≈ 预期 5000 (±10%)
+  ✅ [flow:pvp_arena_conquest] CURRENCY_CONQUEST 0 实测 200 ≈ 预期 200 (±10%)
+  ✅ [flow:world_event_token] CURRENCY_TOKEN 0 实测 480 ≈ 预期 480 (±10%)
+  ✅ [flow:vendor_buy_gold] CURRENCY_GOLD 1 实测 7000 ≈ 预期 7000 (±10%)
+  ✅ [flow:repair_gold] CURRENCY_GOLD 1 实测 3000 ≈ 预期 3000 (±10%)
+  ✅ [flow:ah_fee_gold] CURRENCY_GOLD 1 实测 800 ≈ 预期 800 (±10%)
+  ⚠️  [flow:ah_fee_gold] leak_rate=0.05000000074505806 超阈值(>0.02)：货币未经闭环消失，需确认是否为有意销毁(如拍卖税)
+  ✅ [flow:mail_fee_gold] CURRENCY_GOLD 1 实测 200 ≈ 预期 200 (±10%)
+  ✅ [flow:training_gold] CURRENCY_GOLD 1 实测 600 ≈ 预期 600 (±10%)
+  ✅ [flow:tax_gold] CURRENCY_GOLD 1 实测 2160 ≈ 预期 2160 (±10%)
+  ✅ [flow:vendor_buy_honor] CURRENCY_HONOR 1 实测 5000 ≈ 预期 5000 (±10%)
+  ✅ [flow:vendor_buy_conquest] CURRENCY_CONQUEST 1 实测 200 ≈ 预期 200 (±10%)
+  ✅ [flow:vendor_buy_token] CURRENCY_TOKEN 1 实测 480 ≈ 预期 480 (±10%)
+  ℹ️  [CURRENCY_GOLD] 源 13760 / 汇 13760 / 净注入 0 (占比 0%)
+  ℹ️  [CURRENCY_TOKEN] 源 480 / 汇 480 / 净注入 0 (占比 0%)
+  ℹ️  [CURRENCY_HONOR] 源 5000 / 汇 5000 / 净注入 0 (占比 0%)
+  ℹ️  [CURRENCY_CONQUEST] 源 200 / 汇 200 / 净注入 0 (占比 0%)
+  ⚠️  [CURRENCY_PRESTIGE] 已声明但无 EconomyFlow 建模（死币种）—— 若本阶段不启用，建议 currencies.json 加 status:DISABLED
+  ⚠️  [CURRENCY_JUSTICE] 已声明但无 EconomyFlow 建模（死币种）—— 若本阶段不启用，建议 currencies.json 加 status:DISABLED
+  ⚠️  [CURRENCY_VALOR] 已声明但无 EconomyFlow 建模（死币种）—— 若本阶段不启用，建议 currencies.json 加 status:DISABLED
+  ⚠️  [CURRENCY_ARENA_POINTS] 已声明但无 EconomyFlow 建模（死币种）—— 若本阶段不启用，建议 currencies.json 加 status:DISABLED
+  ✅ [CURRENCY_HONOR] 周上限 75000 对单源 pvp_battleground_honor 可达且有效
+  ✅ [CURRENCY_CONQUEST] 周上限 1500 对单源 pvp_arena_conquest 可达且有效
+  ✅ [CURRENCY_HONOR] 周上限 75000 对单源 vendor_buy_honor 可达且有效
+  ✅ [CURRENCY_CONQUEST] 周上限 1500 对单源 vendor_buy_conquest 可达且有效
+
+=== C. 币种周上限三处对账 (currencies / pvp_balance / season) ===
+  ✅ [CURRENCY_HONOR] PvpBalance 周上限 75000 == CurrencyConfig 周上限
+  ✅ [CURRENCY_CONQUEST] PvpBalance 周上限 1500 == CurrencyConfig 周上限
+  ✅ [CONQUEST] season 1 周上限 1500 == CurrencyConfig
+
+=== D. 刷新密度 <-> 经济源 (掉落金 对账) ===
+  ✅ [DENS] 刷新密度推算金源 5760/日 ≈ EconomyFlow.mob_drop 5760 (±10%)
+
+=== E. 世界事件币注入对账 ===
+  ✅ [WEVENT] event 4001 注入 480/日 ≈ EconomyFlow 480 (±10%)
+
+=== F. PvP 产出与等级带 ===
+  ✅ [PVP] bg 3001 绑定战场区域 3001
+  ✅ [PVP] arena 3002 绑定竞技场区域 3002
+
+=== G. 专业净注入 / 采集速率 ===
+  ✅ [PROF] recipe 1 净注入 200（产出 400 - 材料 200）
+  ✅ [GATHER] node 1 预期 10/小时
+
+=== H. 区域等级带一致性 ===
+  ✅ [LVBAND] spawn 8001: 生物 5001(2-4) ⊂ 区域 1001(1-10)
+  ✅ [LVBAND] spawn 8002: 生物 5002(6-9) ⊂ 区域 1002(5-12)
+
+=== I. 门可达性 (Gate Reachability) ===
+  ✅ [GATE] 全部 6 个区域从区域 1001 可达（门拓扑连通）
+
+=== J. 结构单调 / 边界 ===
+  ✅ [REP] faction 1 档位阈值单调: [0, 36000, 39000, 42000, 51000, 72000]
+  ✅ [XP] XP 曲线完整性: 覆盖等级 1..59（共 59 条，max_level=60）
+  ✅ [XP] XP 曲线单调: 1..59 升序无重复（首 400 / 末 70300）
+  ✅ [XP] XP 曲线单级增量均为正且平滑（无 >5x 跳变）
+  ✅ [STATS] 物品化预算 2 条，键唯一
+
+=== 汇总 ===
+  PASS=37  WARN=5  FAIL=0  INFO=5

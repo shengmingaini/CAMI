@@ -1,0 +1,8 @@
+{
+  "data_version": 1,
+  "creatures": [
+    {"creature_id": 5001, "name_key": "creature.young_wolf", "type": "CREATURE_BEAST",    "faction": "FACTION_HOSTILE", "min_level": 2,  "max_level": 4,  "base_stats": [{"stat": "STAT_STAMINA", "flat": 30}], "level_scaling": 1.0, "ai": "AI_AGGRESSIVE", "loot_table_id": 9001, "gold_min": 1,   "gold_max": 5,   "difficulty_mult": 1.0, "is_npc": false},
+    {"creature_id": 5002, "name_key": "creature.orc_grunt",  "type": "CREATURE_HUMANOID", "faction": "FACTION_HOSTILE", "min_level": 6,  "max_level": 9,  "base_stats": [{"stat": "STAT_STAMINA", "flat": 80}], "level_scaling": 1.0, "ai": "AI_DEFENSIVE",  "loot_table_id": 9002, "gold_min": 3,   "gold_max": 12,  "difficulty_mult": 1.0, "is_npc": false},
+    {"creature_id": 5003, "name_key": "creature.dm_overseer","type": "CREATURE_HUMANOID", "faction": "FACTION_HOSTILE", "min_level": 18, "max_level": 20, "base_stats": [{"stat": "STAT_STAMINA", "flat": 2000}],"level_scaling": 1.0, "ai": "AI_DEFENSIVE",  "loot_table_id": 9003, "gold_min": 100, "gold_max": 500, "difficulty_mult": 1.0, "is_npc": false}
+  ]
+}

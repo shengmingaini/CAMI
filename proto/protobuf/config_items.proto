@@ -1,0 +1,87 @@
+// config_items.proto — 物品配置表 (Protobuf, proto3)
+//
+// 架构规约 §2：静态配置使用 Protobuf。本文件定义物品（装备/消耗品/材料/任务物品）的
+// 数据驱动配置，被 character（背包/装备）模块读取。
+// 具体效果数值若需热更，由 Lua 边界承担；本 schema 仅描述静态参数与对效果/脚本的引用。
+// 共享类型（StatModifier/EffectConfig/ClassType）来自 common.proto。
+// 版本: v1.0.0 (Day 3 — 方案 B)
+
+syntax = "proto3";
+
+package CAMI.Config;
+
+import "common.proto";
+
+// 物品分类
+enum ItemType {
+  ITEM_UNKNOWN = 0;
+  ITEM_CONSUMABLE = 1;   // 消耗品（药水/食物）
+  ITEM_EQUIPMENT = 2;    // 装备
+  ITEM_QUEST = 3;        // 任务物品
+  ITEM_MATERIAL = 4;     // 材料
+  ITEM_MISC = 5;         // 杂项
+  ITEM_CONTAINER = 6;    // 容器
+}
+
+// 品质（决定颜色/属性强度档位）
+enum ItemQuality {
+  QUALITY_POOR = 0;
+  QUALITY_COMMON = 1;
+  QUALITY_UNCOMMON = 2;
+  QUALITY_RARE = 3;
+  QUALITY_EPIC = 4;
+  QUALITY_LEGENDARY = 5;
+}
+
+// 绑定方式
+enum BindType {
+  BIND_NONE = 0;
+  BIND_ON_PICKUP = 1;
+  BIND_ON_EQUIP = 2;
+  BIND_ON_ACCOUNT = 3;
+}
+
+// 装备槽位
+enum EquipSlot {
+  SLOT_NONE = 0;
+  SLOT_HEAD = 1;
+  SLOT_CHEST = 2;
+  SLOT_LEGS = 3;
+  SLOT_FEET = 4;
+  SLOT_HANDS = 5;
+  SLOT_MAINHAND = 6;
+  SLOT_OFFHAND = 7;
+  SLOT_TRINKET = 8;
+  SLOT_NECK = 9;
+  SLOT_RING = 10;
+}
+
+// 单件物品配置
+message ItemConfig {
+  uint32 item_id = 1;                      // 主键
+  string name_key = 2;                     // i18n 名称 key（文本走语言包，不内联）
+  string description_key = 3;              // i18n 描述 key
+  ItemType item_type = 4;
+  ItemQuality quality = 5;
+  BindType bind_type = 6;
+  uint32 stack_size = 7;                   // 最大堆叠（默认 1）
+  uint64 sell_price = 8;                   // 商店售价（最小货币单位）
+  uint32 required_level = 9;
+  repeated CAMI.Common.ClassType required_class = 10;  // 职业限制（空 = 无限制）
+
+  // —— 装备属性（仅 ITEM_EQUIPMENT 有意义）——
+  EquipSlot equip_slot = 11;
+  repeated CAMI.Common.StatModifier equip_stats = 12;
+
+  // —— 使用效果（仅 ITEM_CONSUMABLE 有意义）——
+  repeated CAMI.Common.EffectConfig on_use_effects = 13;
+  uint32 use_cooldown_ms = 14;             // 使用冷却
+
+  string icon = 15;                        // 资源 key
+}
+
+// 物品配置全集（加载/热更单元）
+message ItemConfigSet {
+  uint32 data_version = 1;                 // 配置版本，config-center 热更校验
+  repeated ItemConfig items = 2;
+}

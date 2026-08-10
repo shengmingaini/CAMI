@@ -1,0 +1,70 @@
+// config_quests.proto — 任务配置表 (Protobuf, proto3)
+//
+// 架构规约 §2。任务配置被 quest 模块读取：目标进度、奖励结算、前置依赖。
+// 共享类型（ItemReward）来自 common.proto。
+// 版本: v1.0.0 (Day 3 — 方案 B)
+
+syntax = "proto3";
+
+package CAMI.Config;
+
+import "common.proto";
+
+// 任务大类
+enum QuestType {
+  QUEST_UNKNOWN = 0;
+  QUEST_KILL = 1;        // 击杀怪物
+  QUEST_COLLECT = 2;     // 收集物品
+  QUEST_TALK = 3;        // 对话交付
+  QUEST_EXPLORE = 4;     // 探索区域
+  QUEST_ESCORT = 5;      // 护送
+  QUEST_DUNGEON = 6;     // 副本
+}
+
+// 目标子类型
+enum ObjectiveType {
+  OBJ_UNKNOWN = 0;
+  OBJ_KILL = 1;
+  OBJ_COLLECT = 2;
+  OBJ_TALK = 3;
+  OBJ_EXPLORE = 4;
+}
+
+// 单个目标
+message QuestObjective {
+  ObjectiveType type = 1;
+  uint32 target_id = 2;        // 怪物/物品/NPC ID
+  uint32 required_count = 3;   // 需要数量
+  string description_key = 4;
+}
+
+// 奖励
+message QuestReward {
+  uint64 exp = 1;                                    // 经验
+  uint64 money = 2;                                  // 金钱（最小货币单位）
+  repeated CAMI.Common.ItemReward items = 3;         // 必给物品
+  repeated CAMI.Common.ItemReward choice_items = 4;  // 多选一
+  int32  reputation = 5;                             // 声望变化
+}
+
+// 单任务配置
+message QuestConfig {
+  uint32 quest_id = 1;
+  string name_key = 2;
+  string description_key = 3;
+  QuestType quest_type = 4;
+  uint32 required_level = 5;
+  repeated uint32 prerequisite_quests = 6;    // 前置任务 ID（空 = 无）
+  string start_npc = 7;                        // 接取 NPC key
+  string end_npc = 8;                          // 交付 NPC key
+  repeated QuestObjective objectives = 9;
+  QuestReward rewards = 10;
+  bool is_repeatable = 11;
+  bool is_daily = 12;
+}
+
+// 任务配置全集（加载/热更单元）
+message QuestConfigSet {
+  uint32 data_version = 1;
+  repeated QuestConfig quests = 2;
+}

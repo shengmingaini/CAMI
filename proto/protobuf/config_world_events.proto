@@ -1,0 +1,77 @@
+// config_world_events.proto — 世界事件 / 节日 配置 (Protobuf, proto3)
+//
+// 定义 WoW 级世界内容节奏：节日(暗月马戏团/万圣节/冬幕节…)、世界事件(预告片/主线)、
+// 入侵(区域突袭)、场景战役。每个事件有周期时间表、受影响区域、关联任务/boss、专属币种与奖励。
+// 与刷新种群(Spawns)联动：事件期间可临时改写生物分布（SpawnCondition.required_event_ids）。
+//
+// 跨集引用一律裸 uint32 ID（防 import 环）：
+//   affected_zone_ids -> config_zones；quest_ids -> config_quests；
+//   creature_ids -> config_creatures；event_currency_id -> config_currencies。
+// 版本: v1.0.0 (Systems-Design Round — World Events)
+
+syntax = "proto3";
+
+package CAMI.Config;
+
+import "common.proto";
+
+// ============================================================
+// 枚举
+// ============================================================
+
+enum WorldEventCategory {
+  EVENT_NONE = 0;
+  EVENT_HOLIDAY = 1;       // 节日（年复一年）
+  EVENT_WORLD = 2;         // 世界事件（一次性/主线）
+  EVENT_INVASION = 3;      // 入侵（区域占领/突袭）
+  EVENT_SCENARIO = 4;      // 场景战役
+}
+
+// ============================================================
+// 周期时间表（离线/线上双轨调度）
+// ============================================================
+
+message ScheduleRule {
+  string start_date = 1;    // ISO 日期 "YYYY-MM-DD" 或 年复一年 "MM-DD"
+  string end_date = 2;      // 同上；一次性事件需填完整日期
+  uint32 start_hour = 3;    // 当日开始小时（0-23）
+  uint32 duration_hours = 4;// 持续时长（小时）
+  uint32 recurrence = 5;    // 0=一次性 1=每年 2=每月 3=每周
+  uint32 weekday = 6;       // recurrence=每周时：1=周一 … 7=周日
+}
+
+// ============================================================
+// 平衡校验（事件币种注入速率）
+// ============================================================
+
+message WorldEventBalance {
+  float expected_currency_per_hour = 1;  // 人均每小时事件币种产出
+  float tolerance_pct = 2;               // 容许偏差（如 0.1 = ±10%）
+  string alert_channel = 3;              // 越界告警通道
+}
+
+// ============================================================
+// 世界事件 / 节日
+// ============================================================
+
+message WorldEventConfig {
+  uint32 event_id = 1;
+  string name_key = 2;
+  WorldEventCategory category = 3;
+  ScheduleRule schedule = 4;
+  repeated uint32 affected_zone_ids = 5;   // 受影响区域（config_zones）
+  repeated uint32 quest_ids = 6;           // 事件任务（config_quests）
+  repeated uint32 creature_ids = 7;        // 事件生物/boss（config_creatures）
+  uint32 event_currency_id = 8;            // 事件专属币种（config_currencies）
+  repeated CAMI.Common.ItemReward rewards = 9; // 参与/完成奖励
+  string script_ref = 10;                   // 特殊脚本（如 boss 周期刷新）
+  WorldEventBalance balance = 11;           // 平衡校验路径
+}
+
+// ============================================================
+// 配置全集（加载/热更单元）
+// ============================================================
+message WorldEventConfigSet {
+  uint32 data_version = 1;
+  repeated WorldEventConfig events = 2;
+}

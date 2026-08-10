@@ -1,0 +1,13 @@
+{
+  "data_version": 1,
+  "items": [
+    {"item_id": 6001, "name_key": "item.wolf_pelt",   "description_key": "item.wolf_pelt.d", "item_type": "ITEM_MATERIAL",    "quality": "QUALITY_COMMON",  "bind_type": "BIND_NONE",            "stack_size": 50, "sell_price": 50,   "required_level": 0,  "icon": "i_pelt"},
+    {"item_id": 6002, "name_key": "item.coarse_string","description_key": "item.coarse_string.d","item_type": "ITEM_MATERIAL",  "quality": "QUALITY_COMMON",  "bind_type": "BIND_NONE",            "stack_size": 50, "sell_price": 30,   "required_level": 0,  "icon": "i_string"},
+    {"item_id": 6003, "name_key": "item.linen",       "description_key": "item.linen.d",      "item_type": "ITEM_MATERIAL",   "quality": "QUALITY_COMMON",  "bind_type": "BIND_NONE",            "stack_size": 50, "sell_price": 80,   "required_level": 0,  "icon": "i_cloth"},
+    {"item_id": 6004, "name_key": "item.worn_dagger", "description_key": "item.worn_dagger.d","item_type": "ITEM_EQUIPMENT",  "quality": "QUALITY_POOR",    "bind_type": "BIND_NONE",            "stack_size": 1,  "sell_price": 25,   "required_level": 1,  "equip_slot": "SLOT_MAINHAND", "equip_stats": [{"stat": "STAT_ATTACK_POWER", "flat": 2}], "icon": "i_dagger"},
+    {"item_id": 6005, "name_key": "item.health_potion","description_key":"item.health_potion.d","item_type":"ITEM_CONSUMABLE", "quality": "QUALITY_COMMON",  "bind_type": "BIND_NONE",            "stack_size": 20, "sell_price": 10,   "required_level": 0,  "on_use_effects": [{"type": "EFFECT_HEAL", "value": 50, "duration_ms": 0}], "use_cooldown_ms": 30000, "icon": "i_potion"},
+    {"item_id": 6006, "name_key": "item.copper_ore",  "description_key": "item.copper_ore.d",  "item_type": "ITEM_MATERIAL",   "quality": "QUALITY_COMMON",  "bind_type": "BIND_NONE",            "stack_size": 40, "sell_price": 200,  "required_level": 0,  "icon": "i_ore"},
+    {"item_id": 6007, "name_key": "item.copper_bar",  "description_key": "item.copper_bar.d",  "item_type": "ITEM_MATERIAL",   "quality": "QUALITY_COMMON",  "bind_type": "BIND_NONE",            "stack_size": 40, "sell_price": 400,  "required_level": 0,  "icon": "i_bar"},
+    {"item_id": 6008, "name_key": "item.dm_cleaver", "description_key": "item.dm_cleaver.d","item_type":   "ITEM_EQUIPMENT",  "quality": "QUALITY_RARE",    "bind_type": "BIND_ON_PICKUP",        "stack_size": 1,  "sell_price": 1500, "required_level": 15, "equip_slot": "SLOT_MAINHAND", "equip_stats": [{"stat": "STAT_ATTACK_POWER", "flat": 15}, {"stat": "STAT_STRENGTH", "flat": 6}], "icon": "i_cleaver"}
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "data_version": 1,
+  "factions": [
+    {"faction_id": 1, "name_key": "faction.stormwind", "tiers": [
+      {"standing": "STANDING_HATED",    "threshold": 0,     "vendor_discount_pct": 0.0,  "reward_item_ids": []},
+      {"standing": "STANDING_NEUTRAL",  "threshold": 36000, "vendor_discount_pct": 0.0,  "reward_item_ids": []},
+      {"standing": "STANDING_FRIENDLY", "threshold": 39000, "vendor_discount_pct": 0.05, "reward_item_ids": []},
+      {"standing": "STANDING_HONORED",  "threshold": 42000, "vendor_discount_pct": 0.10, "reward_item_ids": []},
+      {"standing": "STANDING_REVERED",  "threshold": 51000, "vendor_discount_pct": 0.15, "reward_item_ids": [6008]},
+      {"standing": "STANDING_EXALTED",  "threshold": 72000, "vendor_discount_pct": 0.20, "reward_item_ids": []}
+    ], "sources": [
+      {"source_id": "kill_quest", "category": "quest_kill", "rep_value": 250, "daily_cap": 21000},
+      {"source_id": "daily",      "category": "daily",      "rep_value": 500, "daily_cap": 5000}
+    ]}
+  ]
+}

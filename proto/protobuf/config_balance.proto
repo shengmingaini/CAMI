@@ -1,0 +1,94 @@
+// config_balance.proto — 战斗平衡 + 等级曲线 + 经济源汇 (Protobuf, proto3)
+//
+// 游戏系统与机制设计师的核心契约：把"好玩"落成可验证数值。
+//   (a) 战斗常数：伤害/减伤/缩放/韧性/PvP 系数（数值不进逻辑代码，见 combat.md §1.2）
+//   (b) 等级经验曲线 XP：每级所需经验、休息奖励上限、等级上限
+//   (c) 经济源汇模型 EconomyFlow：闭环 Day 3 验收缺口 GAP-4——货币/物品的注入(源)
+//       与消耗(汇) 显式建模，每条带平衡校验路径（预期值/容忍偏差/告警通道）
+// 关键数值均配 balance_note 注释预期影响，供离线模拟与线上监控。
+// 版本: v1.0.0 (Systems-Design Round，闭合 Day3 GAP-4)
+
+syntax = "proto3";
+
+package CAMI.Config;
+
+import "config_items.proto";
+
+// 币种清单（配置侧权威定义；网络侧 economy.fbs.CurrencyType 必须保持值镜像一致：
+// Gold=0 / Token=1 / Prestige=2 / Honor=3 / Conquest=4 / Justice=5 / Valor=6 / ArenaPoints=7）
+enum CurrencyType {
+  CURRENCY_GOLD = 0;           // 主货币（金币）
+  CURRENCY_TOKEN = 1;          // 通用代币
+  CURRENCY_PRESTIGE = 2;       // 声望点（可花费，非阵营声望值）
+  CURRENCY_HONOR = 3;          // 荣誉点
+  CURRENCY_CONQUEST = 4;       // 征服点
+  CURRENCY_JUSTICE = 5;        // 正义点
+  CURRENCY_VALOR = 6;          // 勇气点
+  CURRENCY_ARENA_POINTS = 7;   // 竞技场点
+}
+
+// ============================================================
+// 战斗常数（伤害/减伤/缩放）
+// ============================================================
+message CombatConstant {
+  float attack_power_coef = 1;             // 每点 AP 增加平砍伤害
+  float spell_power_coef = 2;              // 每点 SP 增加法术伤害
+  // 护甲→减伤：减免 = armor / (armor + K*(level + level_adj))
+  float armor_mitigation_k = 3;            // K
+  float armor_mitigation_level_adj = 4;    // 等级调整常数
+  float crit_damage_multiplier = 5;        // 暴击伤害倍率（如 2.0）
+  float pvp_resilience_coef = 6;           // 每点韧性减免系数
+  float pvp_damage_dealt_coef = 7;         // 攻方 PvP 伤害缩放
+  float pvp_damage_taken_coef = 8;         // 守方 PvP 伤害缩放
+  string balance_note = 9;                 // 预期影响注释（供校验）
+}
+
+// ============================================================
+// 等级经验曲线点（升到 level+1 所需经验）
+// ============================================================
+message XpCurvePoint {
+  uint32 level = 1;                        // 当前等级
+  uint64 xp_required = 2;                  // 升下一级所需经验
+  float rest_bonus_cap_pct = 3;            // 休息奖励上限（占总需经验比例）
+}
+
+// ============================================================
+// 经济流条目：源(注入) 或 汇(消耗)
+// 闭合 GAP-4——把"货币的来与去"显式建模，每条可验证。
+// ============================================================
+enum FlowDirection {
+  FLOW_SOURCE = 0;   // 注入（加货币/物品）
+  FLOW_SINK = 1;     // 消耗（减货币/物品）
+}
+
+message EconomyFlow {
+  string flow_id = 1;                       // 唯一标识
+  FlowDirection direction = 2;
+  CurrencyType currency = 3;                // 影响币种
+  string source_category = 4;               // 类别（quest_reward/mob_drop/vendor_sell/repair/ah_fee/mail_fee/tax...）
+  uint32 per_capita_daily = 5;              // 人均日流量（最小货币单位）
+  float leak_rate = 6;                      // 泄漏率（未闭合消失，目标≈0）
+  float hoard_rate = 7;                     // 囤积率（沉淀不流通，监控用）
+  // —— 平衡校验路径（GAP-4 核心）——
+  float expected_daily_per_capita = 8;      // 预期人均日流量
+  float tolerance_pct = 9;                  // 容忍偏差 (%)
+  string alert_channel = 10;                // 告警通道（如 "econ-balance"）
+}
+
+// 修理费率（耐久损耗 → 经济汇，写入 config_balance 而非 items 以保持单一归属）
+message RepairRate {
+  CAMI.Config.EquipSlot slot = 1;          // 槽位
+  uint64 cost_per_durability = 2;          // 每点耐久修理费
+}
+
+// ============================================================
+// 平衡配置全集（加载/热更单元）
+// ============================================================
+message BalanceConfigSet {
+  uint32 data_version = 1;
+  CombatConstant combat = 2;
+  repeated XpCurvePoint xp_curve = 3;
+  uint32 max_level = 4;                     // 等级上限
+  repeated EconomyFlow economy_flows = 5;
+  repeated RepairRate repair_rates = 6;
+}

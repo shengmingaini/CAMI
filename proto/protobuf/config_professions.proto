@@ -1,0 +1,182 @@
+// config_professions.proto — 制造/专业系统配置 (Protobuf, proto3)
+//
+// 游戏系统与机制设计师视角：把"制造/专业"落成可验证的工程产物。
+// 双轨专业：
+//   (a) 采集 Gathering  —— 把节点变成**原材料源**（进入经济体的材料流，受 GatherBalance 速率约束）
+//   (b) 制造 Production —— 消耗材料(**经济汇**) + 产出成品(**经济源**)，net 影响由 CraftBalance 量化
+// 经济语义（闭合/上游化 GAP-4 的 EconomyFlow）：
+//   采集节点 yield  = 材料 SOURCE；制造配方 materials = 材料 SINK；制造 outputs = 成品 SOURCE。
+//   二者经 config_balance.EconomyFlow 在资金平衡表中对账（见 systems-catalog §5.1）。
+// 引用约定（防环）：item_id / creature trainer_id / 关联 recipe_id 一律裸 uint32 引用其他 ConfigSet；
+//   CurrencyType 来自 config_balance.proto（枚举，允许 import）；产出/采集复用 common.ItemReward。
+// 平衡校验路径：每个配方/节点带 balance 子消息（预期速率/容忍偏差/告警通道），对应 systems-catalog §5.1。
+// 版本: v1.0.0 (Systems-Design Round — 制造/专业 Professions)
+
+syntax = "proto3";
+
+package CAMI.Config;
+
+import "common.proto";          // 复用 ItemReward（产出/采集 yield）
+import "config_balance.proto";  // 复用 CurrencyType 枚举（训练费币种）
+
+// ============================================================
+// 枚举
+// ============================================================
+
+// 专业类别
+enum ProfessionCategory {
+  PROF_GATHERING = 0;   // 采集（草药/采矿/剥皮/钓鱼/考古）
+  PROF_PRODUCTION = 1;  // 制造（炼金/锻造/附魔/工程/铭文/制皮/裁缝/珠宝）
+  PROF_SECONDARY = 2;   // 副专业（烹饪/急救/钓鱼/考古，可全学）
+}
+
+// 专业等级阶段（WoW 式 0..max 分段）
+enum ProfessionTier {
+  TIER_APPRENTICE = 0;      // 0–75
+  TIER_JOURNEYMAN = 1;      // 50–150
+  TIER_EXPERT = 2;          // 125–225
+  TIER_ARTISAN = 3;         // 200–300
+  TIER_MASTER = 4;          // 275–375
+  TIER_GRAND_MASTER = 5;    // 350–450
+  TIER_ILLUSTRIOUS = 6;     // 425–525
+}
+
+// 配方难度（决定技能点获取与颜色）
+enum RecipeDifficulty {
+  DIFF_TRIVIAL = 0;   // 灰：不再给技能点
+  DIFF_EASY = 1;      // 绿：小概率给点
+  DIFF_MEDIUM = 2;    // 黄：大概率给点
+  DIFF_OPTIMAL = 3;   // 橙：必给满点
+}
+
+// 发现机制类型（炼金/铭文随机发现）
+enum DiscoveryType {
+  DISCOVERY_NONE = 0;
+  DISCOVERY_ALCHEMY = 1;   // 转化中发现新配方
+  DISCOVERY_INSCRIPTION = 2; // 研磨中发现新配方
+  DISCOVERY_RANDOM = 3;    // 通用随机发现
+}
+
+// ============================================================
+// 子消息
+// ============================================================
+
+// 专业等级阶段配置（required_character_level 用于对齐 config_balance XP 曲线，见 §平衡校验）
+message ProfessionTierConfig {
+  ProfessionTier tier = 1;
+  uint32 min_skill = 2;               // 本阶段起点技能点
+  uint32 max_skill = 3;               // 本阶段上限技能点
+  uint32 required_character_level = 4; // 升入本阶段所需角色等级（平衡校验：须 ≤ XP 曲线满级时点）
+  string name_key = 5;
+}
+
+// 专业专精分支（如锻造→防具匠/武器匠→锤/剑/斧）
+message ProfessionSpecialization {
+  uint32 spec_id = 1;
+  string name_key = 2;
+  uint32 parent_spec_id = 3;          // 0 = 顶级分支
+  uint32 required_skill = 4;          // 解锁所需专业技能点
+  uint32 choice_group = 5;            // 同组互斥（玩家只能选其一）
+}
+
+// 配方材料项（被消耗，区别于产出）
+message MaterialEntry {
+  uint32 item_id = 1;                 // 引用 config_items.ItemConfig.item_id
+  uint32 count = 2;
+  bool consumed = 3;                  // 默认 true；false = 工具/容器不消耗
+  bool refund_on_fail = 4;            // 制作失败时是否归还
+}
+
+// 训练费（学配方/学专精）
+message TrainingCost {
+  CurrencyType currency = 1;          // 默认 GOLD
+  uint64 amount = 2;                  // 最小货币单位（铜）
+}
+
+// 配方平衡校验（每条数值配验证路径，镜像 EconomyFlow）
+//   output_value_estimate − material_cost_estimate = 该配方对经济的净注入
+//   expected_daily_crafts_per_capita 上限防止单玩家刷量泛滥
+message CraftBalance {
+  uint32 price_anchor_item_id = 1;    // 价值归一化基准物品（如同级白装）
+  uint64 output_value_estimate = 2;   // 产出品估算经济价值（铜）
+  uint64 material_cost_estimate = 3;  // 消耗材料估算经济价值（铜）= 材料汇量级
+  uint32 expected_daily_crafts_per_capita = 4; // 人均日产上限（防刷/防泛滥）
+  float sink_weight = 5;              // 对经济体"材料汇"贡献权重（0~1）
+  float tolerance_pct = 6;            // 偏离预期可容忍幅度 (%)
+  string alert_channel = 7;           // 越界告警通道（如 "econ-profession"）
+}
+
+// 配方配置（生产专业核心）
+message RecipeConfig {
+  uint32 recipe_id = 1;
+  uint32 profession_id = 2;           // 引用 ProfessionConfig.profession_id
+  string name_key = 3;
+  uint32 required_skill = 4;          // 可学/可制的技能点门槛
+  repeated CAMI.Common.ItemReward outputs = 5;     // 产出（复用共享 ItemReward）
+  repeated MaterialEntry materials = 6;            // 消耗材料（经济汇）
+  repeated uint32 tools_required = 7;              // 必需工具 item_id（不消耗）
+  uint32 cooldown_ms = 8;             // 0 = 无冷却（日常转化类常带冷却）
+  uint32 specialization_id = 9;       // 0 = 无专精限制
+  ProfessionTier min_tier = 10;       // 至少达到的阶段才可制
+  RecipeDifficulty difficulty = 11;   // 决定技能点获取
+  uint32 learns_skill_min = 12;       // 成功制作获得技能点下限
+  uint32 learns_skill_max = 13;       // 技能点上限（橙装给满）
+  DiscoveryConfig discovery = 14;     // 发现机制（可选）
+  TrainingCost training_cost = 15;    // 学此配方的费用
+  CraftBalance balance = 16;          // 平衡校验路径
+  string script_ref = 17;             // 特殊逻辑（如随机附魔）指向 Lua
+  string icon = 18;
+}
+
+// 发现机制配置
+message DiscoveryConfig {
+  DiscoveryType discovery_type = 1;
+  repeated uint32 discovered_recipe_ids = 2; // 可能发现的目标配方
+  uint32 chance_pct = 3;                      // 每次制作的发现概率
+}
+
+// 采集节点平衡校验（采集 = 原材料源；速率约束防止材料泛滥压垮制造汇）
+message GatherBalance {
+  uint32 expected_yields_per_hour = 1;  // 单人每小时预期产量（按节点密度/刷新）
+  float source_weight = 2;              // 对经济体"材料源"贡献权重（0~1）
+  float tolerance_pct = 3;              // 偏离预期可容忍幅度 (%)
+  string alert_channel = 4;             // 越界告警通道（如 "econ-gather"）
+}
+
+// 采集节点（采集专业核心）
+message GatherNodeConfig {
+  uint32 node_id = 1;
+  string name_key = 2;
+  uint32 profession_id = 3;            // 引用 ProfessionConfig.profession_id
+  uint32 skill_required = 4;           // 可采最低技能点
+  repeated CAMI.Common.ItemReward yields = 5; // 产出（复用共享 ItemReward）
+  uint32 respawns_ms = 6;              // 节点刷新间隔
+  uint32 charges = 7;                  // 单次刷新可采次数（0 = 无限）
+  GatherBalance balance = 8;           // 平衡校验路径
+}
+
+// ============================================================
+// 专业配置
+// ============================================================
+message ProfessionConfig {
+  uint32 profession_id = 1;
+  string name_key = 2;
+  ProfessionCategory category = 3;
+  string icon = 4;
+  uint32 max_skill = 5;                // 满级技能点（通常 525/600/…）
+  bool is_primary = 6;                 // 是否主专业（主专业限学 2 个）
+  bool gathering = 7;                  // 是否采集类
+  repeated uint32 trainer_npc_ids = 8; // 训练师 NPC（裸 uint32 引用 config_creatures）
+  repeated ProfessionTierConfig tiers = 9;
+  repeated ProfessionSpecialization specializations = 10;
+  repeated GatherNodeConfig gathers = 11; // 仅采集类有内容
+}
+
+// ============================================================
+// 专业配置全集（加载/热更单元）
+// ============================================================
+message ProfessionConfigSet {
+  uint32 data_version = 1;
+  repeated ProfessionConfig professions = 2;
+  repeated RecipeConfig recipes = 3;
+}

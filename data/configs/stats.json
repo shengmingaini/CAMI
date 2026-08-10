@@ -1,0 +1,19 @@
+{
+  "data_version": 1,
+  "rating_curve": [
+    {"level": 60, "stat": "STAT_CRIT_RATING",  "rating_per_percent": 22.1},
+    {"level": 60, "stat": "STAT_HASTE_RATING", "rating_per_percent": 25.0},
+    {"level": 60, "stat": "STAT_HIT_RATING",   "rating_per_percent": 20.0}
+  ],
+  "budgets": [
+    {"item_level": 10, "quality": "QUALITY_COMMON", "slot": "SLOT_MAINHAND", "primary_budget": 10, "secondary_budget": 0,  "tertiary_chance": 0.0},
+    {"item_level": 10, "quality": "QUALITY_RARE",   "slot": "SLOT_MAINHAND", "primary_budget": 18, "secondary_budget": 10, "tertiary_chance": 0.05}
+  ],
+  "class_weights": [
+    {"class": "CLASS_WARRIOR", "weights": [{"stat": "STAT_STRENGTH", "flat": 1}, {"stat": "STAT_STAMINA", "flat": 1}]}
+  ],
+  "derived_rules": [
+    {"input_stat": "STAT_STRENGTH", "output_stat": "STAT_ATTACK_POWER", "conversion": 2.0},
+    {"input_stat": "STAT_STAMINA",  "output_stat": "STAT_HP",           "conversion": 10.0}
+  ]
+}

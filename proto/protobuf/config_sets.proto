@@ -1,0 +1,45 @@
+// config_sets.proto — 套装配置表 (Protobuf, proto3)
+//
+// 架构规约 §2：静态配置使用 Protobuf。本文件定义套装（集齐 N 件触发递增加成）的数据驱动配置，
+// 被 character（装备集齐检测 / 套装加成计算）模块读取。
+// 共享类型来自 common.proto / config_items.proto。
+// 版本: v1.0.0 (系统机制层 续)
+//
+// ── 设计定位（按用户 2026-08-10 指示）──
+// 本文件**仅建模"套装有哪些参数、如何互相引用"**，具体每套的部件 list、各档加成数值、
+// 职业限制等预设数据留待后续轮次填充。
+//
+// ── 经济源汇角色（系统思维视角）──
+//   · 套装为纯属性加成，不直接产生货币/物品流；其部件来自掉落/制造（见 config_loot / config_professions）。
+//   · 因此本 schema 不引入 EconomyFlow 条目；经济影响通过部件来源间接体现。
+
+syntax = "proto3";
+
+package CAMI.Config;
+
+import "common.proto";
+import "config_items.proto";
+
+// 套装某一档加成（集齐 piece_count 件触发，按件数升序排列多档）
+message SetBonusTier {
+  uint32 piece_count = 1;                              // 触发所需件数
+  repeated CAMI.Common.StatModifier bonus_stats = 2;   // 属性加成（数值待填）
+  repeated CAMI.Common.EffectConfig bonus_effects = 3; // 特殊效果加成（数值待填）
+  string description_key = 4;                         // i18n 描述 key
+}
+
+// 单套套装配置
+message SetConfig {
+  uint32 set_id = 1;                                   // 主键
+  string name_key = 2;                                 // i18n 名称 key
+  CAMI.Config.ItemQuality quality = 3;                 // 套装档位（复用物品品质）
+  repeated uint32 item_ids = 4;                        // 裸 uint32 引用 config_items 的套装部件（具体 list 待填）
+  repeated SetBonusTier bonuses = 5;                   // 递增加成档（按 piece_count 升序）
+  repeated CAMI.Common.ClassType required_class = 6;   // 职业限制（空 = 无限制）
+}
+
+// 套装配置全集（加载 / 热更单元）
+message SetConfigSet {
+  uint32 data_version = 1;
+  repeated SetConfig sets = 2;
+}

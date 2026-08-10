@@ -1,0 +1,11 @@
+{
+  "data_version": 1,
+  "tables": [
+    {"loot_table_id": 9001, "name_key": "loot.wolf", "entries": [{"item_id": 6001, "weight": 70}, {"item_id": 6002, "weight": 30}], "drop_count_min": 1, "drop_count_max": 2, "max_drops_per_actor": 2, "quality_cap": "QUALITY_COMMON", "bonus_roll_chance": 0.1, "expected_quality_dist": ["QUALITY_COMMON", "QUALITY_UNCOMMON"]},
+    {"loot_table_id": 9002, "name_key": "loot.orc",  "entries": [{"item_id": 6003, "weight": 60}, {"item_id": 6004, "weight": 10}], "drop_count_min": 1, "drop_count_max": 1, "max_drops_per_actor": 1, "quality_cap": "QUALITY_POOR"},
+    {"loot_table_id": 9003, "name_key": "loot.boss", "entries": [{"item_id": 6005, "weight": 100}, {"item_id": 6008, "weight": 20}], "drop_count_min": 1, "drop_count_max": 2, "max_drops_per_actor": 2, "quality_cap": "QUALITY_RARE", "bonus_roll_chance": 0.5}
+  ],
+  "rules": [
+    {"rule_id": 1, "mode": "LOOT_GROUP_LOOT", "personal_cooldown_sec": 0, "attempt_limit": 0}
+  ]
+}

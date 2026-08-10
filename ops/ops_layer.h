@@ -1,0 +1,18 @@
+#pragma once
+#include <cstddef>
+#include <initializer_list>
+
+namespace cami {
+namespace ops {
+
+// 运维控制层 (spec §3.1) — 控制面，依赖 common 公共服务
+inline constexpr char kLayerName[] = "ops";
+inline constexpr std::initializer_list<const char*> kDependsOn = {"common"};
+inline constexpr std::size_t kDependsOnSize = 1;
+
+// 链接锚点声明（定义见 .cpp），skeleton 自检调用以强制链接本层符号。
+const char* layer_name();
+const char* depends_on();
+
+}  // namespace ops
+}  // namespace cami

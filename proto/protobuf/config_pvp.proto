@@ -1,0 +1,118 @@
+// config_pvp.proto — PvP 全量（战场/竞技场/荣誉/征服/赛季/军衔/天梯）(Protobuf, proto3)
+//
+// 定义 WoW 级 PvP 参数体系：战场(Battleground)、竞技场(Arena)、赛季(Season)、
+// 军衔(Rank，荣誉/竞技场)、天梯/匹配(Ladder, MMR)。币种复用 config_currencies
+// 的 Honor/Conquest（CurrencyType 已扩至 8 种）；战场/竞技场区域复用
+// config_zones 的 ZoneType=BATTLEGROUND/ARENA（区域已建，此处补队列/锁期/军衔/赛季）。
+//
+// 跨集引用一律裸 uint32 ID（防 import 环）：
+//   zone_id -> config_zones；reward_currency_id / currency_reward_id / PvpBalance.currency_id -> config_currencies。
+// 版本: v1.0.0 (Systems-Design Round — PvP)
+
+syntax = "proto3";
+
+package CAMI.Config;
+
+// ============================================================
+// 枚举
+// ============================================================
+
+enum PvpType {
+  PVP_NONE = 0;
+  PVP_BATTLEGROUND = 1;   // 战场
+  PVP_ARENA = 2;          // 竞技场
+}
+
+// ============================================================
+// 战场
+// ============================================================
+
+message BattlegroundConfig {
+  uint32 bg_id = 1;
+  string name_key = 2;
+  uint32 zone_id = 3;                     // 战场区域（config_zones, BATTLEGROUND）
+  uint32 players_per_side = 4;            // 每边人数（10/15/40）
+  uint32 duration_limit_sec = 5;          // 单场时限
+  uint32 win_condition_type = 6;          // 0=资源 1=击杀数 2=夺旗
+  uint32 reward_currency_id = 7;          // 荣誉币种（config_currencies）
+  uint32 reward_amount_base = 8;          // 基础荣誉奖励
+  uint32 conquest_reward = 9;             // 征服点（按胜负）
+  string queue_ref = 10;                  // 队列脚本/配置引用
+}
+
+// ============================================================
+// 竞技场
+// ============================================================
+
+message ArenaConfig {
+  uint32 arena_id = 1;
+  string name_key = 2;
+  uint32 zone_id = 3;                     // 竞技场区域（config_zones, ARENA）
+  uint32 team_size = 4;                   // 2 / 3 / 5
+  uint32 season_id = 5;                   // 所属赛季（PvpSeasonConfig）
+  uint32 rating_floor = 6;                // 进入最低分（MMR）
+}
+
+// ============================================================
+// 赛季
+// ============================================================
+
+message PvpSeasonConfig {
+  uint32 season_id = 1;
+  string name_key = 2;
+  string start_date = 3;                  // ISO 日期
+  string end_date = 4;
+  uint32 conquest_cap_weekly = 5;         // 征服点周上限
+  uint32 conquest_cap_total = 6;          // 征服点总上限
+  bool rating_reset = 7;                  // 赛季初是否重置分数
+}
+
+// ============================================================
+// 军衔（荣誉等级 / 竞技场分段）
+// ============================================================
+
+message PvpRankConfig {
+  uint32 rank_id = 1;
+  string name_key = 2;
+  PvpType type = 3;                       // 荣誉军衔 or 竞技场
+  uint32 rating_threshold = 4;            // 所需分数（荣誉等级 or MMR）
+  uint32 currency_reward_id = 5;          // 晋级奖励币种（config_currencies）
+  uint32 currency_reward_amount = 6;
+}
+
+// ============================================================
+// 天梯 / 匹配（MMR）
+// ============================================================
+
+message LadderConfig {
+  PvpType type = 1;
+  uint32 division_count = 2;              // 分段数（如青铜~王者）
+  float mmr_initial = 3;                  // 初始 MMR
+  float mmr_k_factor = 4;                 // K 因子（每场波动幅度）
+  float promotion_threshold = 5;          // 晋级所需净胜场
+}
+
+// ============================================================
+// 平衡校验（荣誉/征服产出速率）
+// ============================================================
+
+message PvpBalance {
+  uint32 currency_id = 1;                 // 荣誉 or 征服（config_currencies）
+  float expected_per_match = 2;           // 单场预期产出
+  float weekly_cap = 3;                   // 周上限（与赛季上限对账）
+  float tolerance_pct = 4;
+  string alert_channel = 5;
+}
+
+// ============================================================
+// 配置全集（加载/热更单元）
+// ============================================================
+message PvpConfigSet {
+  uint32 data_version = 1;
+  repeated BattlegroundConfig battlegrounds = 2;
+  repeated ArenaConfig arenas = 3;
+  repeated PvpSeasonConfig seasons = 4;
+  repeated PvpRankConfig ranks = 5;
+  repeated LadderConfig ladders = 6;
+  repeated PvpBalance balance = 7;
+}

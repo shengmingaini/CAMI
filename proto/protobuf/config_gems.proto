@@ -1,0 +1,67 @@
+// config_gems.proto — 宝石配置表 (Protobuf, proto3)
+//
+// 架构规约 §2：静态配置使用 Protobuf。本文件定义宝石（socket 镶嵌物）的数据驱动配置，
+// 被 character（装备插槽 / 插槽奖励计算）与 professions（宝石切割配方产出）模块读取。
+// 共享类型来自 common.proto 与 config_items.proto。
+// 版本: v1.0.0 (系统机制层 续)
+//
+// ── 设计定位（按用户 2026-08-10 指示）──
+// 本文件**仅建模"宝石有哪些参数、如何互相引用"**，具体每一档宝石的属性数值、品质分布、
+// 来源权重等预设数据留待后续轮次填充（"具体的数值和优化可以后面再来做"）。
+//
+// ── 经济源汇角色（系统思维视角，结构挂钩；具体 EconomyFlow 数值待填）──
+//   · 切割宝石：消耗原矿/选矿(raw gem，来自 professions 的采集源) → 产出切割宝石(成品源)
+//   · 镶嵌宝石：消费切割宝石本身(沉入装备，不可回收) → 经济汇
+//   接入方式：后续在 config_balance.EconomyFlow 增 gem_cut(源)/gem_socket(汇) 两条，
+//   其 expected_daily_per_capita / tolerance_pct / alert_channel 待填。
+
+syntax = "proto3";
+
+package CAMI.Config;
+
+import "common.proto";
+import "config_items.proto";
+
+// 宝石颜色（决定可镶嵌的插槽颜色与"插槽奖励"联动）
+enum GemColor {
+  GEM_COLOR_NONE = 0;
+  GEM_COLOR_RED = 1;
+  GEM_COLOR_BLUE = 2;
+  GEM_COLOR_YELLOW = 3;
+  GEM_COLOR_ORANGE = 4;    // 红 + 黄
+  GEM_COLOR_GREEN = 5;     // 蓝 + 黄
+  GEM_COLOR_PURPLE = 6;    // 红 + 蓝
+  GEM_COLOR_PRISMATIC = 7; // 任意色
+  GEM_COLOR_META = 8;      // 多彩（需满足插槽颜色条件才激活）
+}
+
+// 多彩宝石的镶嵌条件（统计装备上其他插槽的颜色数量）
+// 注：仅 GEM_COLOR_META 宝石使用；具体阈值数值待填。
+message MetaGemRequirement {
+  uint32 required_red = 1;     // 需至少 N 颗红/橙/紫
+  uint32 required_blue = 2;    // 需至少 N 颗蓝/绿/紫
+  uint32 required_yellow = 3;  // 需至少 N 颗黄/橙/绿
+  uint32 required_total = 4;   // 满足上述颜色条件的插槽总数阈值
+}
+
+// 单颗宝石配置
+message GemConfig {
+  uint32 gem_id = 1;                              // 主键
+  string name_key = 2;                            // i18n 名称 key
+  GemColor color = 3;
+  CAMI.Config.ItemQuality quality = 4;            // 复用物品品质档位
+  uint32 required_level = 5;                      // 镶嵌/装备等级要求
+  repeated CAMI.Common.StatModifier stats = 6;    // 镶嵌提供的属性加成（数值待填）
+  MetaGemRequirement meta_requirement = 7;        // 仅 GEM_COLOR_META 有意义
+  bool is_unique = 8;                             // 唯一装备（同名宝石仅一颗生效）
+  repeated CAMI.Common.ClassType required_class = 9;  // 职业限制（空 = 无限制）
+  string icon = 10;
+  // 来源说明（可选）：来自选矿(prospecting)/任务/商店等；具体来源权重与掉率待填
+  string source_note = 11;
+}
+
+// 宝石配置全集（加载 / 热更单元）
+message GemConfigSet {
+  uint32 data_version = 1;     // 配置版本，config-center 热更校验
+  repeated GemConfig gems = 2;
+}

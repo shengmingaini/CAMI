@@ -1,0 +1,45 @@
+// cross_server.proto — 跨服事件 (Protobuf, proto3)
+//
+// 架构规约 §3.3：跨服事件走 Redis Pub/Sub（<5ms）或 gRPC（跨服战场）。
+// 本文件定义跨服事件的统一信封与典型载荷。新增跨服消息须在 payload 中追加 oneof 分支。
+// 版本: v1.0.0 (Day 3 — 协议基础优先)
+
+syntax = "proto3";
+
+package CAMI.CrossServer;
+
+import "common.proto";
+
+// 跨服事件统一信封（Redis Pub/Sub channel = "cross:" + realm_id）
+message CrossServerEvent {
+  string realm_id = 1;            // 来源服 ID（如 "realm-cn-01"）
+  uint64 event_id = 2;            // 全局唯一事件 ID（幂等去重）
+  int64  server_ts = 3;           // 毫秒 epoch
+  oneof payload {
+    CrossChat        chat = 10;
+    CrossBattleSync  battle = 11;
+    CrossGuildInvite guild_invite = 12;
+  }
+}
+
+// 跨服聊天（架构 §4.2.5：频道消息走分片路由，禁止全服遍历）
+message CrossChat {
+  uint64 from_player = 1;
+  string channel = 2;            // "world" | "guild" | "zone"
+  string text = 3;
+}
+
+// 跨服战场同步（架构 §4.2.4：跨节点聚合，消息量从 30000/s 降至 10/s）
+message CrossBattleSync {
+  uint64 zone_id = 1;
+  repeated uint64 participant = 2;  // 参战玩家 ID 列表
+  int32  phase = 3;                 // 战场阶段
+  CAMI.Common.Vec3 rally_point = 4;
+}
+
+// 跨服公会邀请
+message CrossGuildInvite {
+  uint64 guild_id = 1;
+  uint64 inviter = 2;
+  uint64 invitee = 3;
+}

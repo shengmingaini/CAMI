@@ -1,0 +1,42 @@
+// aoi.fbs — 兴趣域 AOI 同步 (MsgID 域 0x2000)
+//
+// 设计依据：架构 §4.2.4（LOD 三级 / 属性压缩 / 差分压缩 / 跨节点聚合）。
+// AOI 只维护 EntityID，属性经角色模块查询（架构 §4.2.4）。本表为网关注入玩家客户端的快照。
+// 版本: v1.0.0 (Day 3)
+
+include "common.fbs";
+include "movement.fbs";
+
+namespace CAMI.Aoi;
+
+enum EntityKind : ubyte {
+  Player = 0,
+  Monster = 1,
+  NPC = 2,
+  Pet = 3,
+  DropItem = 4,
+}
+
+// 实体进入视野：首发完整快照
+table AoiEnter {
+  entity_id: uint64;
+  kind: EntityKind;
+  name: string;            // 仅 Player/NPC 有
+  class_id: CAMI.Common.ClassId;   // 仅 Player
+  move: CAMI.Movement.MovementSnapshot;  // 位置/朝向
+  attr: CAMI.Common.AttributeSnapshot; // LOD0 完整属性
+}
+
+// 实体离开视野
+table AoiLeave {
+  entity_id: uint64;
+}
+
+// 视野内增量更新（差分：仅变化量，见 protocol-spec §10）
+// LOD 决定 attr 是否附带及精度
+table AoiUpdate {
+  entity_id: uint64;
+  lod: CAMI.Common.LodLevel;
+  move: CAMI.Movement.MovementSnapshot;  // 每级必带位置/朝向
+  attr: CAMI.Common.AttributeSnapshot; // 仅 LOD0 填充，LOD1/2 为空
+}

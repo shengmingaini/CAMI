@@ -1,0 +1,25 @@
+// movement.fbs — 移动/朝向 全量快照 (MsgID 域 0x2000)
+//
+// 注意：高频逐帧移动/朝向走「轨道 A 位压缩」(protocol-spec §7)，不携此表。
+// 本文件仅定义可靠轨的全量快照，用于：AOI 进入首发、服务器纠偏、预测误差 >0.5m 回滚。
+// 版本: v1.0.0 (Day 3)
+
+include "common.fbs";
+
+namespace CAMI.Movement;
+
+// 全量位置/朝向快照（可靠轨下发）
+table MovementSnapshot {
+  entity_id: uint64;
+  pos: CAMI.Common.Vec3;
+  yaw: float;              // 弧度
+  move_state: CAMI.Common.MoveState;
+  server_ts: uint64;       // 服务器采样时间戳（用于延迟补偿，见架构 §4.2.11）
+}
+
+// 服务器权威纠偏（预测误差超限时下发，覆盖客户端预测）
+table Correction {
+  entity_id: uint64;
+  corrected: MovementSnapshot;
+  predicted_client_ts: uint64;  // 客户端上报的预测时间戳
+}

@@ -1,0 +1,24 @@
+#
+# ShardingSphere Proxy — Server Configuration
+#
+# NOTE (SS 5.5.0 quirk): In this environment the proxy authority only honors
+# the user root@% with password root (the upstream quickstart default).
+# The password field for other values is not applied by SS 5.5.0's MySQL
+# frontend authenticator here, so we use root/root for the dev proxy login.
+# The backend MySQL SHARDS still use cami_dev_2026 (see docker-compose.yml).
+#
+authority:
+  users:
+    - user: root@%
+      password: root
+  privilege:
+    type: ALL_PERMITTED
+
+props:
+  sql-show: true
+  max-connections-size-per-query: 1
+  kernel-executor-size: 16
+  transaction-type: LOCAL
+  check-table-metadata-enabled: false
+  proxy-frontend-flush-threshold: 128
+  proxy-frontend-database-protocol-type: MySQL

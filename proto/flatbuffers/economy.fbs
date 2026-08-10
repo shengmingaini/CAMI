@@ -1,0 +1,135 @@
+// economy.fbs — 经济/交易/商店/拍卖/邮件 (MsgID 域 0x5000)
+//
+// 设计依据：economy.md §6。全部为 轨道 B 可靠消息；economy 是发奖唯一受控出口，
+// 货币/物品最终经 character.ApplyXxx 落地（ADR-002）。商店定价只读
+// config_items.proto.sell_price（服务端权威，客户端不信任本地价）。
+// 版本: v1.0.0 (2026-08-12, 协议 v1 — 补齐待建域)
+//
+// 域分配：
+//   0x5000 = 交易/商店/拍卖/邮件 C→S 意图
+//   0x5400 = 经济 S→C 结果/增量
+
+include "common.fbs";
+
+namespace CAMI.Economy;
+
+// 币种（全量定义）。配置侧镜像见 CAMI.Config.CurrencyType（config_balance.proto / config_currencies.proto）。
+// 两处必须保持值一致（Gold=0 ... 同序），仅供显示/语义分别对应，编译互不依赖。
+enum CurrencyType : ubyte {
+  Gold = 0,          // 游戏金币（主货币）
+  Token = 1,         // 付费代币
+  Prestige = 2,      // 声望点（非声望阵营值，旧占位，已由 Reputation 系统接管语义）
+  Honor = 3,         // 荣誉点（PvP）
+  Conquest = 4,      // 征服点（PvP 赛季）
+  Justice = 5,       // 正义点（旧副本）
+  Valor = 6,         // 勇气点（旧副本）
+  ArenaPoints = 7,   // 竞技场点
+}
+
+enum EconomyResult : ubyte {
+  Ok = 0,
+  InventoryFull = 1,
+  NotEnoughCurrency = 2,
+  InvalidItem = 3,
+  OutOfRange = 4,        // 距离/等级不符
+  AuctionNotFound = 5,
+  BidTooLow = 6,
+  MailBoxFull = 7,
+  TradeCancelled = 8,
+}
+
+enum AuctionStatus : ubyte {
+  Listed = 0,
+  Bid = 1,
+  Sold = 2,
+  Expired = 3,
+  Cancelled = 4,
+}
+
+enum TradeAction : ubyte {
+  Invite = 0,
+  Offer = 1,       // 更新报价（物品/货币）
+  Confirm = 2,     // 锁定确认
+  Cancel = 3,
+}
+
+// ---- C→S 意图 ----
+table TradeIntent {
+  from_id: uint64;
+  to_id: uint64;
+  action: TradeAction;
+  items: [CAMI.Common.ItemGrant];  // 本方报价（Offer 时有效）
+  currency: uint64;                 // 本方货币报价（Offer 时有效）
+}
+
+table ShopBuy {
+  player_id: uint64;
+  npc_key: string;
+  item_id: uint32;
+  count: uint32;
+}
+
+table ShopSell {
+  player_id: uint64;
+  npc_key: string;
+  item_id: uint32;
+  count: uint32;
+}
+
+table AuctionList {
+  seller_id: uint64;
+  item_id: uint32;
+  count: uint32;
+  bid: uint64;          // 起拍价（最小货币单位）
+  buyout: uint64;       // 一口价（0 = 无）
+  duration_h: uint32;   // 挂单时长（小时）
+}
+
+table AuctionBid {
+  bidder_id: uint64;
+  listing_id: uint64;
+  bid: uint64;          // 本次出价
+}
+
+table MailSend {
+  sender_id: uint64;
+  receiver_id: uint64;
+  subject: string;
+  body: string;
+  items: [CAMI.Common.ItemGrant];
+  currency: uint64;     // 附带的货币（最小货币单位）
+}
+
+// ---- S→C 结果/增量 ----
+table TradeResult {
+  request_id: uint32;   // 关联意图（沿用信封 request_id 语义）
+  result: EconomyResult;
+  peer_id: uint64;      // 对手方（广播给双方）
+}
+
+table ShopResult {
+  request_id: uint32;
+  result: EconomyResult;
+  item_id: uint32;
+  count: uint32;
+}
+
+table AuctionUpdate {
+  listing_id: uint64;
+  status: AuctionStatus;
+  top_bid: uint64;      // 当前最高价（行情用）
+  top_bidder: uint64;
+}
+
+table MailList {
+  receiver_id: uint64;
+  mail_ids: [uint64];   // 收件箱摘要列表（详情按需拉取）
+  unread: uint32;
+}
+
+table CurrencyGranted {
+  player_id: uint64;
+  currency_type: CurrencyType;
+  delta: int64;         // 正负增减
+  new_total: uint64;
+}

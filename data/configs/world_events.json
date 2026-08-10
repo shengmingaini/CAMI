@@ -1,0 +1,6 @@
+{
+  "data_version": 1,
+  "events": [
+    {"event_id": 4001, "name_key": "event.harvest", "category": "EVENT_HOLIDAY", "schedule": {"start_date": "09-15", "end_date": "09-30", "start_hour": 0, "duration_hours": 24, "recurrence": 1}, "affected_zone_ids": [1001], "quest_ids": [], "creature_ids": [5001], "event_currency_id": 1, "rewards": [{"item_id": 6005, "count": 5, "chance_pct": 100}], "script_ref": "", "balance": {"expected_currency_per_hour": 20.0, "tolerance_pct": 0.10, "alert_channel": "econ-event"}}
+  ]
+}

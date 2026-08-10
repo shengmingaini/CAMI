@@ -1,0 +1,138 @@
+// config_zones.proto — 区域 / 门 / 副本·团本 配置 (Protobuf, proto3)
+//
+// 设计原则（用户硬约束，2026-08-10）：
+//   1) 区域相互独立、模块化：ZoneConfig 只描述"自身"，不硬编码任何邻居。
+//      区域之间的连通**唯一**通过 GateConfig（门）表达，形成有向图。
+//   2) 门连接：GateConfig 声明 source_zone -> target_zone 的转移（坐标/朝向/进入条件）。
+//   3) 副本 / 团本为独立区域：以 ZoneType=DUNGEON / RAID 的 ZoneConfig 存在，
+//      另由 InstanceConfig 承载实例专属规则（队伍上限 / 锁期 / 难度 / boss 引用），
+//      入口仍是一扇 Gate（entrance_gate_id）。
+//
+// 运行时映射（见 docs/modules/scene.md + ADR-012/016）：
+//   ZoneConfig  => 一个 Scene 实例（每区域独立线程 / Cell 分线程）
+//   GateConfig  => 跨场景迁移（状态序列化经 MPMC 无锁队列）
+//   InstanceConfig => 按队伍（group）独立拉起的 Scene 实例，彼此隔离
+//
+// 跨集引用一律用裸 uint32 ID（防 import 环）：
+//   boss_creature_ids -> config_creatures；required_faction_ids -> config_reputation；
+//   required_currency_id -> config_currencies；required_quest/item_ids -> config_quests/items。
+// 版本: v1.0.0 (Systems-Design Round — Zones/Instances)
+
+syntax = "proto3";
+
+package CAMI.Config;
+
+import "common.proto";
+
+// ============================================================
+// 枚举
+// ============================================================
+
+// 区域类型（副本/团本即"独立区域"，只是类型不同）
+enum ZoneType {
+  ZONE_TYPE_NONE = 0;
+  ZONE_TYPE_WORLD = 1;        // 野外大区（相互独立，仅经门连接）
+  ZONE_TYPE_CITY = 2;         // 主城（安全区）
+  ZONE_TYPE_DUNGEON = 3;      // 副本（独立实例区域）
+  ZONE_TYPE_RAID = 4;         // 团本（独立实例区域）
+  ZONE_TYPE_BATTLEGROUND = 5; // PvP 战场（独立实例区域）
+  ZONE_TYPE_ARENA = 6;        // 竞技场（独立实例区域）
+}
+
+// PvP 模式
+enum PvpMode {
+  PVP_PEACE = 0;              // 和平（主城/普通野外默认）
+  PVP_FREE_FOR_ALL = 1;       // 全员自由 PvP
+  PVP_FACTION = 2;            // 阵营对抗（如争夺区）
+}
+
+// ============================================================
+// 门 / 连接（区域之间唯一连通方式）
+// ============================================================
+
+// 进入条件（门的前置门槛）
+message GateRequirement {
+  uint32 min_level = 1;                       // 最低等级
+  uint32 max_level = 2;                       // 最高等级（0 = 不限）
+  repeated uint32 required_quest_ids = 3;     // 需完成任务的 ID（config_quests）
+  repeated uint32 required_item_ids = 4;      // 需持有道具/钥匙（config_items）
+  repeated uint32 required_faction_ids = 5;   // 需达到声望阵营（config_reputation）
+  repeated uint32 required_faction_standing = 6; // 与 required_faction_ids 一一对应的档位序数（镜像 RepStanding）
+  uint32 required_currency_id = 7;            // 需消耗币种（config_currencies）
+  uint32 required_currency_amount = 8;        // 消耗数量
+  string required_script_flag = 9;            // 剧情/世界状态标记（如"黑暗之门已开启"）
+}
+
+// 门：源区域某坐标 -> 目标区域某坐标 的转移
+message GateConfig {
+  uint32 gate_id = 1;
+  string name_key = 2;                         // 本地化 key（如"暴风城城门"）
+  uint32 source_zone_id = 3;                   // 源区域（裸 uint32，防环）
+  CAMI.Common.Vec3 source_position = 4;        // 门在源区域的世界坐标
+  float source_orientation = 5;                // 触发朝向（弧度）
+  uint32 target_zone_id = 6;                   // 目标区域
+  CAMI.Common.Vec3 target_position = 7;        // 出口在目标区域的世界坐标
+  float target_orientation = 8;                // 出口朝向
+  bool bidirectional = 9;                      // 是否允许反向（目标->源）通行
+  GateRequirement requirement = 10;            // 进入目标区域的条件
+  uint32 cooldown_ms = 11;                     // 通行冷却（防 AOE 跳关/滥用）
+  string script_ref = 12;                      // 特殊脚本引用（如剧情锁门、动态开关）
+}
+
+// ============================================================
+// 区域（模块化独立单元）
+// ============================================================
+
+message ZoneConfig {
+  uint32 zone_id = 1;
+  string name_key = 2;
+  ZoneType zone_type = 3;
+  uint32 min_level = 4;                        // 等级带下限（刷新/任务/平衡用）
+  uint32 max_level = 5;                        // 等级带上限（0 = 不限）
+  CAMI.Common.Vec3 bounds_min = 6;             // 区域包围盒（模块化边界，独立加载单元）
+  CAMI.Common.Vec3 bounds_max = 7;
+  CAMI.Common.Vec3 graveyard = 8;              // 死亡复活点
+  repeated uint32 weather_ids = 9;             // 天气预设 ID（后续 weather 系统）
+  repeated uint32 phase_group_ids = 10;        // 相位分组（ADR-010，任务进度驱动）
+  uint32 parent_zone_id = 11;                  // 仅组织/UI 归属（如副本挂在某大陆下），不构成连通
+  string ambient_music_key = 12;
+  bool is_rest_area = 13;                      // 休息区（双倍经验）
+  PvpMode pvp_mode = 14;                       // PvP 模式
+  repeated uint32 linked_instance_ids = 15;    // 该区域入口可通往的实例（引用 InstanceConfig，仅登记、连通仍走 Gate）
+}
+
+// ============================================================
+// 副本 / 团本（独立区域 + 实例专属规则）
+// ============================================================
+
+// 难度档（倍率叠加到 boss/小怪与掉落）
+message InstanceDifficulty {
+  uint32 difficulty_id = 1;
+  string name_key = 2;
+  float health_mod = 3;                        // 生命倍率（boss/小怪）
+  float damage_mod = 4;                        // 伤害倍率
+  float loot_quality_mod = 5;                  // 掉落品质倍率
+  uint32 min_level = 6;                        // 进入最低等级
+}
+
+// 副本/团本配置：副本即独立区域，另载实例规则
+message InstanceConfig {
+  uint32 instance_id = 1;
+  uint32 zone_id = 2;                          // 关联的 ZoneConfig（类型须为 DUNGEON/RAID）
+  uint32 max_players = 3;                      // 队伍上限（副本 5 / 团本 10·25）
+  repeated InstanceDifficulty difficulties = 4;// 可选难度档
+  repeated uint32 boss_creature_ids = 5;       // boss 引用（config_creatures，裸 uint32）
+  uint32 reset_period_hours = 6;               // 锁期（小时）
+  uint32 entrance_gate_id = 7;                 // 入口门（引用 GateConfig，进入条件在此）
+  bool is_heroic = 8;                          // 是否为英雄难度基线
+}
+
+// ============================================================
+// 区域配置全集（加载/热更单元）
+// ============================================================
+message ZoneConfigSet {
+  uint32 data_version = 1;
+  repeated ZoneConfig zones = 2;
+  repeated GateConfig gates = 3;
+  repeated InstanceConfig instances = 4;
+}

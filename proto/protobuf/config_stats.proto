@@ -1,0 +1,66 @@
+// config_stats.proto — 属性系统配置 (Protobuf, proto3)
+//
+// 定义达到 WoW 复杂度所需的"属性层"预设参数：主/次/衍生属性、战斗等级(rating)→%
+// 转换曲线、物品化预算(itemization budget)、职业属性权重、衍生属性换算。
+// 被 combat / items / loot / creatures 复用，是"大量预设参数"的核心承载之一。
+// 共享类型来自 common.proto；品质/槽位枚举来自 config_items.proto。
+// 版本: v1.0.0 (Systems-Design Round)
+
+syntax = "proto3";
+
+package CAMI.Config;
+
+import "common.proto";
+import "config_items.proto";
+
+// ============================================================
+// 战斗等级(rating)→百分比转换曲线（按等级带）
+// 例：等级 60 时暴击每 1% 需 ~22.1 crit_rating；曲线点随等级递增。
+// 这是"数百行预设参数"的典型：每 rating 属性 × 每等级一档。
+// ============================================================
+message RatingConversionPoint {
+  uint32 level = 1;                        // 适用等级
+  CAMI.Common.StatType stat = 2;           // 哪种 rating（CRIT/HASTE/HIT/DODGE...）
+  float rating_per_percent = 3;            // 每 1% 所需 rating 点数
+}
+
+// ============================================================
+// 物品化预算：给定物品等级 + 品质 + 槽位，给装备分配的总属性点数
+// 策划据此控制每个装等区间的装备强度，是"装等膨胀"的可调旋钮。
+// ============================================================
+message ItemizationBudget {
+  uint32 item_level = 1;                   // 物品等级
+  CAMI.Config.ItemQuality quality = 2;     // 品质档
+  CAMI.Config.EquipSlot slot = 3;          // 槽位
+  uint32 primary_budget = 4;               // 主属性预算点数
+  uint32 secondary_budget = 5;             // 次级属性预算点数
+  float tertiary_chance = 6;               // 第三属性出现概率 (0~1)
+}
+
+// ============================================================
+// 职业属性权重（用于随机属性估值 / 装备评分 / 重铸倾向）
+// ============================================================
+message ClassStatWeight {
+  CAMI.Common.ClassType class = 1;
+  repeated CAMI.Common.StatModifier weights = 2;   // 每属性相对权重
+}
+
+// ============================================================
+// 衍生属性换算规则：输入主属性 → 产出衍生属性（STR→AP, INT→SP, STA→HP...）
+// ============================================================
+message DerivedStatRule {
+  CAMI.Common.StatType input_stat = 1;     // 输入主属性
+  CAMI.Common.StatType output_stat = 2;    // 产出衍生属性
+  float conversion = 3;                    // 转换系数
+}
+
+// ============================================================
+// 属性配置全集（加载/热更单元）
+// ============================================================
+message StatConfigSet {
+  uint32 data_version = 1;
+  repeated RatingConversionPoint rating_curve = 2;
+  repeated ItemizationBudget budgets = 3;
+  repeated ClassStatWeight class_weights = 4;
+  repeated DerivedStatRule derived_rules = 5;
+}

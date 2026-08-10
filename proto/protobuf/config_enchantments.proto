@@ -1,0 +1,66 @@
+// config_enchantments.proto — 附魔配置表 (Protobuf, proto3)
+//
+// 架构规约 §2：静态配置使用 Protobuf。本文件定义附魔（对装备施加强化效果）的数据驱动配置，
+// 被 character（装备效果计算）与 professions（附魔专业施法）模块读取。
+// 共享类型来自 common.proto / config_items.proto / config_balance.proto。
+// 版本: v1.0.0 (系统机制层 续)
+//
+// ── 设计定位（按用户 2026-08-10 指示）──
+// 本文件**仅建模"附魔有哪些参数、如何互相引用"**，具体每条附魔的属性数值、材料数量、
+// 技能等级、费用等预设数据留待后续轮次填充。
+//
+// ── 经济源汇角色（系统思维视角，结构挂钩；具体 EconomyFlow 数值待填）──
+//   · 附魔消耗：分解材料(materials，来自装备分解的源) + 币种(currency_cost，如训练费) → 经济汇
+//   · 产出：写入装备的永久/限时强化（属性/特殊效果），不直接产货币
+//   接入方式：后续在 config_balance.EconomyFlow 增 enchant_material(汇) 条目，
+//   其 expected_daily_per_capita / tolerance_pct / alert_channel 待填。
+
+syntax = "proto3";
+
+package CAMI.Config;
+
+import "common.proto";
+import "config_items.proto";
+import "config_balance.proto";
+
+// 附魔持续时间类型
+enum EnchantDurationType {
+  ENCHANT_PERMANENT = 0;   // 永久（消耗材料，写入装备）
+  ENCHANT_TEMPORARY = 1;   // 限时（消耗充能，到期消失）
+}
+
+// 附魔消耗的材料（拆自装备分解 / 专业产出）
+message EnchantMaterial {
+  uint32 item_id = 1;      // 裸 uint32 引用 config_items.ItemConfig
+  uint32 count = 2;
+}
+
+// 附魔消耗的币种（如训练费 / 服务费）
+message EnchantCurrencyCost {
+  CAMI.Config.CurrencyType currency = 1;   // 复用 config_balance 币种枚举
+  uint64 amount = 2;
+}
+
+// 单条附魔配置
+message EnchantmentConfig {
+  uint32 enchant_id = 1;                                 // 主键
+  string name_key = 2;                                   // i18n 名称 key
+  repeated CAMI.Config.EquipSlot target_slots = 3;       // 可附魔的装备槽位
+  uint32 required_profession_id = 4;                     // 裸 uint32 引用 config_professions.ProfessionConfig（附魔专业）
+  uint32 min_skill_level = 5;                            // 附魔专业所需技能等级（数值待填）
+  repeated CAMI.Common.StatModifier stat_effects = 6;    // 属性类强化（数值待填）
+  repeated CAMI.Common.EffectConfig special_effects = 7; // 特殊效果（触发 / 光环，数值待填）
+  repeated EnchantMaterial materials = 8;                // 消耗材料（经济汇，数量待填）
+  repeated EnchantCurrencyCost currency_cost = 9;        // 消耗币种（金额待填）
+  EnchantDurationType duration_type = 10;
+  uint32 charges = 11;                                   // 限时附魔充能数（0 = 永久无限）
+  bool is_unique_per_item = 12;                          // 同装备仅生效一条同名附魔
+  string script_ref = 13;                                // 特殊逻辑（热更边界）
+  string icon = 14;
+}
+
+// 附魔配置全集（加载 / 热更单元）
+message EnchantmentConfigSet {
+  uint32 data_version = 1;
+  repeated EnchantmentConfig enchants = 2;
+}

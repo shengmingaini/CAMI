@@ -1,0 +1,119 @@
+syntax = "proto3";
+
+// config_buffs.proto — Buff / Debuff / Aura 状态效果库
+//
+// 设计依据：
+//   - combat.md §3（状态系统：堆叠 / 驱散 / 控制机制）
+//   - items.md（装备 on_use 触发 Buff）、creatures（技能组施加 Buff）、loot（暂无）
+//   - 本文件是数据驱动的"预设参数承载骨架"之一，经 config-center 热更（*ConfigSet）。
+//
+// 关键约定：
+//   - 复用 common.proto 的 StatModifier（属性修正）与 EffectConfig（周期/触发效果）。
+//   - 跨 ConfigSet 引用一律用裸 uint32 id（防环）：source_skill_id / source_item_id /
+//     source_creature_id；不 import 其他 config_*.proto。
+//   - 数值逻辑（如伤害公式、护甲减免）由 Lua 热更边界产出；此处只放静态参数 + script_ref。
+//   - 零 JSON：本文件为编译期 schema，运行期以二进制加载。
+//
+// 版本: v1.0.0 (Systems-Design Round, 2026-08-10)
+
+package CAMI.Config;
+
+import "common.proto";
+
+// 效果善恶分类
+enum BuffCategory {
+  BUFF_CAT_NONE = 0;
+  BUFF_CAT_BENEFICIAL = 1;   // 增益（可被玩家主动取消）
+  BUFF_CAT_HARMFUL = 2;      // 减益（Debuff）
+  BUFF_CAT_AURA = 3;         // 光环/被动（常驻，不入 ACTIVE 列表计数）
+}
+
+// 驱散类型（决定可被哪类驱散技能移除）
+enum DispelType {
+  DISPEL_NONE = 0;       // 不可驱散（如 engulfed、某些控制）
+  DISPEL_MAGIC = 1;
+  DISPEL_POISON = 2;
+  DISPEL_DISEASE = 3;
+  DISPEL_CURSE = 4;
+  // 注：物理/狂暴类在 WoW 中不可被常规驱散，本枚举不列出即视为不可驱散。
+}
+
+// 控制/机制类型（用于免疫、递减 DR、PvP 模板匹配）
+enum MechanicType {
+  MECH_NONE = 0;
+  MECH_STUN = 1;         // 昏迷
+  MECH_ROOT = 2;         // 定身（不能移动但可施法）
+  MECH_SILENCE = 3;      // 沉默
+  MECH_DISARM = 4;       // 缴械
+  MECH_FEAR = 5;         // 恐惧
+  MECH_CHARM = 6;        // 魅惑
+  MECH_SLEEP = 7;        // 睡眠
+  MECH_SNARE = 8;        // 减速（移动限制）
+  MECH_POLYMORPH = 9;    // 变羊/变形
+  MECH_BANISH = 10;      // 放逐
+  MECH_HORROR = 11;      // 惊骇（不可被部分免疫抵消）
+  MECH_INCAPACITATE = 12;// 失能（无法行动，如 cyclone）
+  MECH_FREEZE = 13;      // 冰冻
+  MECH_KNOCKBACK = 14;   // 击退/击飞
+}
+
+// 堆叠行为
+enum StackBehavior {
+  STACK_REFRESH = 0;        // 刷新持续时间，层数不变（默认）
+  STACK_INTENSIFY = 1;      // 叠加层数，每层效果增强（按 stack 索引查 stat_mods 倍率）
+  STACK_INDEPENDENT = 2;    // 独立实例（同名多 source 各自计时，不共享层数）
+  STACK_DONT_REFRESH = 3;   // 不刷新持续时间、不叠层（仅保留首个）
+}
+
+// 单条 Buff / Debuff / Aura 定义
+message BuffConfig {
+  uint32 buff_id = 1;                 // 全局唯一 id（被 skill/item/creature 引用）
+  string name_key = 2;                // i18n key（不内联文本）
+  string description_key = 3;
+
+  BuffCategory category = 4;
+  DispelType dispel_type = 5;
+  repeated MechanicType mechanics = 6;// 该效果携带的控制机制（可多重）
+
+  uint32 max_stacks = 7;              // 最大层数（默认 1）；AURA 通常为 1
+  StackBehavior stack_behavior = 8;
+
+  uint32 duration_ms = 9;             // 持续时长；0 = 直到主动移除/死亡（如光环）
+  uint32 tick_interval_ms = 10;       // 周期结算间隔；0 = 仅 apply/expire 触发，无 period
+  bool can_expire = 11;               // false = 常驻（需显式移除）
+
+  bool is_hidden = 12;                // 隐藏（不显示图标，如内部标记）
+  bool is_pvp = 13;                   // 受 PvP 时长缩减影响
+
+  // 属性修正（叠加/光环类）。INTENSIFY 时按当前层数线性缩放。
+  repeated CAMI.Common.StatModifier stat_mods = 14;
+
+  // 周期效果（如 DoT/HoT、每跳伤害/治疗），每 tick_interval_ms 触发一次
+  repeated CAMI.Common.EffectConfig periodic_effects = 15;
+
+  // 施加瞬间效果（如开局爆发伤害、生成护盾）
+  CAMI.Common.EffectConfig on_apply = 16;
+  // 到期/移除瞬间效果（如反伤、召唤）
+  CAMI.Common.EffectConfig on_expire = 17;
+
+  // 法术学派（用于抗性/减免匹配；0 = 无学派）
+  CAMI.Common.DamageType school = 18;
+
+  // 递减分组（Diminishing Returns）：同组控制连续施加时长递减
+  // 0 = 不递减；非 0 值相同的 Buff 共享 DR 计时
+  uint32 dr_category = 19;
+
+  // 溯源（裸 id，防环；用于审计/BR 排查，不参与加载依赖）
+  uint32 source_skill_id = 20;
+  uint32 source_item_id = 21;
+  uint32 source_creature_id = 22;
+
+  string script_ref = 23;             // Lua 脚本引用（复杂状态逻辑）
+  string icon = 24;
+}
+
+// 热更单元：整体加载/版本校验容器
+message BuffConfigSet {
+  uint32 data_version = 1;
+  repeated BuffConfig buffs = 2;
+}

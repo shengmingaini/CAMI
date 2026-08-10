@@ -1,0 +1,9 @@
+{
+  "data_version": 1,
+  "vendors": [
+    {"vendor_id": 7001, "name_key": "vendor.capital.general", "vendor_type": "VENDOR_GENERAL", "faction_id": 1, "price_multiplier": 1.0, "buyback_rate": 0.25, "items": [
+      {"item_id": 6004, "currency": "CURRENCY_GOLD", "price_override": 0, "stock_limit": 0, "is_buyback": true},
+      {"item_id": 6005, "currency": "CURRENCY_GOLD", "price_override": 0, "stock_limit": 0, "is_buyback": true}
+    ]}
+  ]
+}

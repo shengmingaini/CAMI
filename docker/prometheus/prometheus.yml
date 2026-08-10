@@ -1,0 +1,42 @@
+# CAMI Prometheus Configuration (Local Dev)
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  - "rules.yml"
+
+scrape_configs:
+  # GameNode metrics
+  - job_name: "gamenode"
+    static_configs:
+      - targets: ["host.docker.internal:9100"]
+    metrics_path: /metrics
+
+  # Gateway metrics
+  - job_name: "gateway"
+    static_configs:
+      - targets: ["host.docker.internal:9101"]
+    metrics_path: /metrics
+
+  # DataService metrics
+  - job_name: "dataservice"
+    static_configs:
+      - targets: ["host.docker.internal:9102"]
+    metrics_path: /metrics
+
+  # Redis metrics
+  - job_name: "redis"
+    static_configs:
+      - targets: ["redis-node-1:9121", "redis-node-2:9121", "redis-node-3:9121"]
+
+  # MySQL metrics
+  - job_name: "mysql"
+    static_configs:
+      - targets: ["mysql-shard-1:9104", "mysql-shard-2:9104", "mysql-global:9104"]
+
+  # Kafka metrics
+  - job_name: "kafka"
+    static_configs:
+      - targets: ["kafka:9108"]

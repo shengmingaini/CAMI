@@ -1,0 +1,54 @@
+// config_reputation.proto — 声望阵营配置 (Protobuf, proto3)
+//
+// 定义 WoW 级声望系统：阵营(Faction)、好感度档位(RepTier，含阈值/折扣/奖励)、
+// 声望获取来源(RepSource，含日上限防刷)。被 social / quest / economy 引用。
+// 版本: v1.0.0 (Systems-Design Round)
+
+syntax = "proto3";
+
+package CAMI.Config;
+
+// 声望档位
+enum RepStanding {
+  STANDING_HATED = 0;
+  STANDING_HOSTILE = 1;
+  STANDING_UNFRIENDLY = 2;
+  STANDING_NEUTRAL = 3;
+  STANDING_FRIENDLY = 4;
+  STANDING_HONORED = 5;
+  STANDING_REVERED = 6;
+  STANDING_EXALTED = 7;
+}
+
+// 档位定义
+message RepTier {
+  RepStanding standing = 1;
+  int32 threshold = 2;                          // 进入该档所需声望值（下限）
+  float vendor_discount_pct = 3;                // 商店折扣 (%)
+  repeated uint32 reward_item_ids = 4;          // 档位奖励物品（引用 config_items）
+  string unlock_key = 5;                        // 解锁内容 key
+}
+
+// 声望获取来源（防刷：日上限）
+message RepSource {
+  string source_id = 1;
+  string category = 2;                          // quest_kill / quest_turnin / world_event / daily
+  int32 rep_value = 3;                          // 单次获取值
+  int32 daily_cap = 4;                          // 日获取上限
+}
+
+// 阵营配置
+message FactionConfig {
+  uint32 faction_id = 1;
+  string name_key = 2;
+  repeated RepTier tiers = 3;
+  repeated RepSource sources = 4;
+}
+
+// ============================================================
+// 声望配置全集（加载/热更单元）
+// ============================================================
+message FactionConfigSet {
+  uint32 data_version = 1;
+  repeated FactionConfig factions = 2;
+}
