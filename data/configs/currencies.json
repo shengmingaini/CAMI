@@ -3,11 +3,11 @@
   "currencies": [
     {"currency_type": "CURRENCY_GOLD",       "name_key": "cur.gold",       "icon": "icon_gold",       "weekly_cap": 0,      "can_earn": true, "can_lose": true,  "alert_channel": "econ-currency"},
     {"currency_type": "CURRENCY_TOKEN",      "name_key": "cur.token",      "icon": "icon_token",      "weekly_cap": 0,      "can_earn": true, "can_lose": false, "alert_channel": "econ-currency"},
-    {"currency_type": "CURRENCY_PRESTIGE",   "name_key": "cur.prestige",   "icon": "icon_prestige",   "weekly_cap": 0,      "can_earn": true, "can_lose": false, "alert_channel": "econ-currency"},
+    {"currency_type": "CURRENCY_PRESTIGE",   "name_key": "cur.prestige",   "icon": "icon_prestige",   "weekly_cap": 0,      "can_earn": true, "can_lose": false, "alert_channel": "econ-currency", "status": "CURRENCY_STATUS_DISABLED"},
     {"currency_type": "CURRENCY_HONOR",      "name_key": "cur.honor",      "icon": "icon_honor",      "weekly_cap": 75000,  "can_earn": true, "can_lose": true,  "alert_channel": "econ-pvp"},
     {"currency_type": "CURRENCY_CONQUEST",    "name_key": "cur.conquest",   "icon": "icon_conquest",   "weekly_cap": 1500,   "can_earn": true, "can_lose": false, "alert_channel": "econ-pvp"},
-    {"currency_type": "CURRENCY_JUSTICE",     "name_key": "cur.justice",    "icon": "icon_justice",    "weekly_cap": 0,      "can_earn": true, "can_lose": false, "alert_channel": "econ-currency"},
-    {"currency_type": "CURRENCY_VALOR",      "name_key": "cur.valor",      "icon": "icon_valor",      "weekly_cap": 0,      "can_earn": true, "can_lose": false, "alert_channel": "econ-currency"},
-    {"currency_type": "CURRENCY_ARENA_POINTS","name_key": "cur.arena",      "icon": "icon_arena",      "weekly_cap": 0,      "can_earn": true, "can_lose": false, "alert_channel": "econ-pvp"}
+    {"currency_type": "CURRENCY_JUSTICE",     "name_key": "cur.justice",    "icon": "icon_justice",    "weekly_cap": 0,      "can_earn": true, "can_lose": false, "alert_channel": "econ-currency", "status": "CURRENCY_STATUS_DISABLED"},
+    {"currency_type": "CURRENCY_VALOR",      "name_key": "cur.valor",      "icon": "icon_valor",      "weekly_cap": 0,      "can_earn": true, "can_lose": false, "alert_channel": "econ-currency", "status": "CURRENCY_STATUS_DISABLED"},
+    {"currency_type": "CURRENCY_ARENA_POINTS","name_key": "cur.arena",      "icon": "icon_arena",      "weekly_cap": 0,      "can_earn": true, "can_lose": false, "alert_channel": "econ-pvp", "status": "CURRENCY_STATUS_DISABLED"}
   ]
 }

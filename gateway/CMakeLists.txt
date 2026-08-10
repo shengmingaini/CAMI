@@ -9,3 +9,15 @@ target_include_directories(cami_gateway PUBLIC
 )
 target_compile_features(cami_gateway PUBLIC cxx_std_17)
 target_link_libraries(cami_gateway PUBLIC cami_common)
+
+# 连接管理模块（独立 STATIC target，满足"模块独立编译"验收，见 gateway/connection/CMakeLists.txt）。
+add_subdirectory(connection)
+target_link_libraries(cami_gateway PUBLIC cami_gateway_connection)
+
+# 协议编解码模块（独立 STATIC target，见 gateway/codec/CMakeLists.txt）。
+add_subdirectory(codec)
+target_link_libraries(cami_gateway PUBLIC cami_gateway_codec)
+
+# 心跳管理模块（独立 STATIC target，见 gateway/heartbeat/CMakeLists.txt）。
+add_subdirectory(heartbeat)
+target_link_libraries(cami_gateway PUBLIC cami_gateway_heartbeat)

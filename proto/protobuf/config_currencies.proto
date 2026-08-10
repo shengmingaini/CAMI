@@ -12,6 +12,12 @@ package CAMI.Config;
 
 import "config_balance.proto";   // 复用 CurrencyType 枚举（单一权威，避免重复定义）
 
+// 币种启用状态（proto3 enum 默认 0 = ENABLED）
+enum CurrencyStatus {
+  CURRENCY_STATUS_ENABLED = 0;   // 启用并参与经济建模（默认）
+  CURRENCY_STATUS_DISABLED = 1;  // 本阶段有意不启用（如预留的后期/经典币种，避免死币种被误判为遗漏）
+}
+
 // 单币种元数据
 message CurrencyConfig {
   CurrencyType currency_type = 1;  // 引用 config_balance.CurrencyType（值镜像 economy.fbs）
@@ -21,6 +27,7 @@ message CurrencyConfig {
   bool can_earn = 5;              // 是否可获取
   bool can_lose = 6;              // 是否可丢失（死亡/分解/退还）
   string alert_channel = 7;       // 异常流量告警通道（如 "econ-currency"）
+  CurrencyStatus status = 8;      // 启用状态（默认 ENABLED；DISABLED = 有意未启用，跳过死币种监管）
 }
 
 // ============================================================
