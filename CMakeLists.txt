@@ -82,8 +82,11 @@ add_test(NAME skeleton_layer_check COMMAND cami_skeleton_check)
 
 # === Tests (GTest-based unit/integration, 重型依赖就绪后开启) ===
 if(CAMI_BUILD_TESTS)
-    find_package(GTest CONFIG REQUIRED)
-    # add_subdirectory(tests)  # 各层实现后接入
+    find_package(GTest REQUIRED)
+    # 各层实现后接入 add_subdirectory(tests)；此处直接注册已就绪的 codec 单测。
+    add_executable(cami_codec_test tests/unit/codec_framing_test.cpp)
+    target_link_libraries(cami_codec_test PRIVATE cami_gateway_codec GTest::gtest GTest::gtest_main)
+    add_test(NAME codec_framing_test COMMAND cami_codec_test)
 endif()
 
 message(STATUS "=== CAMI Build Configuration ===")

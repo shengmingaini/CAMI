@@ -8,6 +8,8 @@
 #include "common/common_layer.h"
 #include "data/data_layer.h"
 #include "game/game_layer.h"
+#include "gateway/codec/codec_selfcheck.h"
+#include "gateway/connection/connection_selfcheck.h"
 #include "gateway/gateway_layer.h"
 #include "ops/ops_layer.h"
 
@@ -57,6 +59,22 @@ int main() {
         ok = false;
     } else {
         std::printf("[ OK ] event_bus functional (publish -> drain -> dispatch)\n");
+    }
+
+    // Week2 周一交付物验证：连接管理模块 FSM 迁移合法性 + io_context 线程池启停。
+    if (!cami::gateway::connection::connection_selfcheck()) {
+        std::fprintf(stderr, "[FAIL] connection_selfcheck(): FSM/线程池异常\n");
+        ok = false;
+    } else {
+        std::printf("[ OK ] connection_manager functional (fsm + iocontext pool)\n");
+    }
+
+    // Week2 周二交付物验证：协议编解码帧定界（粘包/半包/超大包/边界）。
+    if (!cami::gateway::codec::codec_selfcheck()) {
+        std::fprintf(stderr, "[FAIL] codec_selfcheck(): 帧定界逻辑异常\n");
+        ok = false;
+    } else {
+        std::printf("[ OK ] codec functional (sticky/half/oversized framing)\n");
     }
 
     if (ok) {
