@@ -18,7 +18,7 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake g++ libboost-dev
+          sudo apt-get install -y cmake g++ libboost-dev libboost-system-dev
 
       - name: Configure (lightweight skeleton — no heavy deps)
         # CAMI_BUILD_MODULES=OFF：跳过 gRPC/Protobuf/Redis/Sol2/Lua 等重型依赖，
@@ -49,10 +49,12 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Install Python deps (protobuf runtime + protoc for stub generation)
-        # 锁定 protobuf 版本，复现本地验证环境（load_configs 现场生成 _pb2 桩需匹配运行时）。
+      - name: Install Python deps (protobuf runtime; protoc kept for local stub regen)
+        # _pb2 桩已提交仓库，CI 直接 import 已验证正确的桩，无需运行时 protoc；
+        # protoc 仅作为本地 .proto 变更后重新生成桩的兜底（load_configs 在桩缺失/过期时调用）。
+        # 锁定 protobuf 版本，复现本地验证运行时。
         run: pip install --upgrade pip "protobuf==7.35.1" grpcio-tools
 
       - name: Run balance verifier
-        # 干净检出时 load_configs 会用 grpc_tools.protoc 现场生成 verify/_pb 桩。
+        # 干净检出时直接 import 已提交的 verify/_pb 桩；仅当 .proto 比桩新才现场 regen。
         run: cd verify && python balance_verifier.py
