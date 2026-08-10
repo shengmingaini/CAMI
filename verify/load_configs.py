@@ -32,14 +32,19 @@ def _ensure_stubs():
             need_regen = True
     if not need_regen:
         return
-    # 定位受管 venv 的 python（Scripts/python.exe）
-    candidates = [
-        r"C:/Users/17283/.workbuddy/binaries/python/envs/default/Scripts/python.exe",
-        os.path.join(os.environ.get("HOME", ""), ".workbuddy", "binaries", "python", "envs", "default", "Scripts", "python.exe"),
-    ]
-    pyexe = next((c for c in candidates if os.path.exists(c)), None)
+    # 优先用当前解释器（CI / 跨平台通用：当前 python 已含 grpc_tools.protoc）；
+    # 仅在本机 Windows 回退到受管 venv 的 python.exe（隔离环境）。
+    # 注意：不能硬编码 Windows 绝对路径——GitHub ubuntu runner 上该路径不存在，
+    # 会导致 economy-balance job 现场生成桩时 RuntimeError 而 CI 必红。
+    candidates = [sys.executable]
+    if sys.platform.startswith("win"):
+        candidates += [
+            r"C:/Users/17283/.workbuddy/binaries/python/envs/default/Scripts/python.exe",
+            os.path.join(os.environ.get("HOME", ""), ".workbuddy", "binaries", "python", "envs", "default", "Scripts", "python.exe"),
+        ]
+    pyexe = next((c for c in candidates if c and os.path.exists(c)), None)
     if pyexe is None:
-        raise RuntimeError("找不到受管 venv 的 python，无法自动生成桩；请先运行 protoc 生成 verify/_pb")
+        raise RuntimeError("找不到可用的 python（需含 grpc_tools.protoc）；请先 pip install grpcio-tools 或运行 protoc 生成 verify/_pb")
     os.makedirs(_PB_DIR, exist_ok=True)
     cmd = [pyexe, "-m", "grpc_tools.protoc", "-I", proto_dir,
            "--python_out=" + _PB_DIR] + [
