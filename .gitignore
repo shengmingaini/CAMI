@@ -53,6 +53,11 @@ verify/_pb/
 # Local assistant memory (machine-specific absolute paths; not for team repo)
 .workbuddy/
 
+# Python caches
+__pycache__/
+*.pyc
+*.pyo
+
 # Machine / VM artifacts (Docker Desktop, local VM, workbuddy overview)
 .com.docker.backend.exe.tail.txt
 .docker-desktop.exe.tail.txt
