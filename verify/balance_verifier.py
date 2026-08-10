@@ -22,6 +22,7 @@ sys.path.insert(0, HERE)
 sys.path.insert(0, os.path.join(HERE, "_pb"))
 
 from load_configs import load_all  # noqa: E402
+from config_currencies_pb2 import CURRENCY_STATUS_DISABLED  # noqa: E402
 
 try:
     import combat_simulator as _cmb_sim  # noqa: E402
@@ -221,10 +222,15 @@ def run(cfgs, rep):
             ccur = currency_by_type.get(cur)
             if ccur is not None and getattr(ccur, "can_lose", True) is False and net > 1e-6:
                 rep.fail(cur_name(cur), f"can_lose=false 净注入 {int(net)}/人/日（源 {int(d['src'])} / 汇 {int(d['snk'])}）—— 永增通胀：必须补汇或声明赛季清零(reset)")
-        # GAP-3 轻量提示：currencies.json 已声明但无任何 EconomyFlow 的币种（死币种）
+        # GAP-3 死币种监管：currencies.json 已声明但无任何 EconomyFlow 的币种
+        # - status=DISABLED（有意未启用）-> INFO，跳过监管（不再噪声 WARN）
+        # - 默认/ENABLED 却无 EconomyFlow -> WARN（真实遗漏，需补 flow 或明确禁用）
         for c in cfgs["currencies"].currencies:
             if c.currency_type not in by_cur:
-                rep.warn(cur_name(c.currency_type), "已声明但无 EconomyFlow 建模（死币种）—— 若本阶段不启用，建议 currencies.json 加 status:DISABLED")
+                if c.status == CURRENCY_STATUS_DISABLED:
+                    rep.info(cur_name(c.currency_type), "已声明但本阶段 DISABLED（有意未启用），跳过死币种监管")
+                else:
+                    rep.warn(cur_name(c.currency_type), "已声明但无 EconomyFlow 建模（死币种）—— 若本阶段不启用，应在 currencies.json 标记 status:DISABLED")
         # B3: 周上限 vs 单源周潜值（cap 必须可达且不被单源轻易击穿）
         for fl in flows:
             cur = currency_by_type.get(fl.currency)

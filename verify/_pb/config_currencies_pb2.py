@@ -25,15 +25,17 @@ _sym_db = _symbol_database.Default()
 import config_balance_pb2 as config__balance__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x17\x63onfig_currencies.proto\x12\x0b\x43\x41MI.Config\x1a\x14\x63onfig_balance.proto\"\xb1\x01\n\x0e\x43urrencyConfig\x12\x30\n\rcurrency_type\x18\x01 \x01(\x0e\x32\x19.CAMI.Config.CurrencyType\x12\x10\n\x08name_key\x18\x02 \x01(\t\x12\x0c\n\x04icon\x18\x03 \x01(\t\x12\x12\n\nweekly_cap\x18\x04 \x01(\r\x12\x10\n\x08\x63\x61n_earn\x18\x05 \x01(\x08\x12\x10\n\x08\x63\x61n_lose\x18\x06 \x01(\x08\x12\x15\n\ralert_channel\x18\x07 \x01(\t\"Z\n\x11\x43urrencyConfigSet\x12\x14\n\x0c\x64\x61ta_version\x18\x01 \x01(\r\x12/\n\ncurrencies\x18\x02 \x03(\x0b\x32\x1b.CAMI.Config.CurrencyConfigb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x17\x63onfig_currencies.proto\x12\x0b\x43\x41MI.Config\x1a\x14\x63onfig_balance.proto\"\xde\x01\n\x0e\x43urrencyConfig\x12\x30\n\rcurrency_type\x18\x01 \x01(\x0e\x32\x19.CAMI.Config.CurrencyType\x12\x10\n\x08name_key\x18\x02 \x01(\t\x12\x0c\n\x04icon\x18\x03 \x01(\t\x12\x12\n\nweekly_cap\x18\x04 \x01(\r\x12\x10\n\x08\x63\x61n_earn\x18\x05 \x01(\x08\x12\x10\n\x08\x63\x61n_lose\x18\x06 \x01(\x08\x12\x15\n\ralert_channel\x18\x07 \x01(\t\x12+\n\x06status\x18\x08 \x01(\x0e\x32\x1b.CAMI.Config.CurrencyStatus\"Z\n\x11\x43urrencyConfigSet\x12\x14\n\x0c\x64\x61ta_version\x18\x01 \x01(\r\x12/\n\ncurrencies\x18\x02 \x03(\x0b\x32\x1b.CAMI.Config.CurrencyConfig*K\n\x0e\x43urrencyStatus\x12\x1b\n\x17\x43URRENCY_STATUS_ENABLED\x10\x00\x12\x1c\n\x18\x43URRENCY_STATUS_DISABLED\x10\x01\x62\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
 _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'config_currencies_pb2', _globals)
 if not _descriptor._USE_C_DESCRIPTORS:
   DESCRIPTOR._loaded_options = None
+  _globals['_CURRENCYSTATUS']._serialized_start=379
+  _globals['_CURRENCYSTATUS']._serialized_end=454
   _globals['_CURRENCYCONFIG']._serialized_start=63
-  _globals['_CURRENCYCONFIG']._serialized_end=240
-  _globals['_CURRENCYCONFIGSET']._serialized_start=242
-  _globals['_CURRENCYCONFIGSET']._serialized_end=332
+  _globals['_CURRENCYCONFIG']._serialized_end=285
+  _globals['_CURRENCYCONFIGSET']._serialized_start=287
+  _globals['_CURRENCYCONFIGSET']._serialized_end=377
 # @@protoc_insertion_point(module_scope)
