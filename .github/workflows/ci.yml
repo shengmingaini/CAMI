@@ -32,3 +32,27 @@ jobs:
       - name: Layered skeleton self-check (ctest)
         # 机器校验：五层已接入 monorepo 构建，目录↔分层↔target 一一对应。
         run: ctest --test-dir build --output-on-failure
+
+  # === 经济平衡门禁 ===
+  # 独立 job：不依赖 C++ 工具链，职责单一、与 build 并行、失败隔离。
+  # 把 GAP-1~9 的平衡校验（源汇账本 / xp 曲线完整性 / 战斗强度离散度 / leak 语义 /
+  # 修理对账 / 囤积上限）固化成 PR 防线：balance_verifier 在 FAIL>0 时退出码 1，CI 即红。
+  economy-balance:
+    name: Economy Balance Verification
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Python deps (protobuf runtime + protoc for stub generation)
+        # 锁定 protobuf 版本，复现本地验证环境（load_configs 现场生成 _pb2 桩需匹配运行时）。
+        run: pip install --upgrade pip "protobuf==7.35.1" grpcio-tools
+
+      - name: Run balance verifier
+        # 干净检出时 load_configs 会用 grpc_tools.protoc 现场生成 verify/_pb 桩。
+        run: cd verify && python balance_verifier.py
