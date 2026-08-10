@@ -69,8 +69,10 @@ CAMI 平衡校验报告
   ✅ [STATS] 物品化预算 2 条，键唯一
 
 === K. 战斗强度模拟 (GAP-9) ===
-  ✅ [combat:CLASS_WARRIOR] AP=18 暴击=0.45% 裸DPS=29.6 减伤=28.1% 有效DPS=21.3 TTK=4695s（模型自洽）
-  ℹ️  [COMBAT] 职业强度离散度校验延后: 仅 1 个职业建模，职业强度离散度校验延后（需在 stats.json.class_weights 补充更多职业/专精数据）
+  ✅ [combat:CLASS_WARRIOR] AP=36 暴击=0.45% 裸DPS=34.1 减伤=28.1% 有效DPS=24.6 TTK=4074s（模型自洽）
+  ✅ [combat:CLASS_ROGUE] AP=36 暴击=0.45% 裸DPS=34.1 减伤=28.1% 有效DPS=24.6 TTK=4074s（模型自洽）
+  ✅ [combat:CLASS_MAGE] AP=0 暴击=0.45% 裸DPS=29.6 减伤=28.1% 有效DPS=21.3 TTK=4695s（模型自洽）
+  ✅ [COMBAT] 职业强度离散度合理: max/min DPS 比 1.153（阈值 1.5）
 
 === L. 修理成本对账 (GAP-7) ===
   ✅ [REPAIR] repair_rates 结构合法：2 个槽位费率均>0
@@ -95,4 +97,4 @@ CAMI 平衡校验报告
   ✅ [hoard:vendor_buy_token] hoard_rate=0.0（leak=0.0）在合理区间
 
 === 汇总 ===
-  PASS=55  WARN=5  FAIL=0  INFO=7
+  PASS=58  WARN=5  FAIL=0  INFO=6

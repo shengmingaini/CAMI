@@ -89,7 +89,7 @@
 | 25 | referential integrity | 13 set | A(REF) | 无悬空外键 | ✅ PASS |
 | 26 | repair_rates | 主手2/耐·胸4/耐 | **L(repair对账)** | 每槽费率>0 + 可解释 repair_gold 汇 | ⚠ GAP-7（L 段：结构PASS，对账WARN 暴露缺口） |
 | 27 | hoard_rate | quest0.10·mob0.05 | **M(hoard上限)** | hoard≤0.5 且不与 leak 双重退出 | ✅ PASS（GAP-8 已闭合门禁） |
-| 28 | combat constants | ap_coef0.5… | **K(战斗模拟)** | DPS>0·mitig∈(0,0.95)·crit∈[0,1]·TTK>0 | ✅ PASS（GAP-9 已建模拟器+门禁；职业离散度延后待多职业数据） |
+| 28 | combat constants | ap_coef0.5·sp_coef0.5 | **K(战斗模拟)** | DPS>0·mitig∈(0,0.95)·crit∈[0,1]·TTK>0 + 离散度≤1.5 | ✅ PASS（GAP-9 已激活：WARRIOR/ROGUE/MAGE 3 职业，离散度 1.153≤1.5） |
 | 29 | stats budget / itemization | 2 条 | J(STATS 键唯一) + K(战斗模拟消费) | 键唯一 + 衍生 input≠output + 驱动 DPS/TTK | ✅ PASS（GAP-9 已覆盖） |
 | 30 | 4 死币种 | 0 flow | （无） | — | ⚠ GAP-3 |
 
@@ -109,7 +109,7 @@
 | **GAP-6** ✅（已闭环） | `leak_rate` 语义不清 | ah_fee 拍卖税应为 leak≈1.0(全销毁)，曾误设 0.05；阈值 0.02 对有意销毁过严 | 已新增 `intentional_destroy:bool` 字段 + verifier 区分"有意销毁"(leak≈1.0 直接 PASS)与"异常泄漏"(>0.02 WARN)；拍卖税 `intentional_destroy=true, leak_rate=1.0`。验收：重跑 → ah_fee 由 WARN 转合规 PASS，`FAIL=0` |
 | **GAP-7**（已建门禁，未硬闭合） | `repair_gold` 未与 `repair_rates×耐久损耗` 对账 | 修理消耗可能虚高/虚低，无交叉验证 | 已新增 **L 段**：结构校验(每槽费率>0) + 对账(`repair_gold≈Σ(cost_per_durability)×耐久损耗`，均匀损耗假设)；当前占位数据下隐含每槽 500 耐久/日损耗>合理上限(200)→WARN **暴露真实缺口**。待补 16 槽位 repair_rates + 真实耐久损耗率 telemetry 才能硬闭合 |
 | **GAP-8** ✅（已闭环） | `hoard_rate`(沉淀货币) 未校验 | 资本沉淀、流通率下降 | 已新增 **M 段**：`hoard_rate>0.5` WARN + 与 leak 双重退出 WARN；当前全 flow PASS。验收：重跑 → 15 项 hoard 检查全 PASS |
-| **GAP-9** ✅（已建模拟器+门禁） | 战斗数值(combat constants + stats budget)无 TTK/DPS 校验 | 职业强度失衡不可量化 | 已实现 `verify/combat_simulator.py`：基于 `CombatConstant`+`config_stats` 出 AP/暴击/单伤/DPS/减伤/TTK；verifier **K 段**做模型自洽校验(减伤∈(0,0.95)等)+职业离散度门禁(≤1.5)。当前仅 WARRIOR 1 职业建模→离散度校验延后(INFO)，需补 class_weights 多职业数据。验收：重跑 → combat 段 PASS + dispersion INFO |
+| **GAP-9** ✅（已激活） | 战斗数值(combat constants + stats budget)无 TTK/DPS 校验 | 职业强度失衡不可量化 | 已实现 `verify/combat_simulator.py`：基于 `CombatConstant`+`config_stats` 出 AP/**SP**/暴击/单伤/DPS/减伤/TTK（物理 AP / 法术 SP 双路径，数据驱动）；verifier **K 段**做模型自洽校验 + 职业离散度硬门禁(≤1.5)。`stats.json` 已补 WARRIOR(STR)/ROGUE(AGI)/MAGE(INT) 3 个 DPS-spec，`derived_rules` 增 AGI→AP/INT→SP。实测离散度 **1.153 PASS**（WARRIOR==ROGUE 纯AP基线相等、MAGE法系略低13% 为已知建模结论；坦克/治疗专精不在 DPS 离散度比较内）。验收：重跑 → combat 段 3×PASS + `COMBAT 职业强度离散度合理` |
 
 ---
 
@@ -136,4 +136,4 @@
 
 - **已交付的工程产物**：13 ConfigSet 自洽小世界 + 10 类自动校验 + 本次源汇图谱/验证路径矩阵。GOLD 源汇完美闭合（13760=13760），HONOR/CONQUEST 经周上限三处对账与密度/事件交叉验证，均可交付。
 - **核心风险（已收敛）**：GAP-1（TOKEN 通胀）、**GAP-2（xp 曲线满级覆盖）** 已闭环；**GAP-6（拍卖税 leak 语义）**、**GAP-8（囤积上限）**、**GAP-9（战斗模拟）** 已闭环或建门禁。GAP-7 已建对账门禁并**暴露真实缺口**——占位数据下 repair_gold 汇无法由现有 repair_rates 解释，需补 16 槽位费率与真实耐久损耗率。GAP-3（4 死币种）仍 WARN。
-- **演进方向**：GAP-5 把宝石/附魔经济接入 EconomyFlow；GAP-7 补真实损耗率 telemetry；GAP-9 补多职业数据以启用职业离散度硬门禁——把"好玩"真正锁死为可监控、可回滚的工程系统。
+- **演进方向**：GAP-5 把宝石/附魔经济接入 EconomyFlow；GAP-7 补真实损耗率 telemetry；GAP-9 下一步做 **role 隔离 + 次属性分配建模**（区分 DPS/坦克/治疗专精，按 role 分组比 DPS 离散度；并在基类模型引入 haste 压缩攻击间隔，使 ROGUE/WARRIOR 不再因纯AP基线相等而失去区分度）——把"好玩"真正锁死为可监控、可回滚的工程系统。

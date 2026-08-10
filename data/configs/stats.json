@@ -10,10 +10,14 @@
     {"item_level": 10, "quality": "QUALITY_RARE",   "slot": "SLOT_MAINHAND", "primary_budget": 18, "secondary_budget": 10, "tertiary_chance": 0.05}
   ],
   "class_weights": [
-    {"class": "CLASS_WARRIOR", "weights": [{"stat": "STAT_STRENGTH", "flat": 1}, {"stat": "STAT_STAMINA", "flat": 1}]}
+    {"class": "CLASS_WARRIOR", "weights": [{"stat": "STAT_STRENGTH", "flat": 1}]},
+    {"class": "CLASS_ROGUE",   "weights": [{"stat": "STAT_AGILITY",  "flat": 1}]},
+    {"class": "CLASS_MAGE",    "weights": [{"stat": "STAT_INTELLECT","flat": 1}]}
   ],
   "derived_rules": [
     {"input_stat": "STAT_STRENGTH", "output_stat": "STAT_ATTACK_POWER", "conversion": 2.0},
+    {"input_stat": "STAT_AGILITY",  "output_stat": "STAT_ATTACK_POWER", "conversion": 2.0},
+    {"input_stat": "STAT_INTELLECT", "output_stat": "STAT_SPELL_POWER", "conversion": 1.0},
     {"input_stat": "STAT_STAMINA",  "output_stat": "STAT_HP",           "conversion": 10.0}
   ]
 }

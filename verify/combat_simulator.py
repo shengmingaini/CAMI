@@ -2,8 +2,14 @@
 
 把 `config_balance.CombatConstant` + `config_stats`(预算/衍生规则/职业权重/rating曲线)
 落成**可执行的 DPS / TTK 模型**，输出：
-  - 每职业(按 class_weights 建模)的 攻击强度(AP)/暴击率/单次伤害/裸 DPS/护甲减伤/有效 DPS/击杀耗时(TTK)
+  - 每职业(按 class_weights 建模)的 攻击强度(AP)/法术强度(SP)/暴击率/单次伤害/裸 DPS/护甲减伤/有效 DPS/击杀耗时(TTK)
   - 职业强度离散度（多职业时 max/min DPS 比；单职业时显式延后）
+
+伤害路径（架构关键点）：物理职业由 STR/AGI→ATTACK_POWER 驱动、法术职业由
+INT→SPELL_POWER 驱动；模拟器按职业"非零衍生力量"自动选 physical(AP×attack_power_coef)
+或 spell(SP×spell_power_coef)，两条路径对称、数据驱动（新增职业无需改代码）。
+坦克/治疗专精因含 STA→HP 等非输出分配，DPS 天然偏低，**不纳入 DPS 离散度比较**——
+本模型仅对"纯 DPS 专精"建模，role 隔离为后续扩展（见 economy-source-sink-map.md GAP-9）。
 
 设计原则（与 balance_verifier 一致）：
   - 仅消费 protobuf 加载后的 `cfgs`，可被 balance_verifier 段 K 直接调用；
@@ -38,6 +44,7 @@ CONFIG = {
 STAT_STRENGTH = 3
 STAT_STAMINA = 6
 STAT_ATTACK_POWER = 8
+STAT_SPELL_POWER = 9
 STAT_HP = 1
 
 
@@ -98,22 +105,28 @@ def simulate(cfgs):
         # 1) 主属性预算按职业权重分配
         total_w = sum(max(w.flat, 0) for w in cw.weights) or 1
         prim = {int(w.stat): pri_budget * max(w.flat, 0) / total_w for w in cw.weights}
-        # 2) 衍生属性（STR->AP, STA->HP ...）
+        # 2) 衍生属性（STR/AGI->AP, INT->SP, STA->HP ...）
         ap = 0.0
+        sp = 0.0
         hp = 0.0
         for istat, amt in prim.items():
             for ostat, conv in derived.get(istat, []):
                 if ostat == STAT_ATTACK_POWER:
                     ap += amt * conv
+                elif ostat == STAT_SPELL_POWER:
+                    sp += amt * conv
                 elif ostat == STAT_HP:  # STA -> HP 衍生
                     hp += amt * conv
                 # 其他衍生输出此处不消费，避免重复累加
-        # STA 直接贡献 HP（经由 STAT_STAMINA->STAT_HP 规则，已计入 hp）
         # 3) 暴击率（次属性全部分配到暴击 rating 的保守假设）
         crit_pct = (sec_budget / crit_per_pct / 100.0) if crit_per_pct > 0 else 0.0
         crit_pct = max(0.0, min(crit_pct, 1.0))
-        # 4) 武器伤害 / 平均命中 / 裸 DPS
-        wdmg = CONFIG["BASE_WEAPON_DMG"] + ap * cb.attack_power_coef
+        # 4) 武器/法术伤害：物理职业用 AP，法术职业用 SP（取非零衍生力量；两者皆零则仅基础伤）
+        if sp > 0:
+            power, power_coef, power_kind = sp, cb.spell_power_coef, "spell"
+        else:
+            power, power_coef, power_kind = ap, cb.attack_power_coef, "physical"
+        wdmg = CONFIG["BASE_WEAPON_DMG"] + power * power_coef
         avg_hit = wdmg * (1.0 + crit_pct * (cb.crit_damage_multiplier - 1.0))
         interval = CONFIG["ATTACK_INTERVAL"]
         dps = avg_hit / interval if interval > 0 else 0.0
@@ -125,8 +138,10 @@ def simulate(cfgs):
 
         out["classes"].append({
             "class": int(getattr(cw, "class")),
+            "power_stat": power_kind,
             "primary_alloc": {k: round(v, 2) for k, v in prim.items()},
             "attack_power": round(ap, 2),
+            "spell_power": round(sp, 2),
             "hp": round(hp, 2),
             "crit_pct": round(crit_pct * 100, 3),
             "weapon_dmg_per_hit": round(wdmg, 2),
