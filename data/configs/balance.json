@@ -412,11 +412,12 @@
       "currency": "CURRENCY_GOLD",
       "source_category": "ah_fee",
       "per_capita_daily": 800,
-      "leak_rate": 0.05,
+      "leak_rate": 1.0,
       "hoard_rate": 0.0,
       "expected_daily_per_capita": 800,
       "tolerance_pct": 0.1,
-      "alert_channel": "econ-balance"
+      "alert_channel": "econ-balance",
+      "intentional_destroy": true
     },
     {
       "flow_id": "mail_fee_gold",

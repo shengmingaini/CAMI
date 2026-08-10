@@ -15,7 +15,7 @@ CAMI 平衡校验报告
   ✅ [flow:vendor_buy_gold] CURRENCY_GOLD 1 实测 7000 ≈ 预期 7000 (±10%)
   ✅ [flow:repair_gold] CURRENCY_GOLD 1 实测 3000 ≈ 预期 3000 (±10%)
   ✅ [flow:ah_fee_gold] CURRENCY_GOLD 1 实测 800 ≈ 预期 800 (±10%)
-  ⚠️  [flow:ah_fee_gold] leak_rate=0.05000000074505806 超阈值(>0.02)：货币未经闭环消失，需确认是否为有意销毁(如拍卖税)
+  ✅ [flow:ah_fee_gold] intentional_destroy=true（拍卖税/销毁费）：leak_rate=1.0 符合预期（货币永久退出经济）
   ✅ [flow:mail_fee_gold] CURRENCY_GOLD 1 实测 200 ≈ 预期 200 (±10%)
   ✅ [flow:training_gold] CURRENCY_GOLD 1 实测 600 ≈ 预期 600 (±10%)
   ✅ [flow:tax_gold] CURRENCY_GOLD 1 实测 2160 ≈ 预期 2160 (±10%)
@@ -68,5 +68,31 @@ CAMI 平衡校验报告
   ✅ [XP] XP 曲线单级增量均为正且平滑（无 >5x 跳变）
   ✅ [STATS] 物品化预算 2 条，键唯一
 
+=== K. 战斗强度模拟 (GAP-9) ===
+  ✅ [combat:CLASS_WARRIOR] AP=18 暴击=0.45% 裸DPS=29.6 减伤=28.1% 有效DPS=21.3 TTK=4695s（模型自洽）
+  ℹ️  [COMBAT] 职业强度离散度校验延后: 仅 1 个职业建模，职业强度离散度校验延后（需在 stats.json.class_weights 补充更多职业/专精数据）
+
+=== L. 修理成本对账 (GAP-7) ===
+  ✅ [REPAIR] repair_rates 结构合法：2 个槽位费率均>0
+  ⚠️  [REPAIR] repair_gold 汇 3000/日 在'均匀损耗'假设下隐含每槽 500 耐久/日损耗，远超合理上限(200)—— 现有 repair_rates 无法解释该汇，需补充其余槽位与真实耐久损耗率（GAP-7）
+  ℹ️  [REPAIR] 仅 2 个槽位定义 repair_rates（完整装备约 16 槽），当前对账基于已定义槽位均匀损耗假设；完整对账需补充其余槽位与真实耐久损耗率
+
+=== M. 囤积率上限 (GAP-8) ===
+  ✅ [hoard:quest_reward_gold] hoard_rate=0.10000000149011612（leak=0.0）在合理区间
+  ✅ [hoard:mob_drop_gold] hoard_rate=0.05000000074505806（leak=0.0）在合理区间
+  ✅ [hoard:vendor_sell_gold] hoard_rate=0.0（leak=0.0）在合理区间
+  ✅ [hoard:pvp_battleground_honor] hoard_rate=0.0（leak=0.0）在合理区间
+  ✅ [hoard:pvp_arena_conquest] hoard_rate=0.0（leak=0.0）在合理区间
+  ✅ [hoard:world_event_token] hoard_rate=0.0（leak=0.0）在合理区间
+  ✅ [hoard:vendor_buy_gold] hoard_rate=0.0（leak=0.0）在合理区间
+  ✅ [hoard:repair_gold] hoard_rate=0.0（leak=0.0）在合理区间
+  ✅ [hoard:ah_fee_gold] hoard_rate=0.0（leak=1.0）在合理区间
+  ✅ [hoard:mail_fee_gold] hoard_rate=0.0（leak=0.0）在合理区间
+  ✅ [hoard:training_gold] hoard_rate=0.0（leak=0.0）在合理区间
+  ✅ [hoard:tax_gold] hoard_rate=0.0（leak=0.0）在合理区间
+  ✅ [hoard:vendor_buy_honor] hoard_rate=0.0（leak=0.0）在合理区间
+  ✅ [hoard:vendor_buy_conquest] hoard_rate=0.0（leak=0.0）在合理区间
+  ✅ [hoard:vendor_buy_token] hoard_rate=0.0（leak=0.0）在合理区间
+
 === 汇总 ===
-  PASS=37  WARN=5  FAIL=0  INFO=5
+  PASS=55  WARN=5  FAIL=0  INFO=7

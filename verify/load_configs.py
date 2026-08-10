@@ -20,12 +20,18 @@ import subprocess  # noqa: E402
 
 
 def _ensure_stubs():
-    """若生成的 Python 桩缺失，则用受管 venv 的 protoc 现场重新生成。
-    让校验工程在干净检出后可一键运行。"""
+    """若生成的 Python 桩缺失、或 .proto 比桩新（防止桩过期），则用受管 venv 的
+    protoc 现场重新生成。让校验工程在干净检出 / proto 变更后可一键运行。"""
     sentinel = os.path.join(_PB_DIR, "config_balance_pb2.py")
-    if os.path.exists(sentinel):
-        return
     proto_dir = os.path.normpath(os.path.join(_HERE, "..", "proto", "protobuf"))
+    proto_files = [os.path.join(proto_dir, f) for f in os.listdir(proto_dir) if f.endswith(".proto")]
+    need_regen = not os.path.exists(sentinel)
+    if not need_regen:
+        sent_mtime = os.path.getmtime(sentinel)
+        if any(os.path.getmtime(pf) > sent_mtime for pf in proto_files):
+            need_regen = True
+    if not need_regen:
+        return
     # 定位受管 venv 的 python（Scripts/python.exe）
     candidates = [
         r"C:/Users/17283/.workbuddy/binaries/python/envs/default/Scripts/python.exe",

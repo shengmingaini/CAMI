@@ -3,7 +3,7 @@
 > **角色**：游戏系统与机制设计师
 > **目标**：用系统思维拆解经济机制，**画清源与汇**，为**每条数值配平衡验证路径**，把"好玩"落成可交付的工程产物。
 > **配套资产**：`verify/balance_verifier.py`（A–J 10 类校验，退出码 0=通过）、`verify/balance_report.txt`（最近实测）、`data/configs/balance.json` + `currencies.json`。
-> **数据基线**：13 个 ConfigSet 已加载；GAP-1/GAP-2 闭合后 `PASS=37 WARN=5 FAIL=0`（WARN=5：拍卖税有意销毁 1 + 4 个死币种；新增 XP 完整性/单调/平滑三行 PASS）。
+> **数据基线**：13 个 ConfigSet 已加载；GAP-1/2/6/8/9 已闭环或建门禁、GAP-7 建对账门禁后 `PASS=55 WARN=5 FAIL=0`（WARN=5：4 个死币种 + 1 个 repair 占位数据对账告警；拍卖税有意销毁已从 WARN 转为合规 PASS）。
 > **前置闭环**：Day3 GAP-4（经济源汇）已闭合——GOLD 源 13760 = 汇 13760。
 
 ---
@@ -27,7 +27,7 @@
 | **源 Σ** | | **13760** | |
 | 汇 | `vendor_buy_gold` | 7000 | 商店购买 |
 | 汇 | `repair_gold` | 3000 | 修理 |
-| 汇 | `ah_fee_gold` | 800 | 拍卖税，**leak_rate=0.05 有意销毁 5%** |
+| 汇 | `ah_fee_gold` | 800 | 拍卖税，**leak_rate=1.0 有意销毁 100%（intentional_destroy）** |
 | 汇 | `mail_fee_gold` | 200 | 邮件费 |
 | 汇 | `training_gold` | 600 | 训练 |
 | 汇 | `tax_gold` | 2160 | 税 |
@@ -66,8 +66,8 @@
 | 2 | mob_drop_gold | 5760 | B1 + **D(密度对账)** + B2 | 与 `Σ(密度×24×区域均金)` 对账 ±10% | ✅ PASS |
 | 3 | vendor_sell_gold | 2000 | B1 + B2 | — | ✅ PASS |
 | 4 | vendor_buy_gold | 7000 | B1 + B2 | — | ✅ PASS |
-| 5 | repair_gold | 3000 | B1 + B2 | — | ✅ PASS ⚠（未与 repair_rates 对账，GAP-7） |
-| 6 | ah_fee_gold | 800 | B1 + B2(`leak≥0.02`→WARN) | leak 为有意销毁则接受 | ⚠ WARN(有意) |
+| 5 | repair_gold | 3000 | B1 + B2 + **L(repair对账)** | repair_gold≈Σ(repair_rates×耐久损耗) | ⚠ GAP-7（L 段已建对账：结构PASS，占位数据下隐含损耗超上限→WARN 暴露真实缺口） |
+| 6 | ah_fee_gold | 800 | B1 + B2 + **GAP-6(intentional_destroy)** | leak≈1.0 且 intentional_destroy=true | ✅ PASS（GAP-6 已闭合：leak=1.0 合规，不再误报 WARN） |
 | 7 | mail_fee_gold | 200 | B1 + B2 | — | ✅ PASS |
 | 8 | training_gold | 600 | B1 + B2 | — | ✅ PASS |
 | 9 | tax_gold | 2160 | B1 + B2 | — | ✅ PASS |
@@ -87,13 +87,13 @@
 | 23 | zone level bands | 2 spawn | H(LVBAND) | 生物等级带⊂区域等级带 | ✅ PASS |
 | 24 | gate reachability | 6 区连通 | I(GATE) | 全可达 + 门条件≤目标上限 | ✅ PASS |
 | 25 | referential integrity | 13 set | A(REF) | 无悬空外键 | ✅ PASS |
-| 26 | repair_rates | 主手2/耐·胸4/耐 | （无） | — | ⚠ GAP-7 |
-| 27 | hoard_rate | quest0.10·mob0.05 | （无） | — | ⚠ GAP-8 |
-| 28 | combat constants | ap_coef0.5… | （无） | — | ⚠ GAP-9 |
-| 29 | stats budget / itemization | 2 条 | J(STATS 键唯一) | 键唯一 + 衍生 input≠output | ✅ PASS ⚠(无 TTK/DPS 平衡，GAP-9) |
+| 26 | repair_rates | 主手2/耐·胸4/耐 | **L(repair对账)** | 每槽费率>0 + 可解释 repair_gold 汇 | ⚠ GAP-7（L 段：结构PASS，对账WARN 暴露缺口） |
+| 27 | hoard_rate | quest0.10·mob0.05 | **M(hoard上限)** | hoard≤0.5 且不与 leak 双重退出 | ✅ PASS（GAP-8 已闭合门禁） |
+| 28 | combat constants | ap_coef0.5… | **K(战斗模拟)** | DPS>0·mitig∈(0,0.95)·crit∈[0,1]·TTK>0 | ✅ PASS（GAP-9 已建模拟器+门禁；职业离散度延后待多职业数据） |
+| 29 | stats budget / itemization | 2 条 | J(STATS 键唯一) + K(战斗模拟消费) | 键唯一 + 衍生 input≠output + 驱动 DPS/TTK | ✅ PASS（GAP-9 已覆盖） |
 | 30 | 4 死币种 | 0 flow | （无） | — | ⚠ GAP-3 |
 
-**结论**：15 条 EconomyFlow + 周上限 + 引用/结构类（A/C/D/E/F/G/H/I/J）+ 新增 **B2-guard** 与 **J 完整性断言** 已 100% 配验证路径；剩余 **GAP-3/7/8/9** 四处数值"无验证路径"或"路径不足"，是下阶段工程化重点。其中 GAP-1（TOKEN 通胀）、**GAP-2（xp 曲线满级覆盖）** 已闭环，GAP-3（死币种）已被 verifier 显式 WARN（不再静默）。
+**结论**：15 条 EconomyFlow + 周上限 + 引用/结构类（A/C/D/E/F/G/H/I/J）+ 新增 **B2-guard**、**J 完整性断言**、**K 战斗模拟**、**L repair 对账**、**M hoard 上限** 已 100% 配验证路径；剩余 **GAP-3**（4 死币种，仅 WARN）与 **GAP-7**（repair 对账已建门禁但占位数据不自洽，需补 16 槽位+真实损耗率）两处为下阶段重点。GAP-1/2（闭环）、**GAP-6（拍卖税语义）**、**GAP-8（囤积上限）**、**GAP-9（战斗模拟）** 已闭环或建门禁。
 
 ---
 
@@ -106,10 +106,10 @@
 | **GAP-3** | PRESTIGE/JUSTICE/VALOR/ARENA 无 flow | 死币种误导策划/客户端 | verifier 增 `WARN`：声明但未建模的币种；或 `currencies.json` 加 `status:DISABLED` 字段 |
 | **GAP-4**（已闭合） | 初版 CONQUEST 净流出 1800 | 玩家攒不够买征服装 | 已修复（汇对齐源 200/日），作为"画清源汇"价值样板 |
 | **GAP-5** | gem/enchant/set 未接入 EconomyFlow | 附魔/宝石经济不可见 | 补 gem 材料源(专业采集) + 附魔消耗汇，接入 B2 账本 |
-| **GAP-6** | `leak_rate` 语义不清 | ah_fee 拍卖税应为 leak≈1.0(全销毁)，现 0.05；阈值 0.02 对有意销毁过严 | 新增 `intentional_destroy:bool`；verifier 对 `intentional_destroy` 直接 PASS；拍卖税 leak 置 1.0 |
-| **GAP-7** | `repair_gold` 未与 `repair_rates×耐久损耗` 对账 | 修理消耗可能虚高/虚低，无交叉验证 | 新增 **D2 段**：`repair_gold ≈ Σ(repair_rates×avg_durability_loss×repairs/日)` |
-| **GAP-8** | `hoard_rate`(沉淀货币) 未校验 | 资本沉淀、流通率下降 | 新增 **K 段**：`hoard_rate ≤ 上限(如 0.3)`，防死钱 |
-| **GAP-9** | 战斗数值(combat constants + stats budget)无 TTK/DPS 校验 | 职业强度失衡不可量化 | 实现战斗模拟器：基于 `config_balance.CombatConstant` + `config_stats` 出 DPS/TTK，校验职业间差异 ≤ 阈值 |
+| **GAP-6** ✅（已闭环） | `leak_rate` 语义不清 | ah_fee 拍卖税应为 leak≈1.0(全销毁)，曾误设 0.05；阈值 0.02 对有意销毁过严 | 已新增 `intentional_destroy:bool` 字段 + verifier 区分"有意销毁"(leak≈1.0 直接 PASS)与"异常泄漏"(>0.02 WARN)；拍卖税 `intentional_destroy=true, leak_rate=1.0`。验收：重跑 → ah_fee 由 WARN 转合规 PASS，`FAIL=0` |
+| **GAP-7**（已建门禁，未硬闭合） | `repair_gold` 未与 `repair_rates×耐久损耗` 对账 | 修理消耗可能虚高/虚低，无交叉验证 | 已新增 **L 段**：结构校验(每槽费率>0) + 对账(`repair_gold≈Σ(cost_per_durability)×耐久损耗`，均匀损耗假设)；当前占位数据下隐含每槽 500 耐久/日损耗>合理上限(200)→WARN **暴露真实缺口**。待补 16 槽位 repair_rates + 真实耐久损耗率 telemetry 才能硬闭合 |
+| **GAP-8** ✅（已闭环） | `hoard_rate`(沉淀货币) 未校验 | 资本沉淀、流通率下降 | 已新增 **M 段**：`hoard_rate>0.5` WARN + 与 leak 双重退出 WARN；当前全 flow PASS。验收：重跑 → 15 项 hoard 检查全 PASS |
+| **GAP-9** ✅（已建模拟器+门禁） | 战斗数值(combat constants + stats budget)无 TTK/DPS 校验 | 职业强度失衡不可量化 | 已实现 `verify/combat_simulator.py`：基于 `CombatConstant`+`config_stats` 出 AP/暴击/单伤/DPS/减伤/TTK；verifier **K 段**做模型自洽校验(减伤∈(0,0.95)等)+职业离散度门禁(≤1.5)。当前仅 WARRIOR 1 职业建模→离散度校验延后(INFO)，需补 class_weights 多职业数据。验收：重跑 → combat 段 PASS + dispersion INFO |
 
 ---
 
@@ -118,7 +118,7 @@
 ### 4.1 CI 验收门禁
 
 - `verify/balance_verifier.py` 退出码必须为 **0**（FAIL>0 即红）。
-- 建议接入 PR 检查，`WARN` 数设上限（当前 1，允许拍卖税这个"有意销毁"）。
+- 建议接入 PR 检查，`WARN` 数设上限（当前 5：4 死币种 + 1 个 repair 占位数据对账告警；拍卖税有意销毁已从 WARN 移除）。
   可在 `main()` 增加 `--max-warn N`，`return 1 if n_error>0 or n_warn>max_warn`。
 - 报告写入 `verify/balance_report.txt` 作为可归档证据；接 `alert_channel`（`econ-balance`/`econ-pvp`/`econ-event`）做运行时同源对账（见 balance-verification.md §5）。
 
@@ -135,5 +135,5 @@
 ## 5. 结论
 
 - **已交付的工程产物**：13 ConfigSet 自洽小世界 + 10 类自动校验 + 本次源汇图谱/验证路径矩阵。GOLD 源汇完美闭合（13760=13760），HONOR/CONQUEST 经周上限三处对账与密度/事件交叉验证，均可交付。
-- **核心风险（已收敛）**：GAP-1（TOKEN 通胀）已闭环——新增 `vendor_buy_token` 汇使账本 `源 480=汇 480` 净 0，并以 B2 硬门禁把"`can_lose=false` 币种净注入>0 即 FAIL"锁死，防止策划或后续提交悄悄复活单向注入。**GAP-2（xp 曲线满级覆盖）已闭环**——扩 `xp_curve` 至 59 级（覆盖 1..max_level-1）并加 J 完整性硬断言（`levels==range(1,max_level)` 否则 FAIL），把"曲线没填到满级"这类静默缺口彻底堵死。GAP-3（4 个死币种）现已被 verifier 显式 WARN，提醒策划/客户端别误以为这些币可用。剩余待解：repair/hoard/combat 无交叉校验（GAP-7/8/9）。
-- **演进方向**：GAP-5/6/7/8/9 把经济校验从"离线对账"推向"宝石/附魔/修理/沉淀/战斗强度"全维度，并在线上 `alert_channel` 做实时源汇对账，把"好玩"真正锁死为可监控、可回滚的工程系统。
+- **核心风险（已收敛）**：GAP-1（TOKEN 通胀）、**GAP-2（xp 曲线满级覆盖）** 已闭环；**GAP-6（拍卖税 leak 语义）**、**GAP-8（囤积上限）**、**GAP-9（战斗模拟）** 已闭环或建门禁。GAP-7 已建对账门禁并**暴露真实缺口**——占位数据下 repair_gold 汇无法由现有 repair_rates 解释，需补 16 槽位费率与真实耐久损耗率。GAP-3（4 死币种）仍 WARN。
+- **演进方向**：GAP-5 把宝石/附魔经济接入 EconomyFlow；GAP-7 补真实损耗率 telemetry；GAP-9 补多职业数据以启用职业离散度硬门禁——把"好玩"真正锁死为可监控、可回滚的工程系统。

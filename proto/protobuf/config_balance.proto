@@ -73,6 +73,8 @@ message EconomyFlow {
   float expected_daily_per_capita = 8;      // 预期人均日流量
   float tolerance_pct = 9;                  // 容忍偏差 (%)
   string alert_channel = 10;                // 告警通道（如 "econ-balance"）
+  bool intentional_destroy = 11;            // 有意销毁：该流货币永久退出经济（拍卖税/销毁费）。
+                                             // 此时 leak_rate 应≈1.0；若 <0.5 视为建模矛盾。
 }
 
 // 修理费率（耐久损耗 → 经济汇，写入 config_balance 而非 items 以保持单一归属）

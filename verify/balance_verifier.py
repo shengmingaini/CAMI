@@ -23,6 +23,11 @@ sys.path.insert(0, os.path.join(HERE, "_pb"))
 
 from load_configs import load_all  # noqa: E402
 
+try:
+    import combat_simulator as _cmb_sim  # noqa: E402
+except Exception:  # pragma: no cover
+    _cmb_sim = None
+
 
 # ----------------------------------------------------------------------------
 # 报告累加器
@@ -184,8 +189,15 @@ def run(cfgs, rep):
                 rep.pass_(tag, f"{cur_name(fl.currency)} {fl.direction} 实测 {fl.per_capita_daily} ≈ 预期 {int(fl.expected_daily_per_capita)} (±{int(tol*100)}%)")
             else:
                 rep.fail(tag, f"{cur_name(fl.currency)} {fl.direction} 实测 {fl.per_capita_daily} 偏离预期 {int(fl.expected_daily_per_capita)} 超 {int(tol*100)}%")
-            if fl.leak_rate > 0.02:
-                rep.warn(tag, f"leak_rate={fl.leak_rate} 超阈值(>0.02)：货币未经闭环消失，需确认是否为有意销毁(如拍卖税)")
+            # GAP-6：区分"有意销毁"与"异常泄漏"
+            if getattr(fl, "intentional_destroy", False):
+                # 拍卖税/销毁费：货币永久退出经济，leak_rate 应≈1.0
+                if fl.leak_rate < 0.5:
+                    rep.fail(tag, f"intentional_destroy=true 但 leak_rate={fl.leak_rate} 偏低（应≈1.0 表示 100% 销毁），建模矛盾")
+                else:
+                    rep.pass_(tag, f"intentional_destroy=true（拍卖税/销毁费）：leak_rate={fl.leak_rate} 符合预期（货币永久退出经济）")
+            elif fl.leak_rate > 0.02:
+                rep.warn(tag, f"leak_rate={fl.leak_rate} 超阈值(>0.02)：货币未经闭环消失，需确认是否为有意销毁(如拍卖税)或为配置笔误")
         # B2: 每币种净流量（源-汇），输出源汇账本
         by_cur = {}
         for fl in flows:
@@ -441,6 +453,84 @@ def run(cfgs, rep):
         for r in cfgs["stats"].derived_rules:
             if r.input_stat == r.output_stat:
                 rep.warn("STATS", f"衍生规则 input==output ({r.input_stat}) 无意义")
+
+    # ===================================================================
+    rep.section("K. 战斗强度模拟 (GAP-9)")
+    if _cmb_sim is None:
+        rep.warn("COMBAT", "combat_simulator 不可用，跳过战斗强度校验")
+    elif "balance" not in cfgs or "stats" not in cfgs:
+        rep.warn("COMBAT", "缺少 balance/stats，跳过战斗强度校验")
+    else:
+        res = _cmb_sim.simulate(cfgs)
+        for c in res["classes"]:
+            tag = f"combat:{_cmb_sim._class_name(c['class'])}"
+            mitig = c["mitigation_pct"] / 100.0
+            crit = c["crit_pct"] / 100.0
+            ok = (c["dps"] > 0 and c["ttk_sec"] not in (None, 0)
+                  and _cmb_sim.CONFIG["MITIGATION_MIN"] < mitig < _cmb_sim.CONFIG["MITIGATION_MAX"]
+                  and 0.0 <= crit <= 1.0)
+            if ok:
+                rep.pass_(tag, f"AP={c['attack_power']:.0f} 暴击={c['crit_pct']:.2f}% 裸DPS={c['dps']:.1f} "
+                               f"减伤={c['mitigation_pct']:.1f}% 有效DPS={c['eff_dps']:.1f} TTK={c['ttk_sec']:.0f}s（模型自洽）")
+            else:
+                rep.fail(tag, f"战斗模型输出越界: DPS={c['dps']} mitig={c['mitigation_pct']}% crit={c['crit_pct']}% TTK={c['ttk_sec']}")
+        d = res["dispersion"]
+        if d["verdict"] == "fail":
+            rep.fail("COMBAT", f"职业强度离散度过大: {d['reason']}")
+        elif d["verdict"] == "pass":
+            rep.pass_("COMBAT", f"职业强度离散度合理: {d['reason']}")
+        else:
+            rep.info("COMBAT", f"职业强度离散度校验延后: {d['reason']}")
+
+    # ===================================================================
+    rep.section("L. 修理成本对账 (GAP-7)")
+    if "balance" not in cfgs:
+        rep.warn("REPAIR", "缺少 balance，跳过修理对账")
+    else:
+        bal = cfgs["balance"]
+        rates = bal.repair_rates
+        # 结构：每个槽位费率 > 0
+        struct_ok = True
+        for r in rates:
+            if r.cost_per_durability <= 0:
+                rep.fail("REPAIR", f"槽位 {r.slot} cost_per_durability={r.cost_per_durability} 非法（应>0）")
+                struct_ok = False
+        if struct_ok and rates:
+            rep.pass_("REPAIR", f"repair_rates 结构合法：{len(rates)} 个槽位费率均>0")
+        elif not rates:
+            rep.info("REPAIR", "未定义 repair_rates（无修理费率）")
+        # 对账：repair_gold 汇 是否可由 repair_rates × 耐久损耗 解释
+        repair_flow = next((f for f in bal.economy_flows
+                            if f.source_category == "repair" and f.direction == 1), None)
+        if repair_flow is None:
+            rep.warn("REPAIR", "无 repair 类汇（repair_gold），无法对账修理成本")
+        elif not rates:
+            rep.warn("REPAIR", "有 repair_gold 汇但无 repair_rates，成本不可解释")
+        else:
+            sum_cost = sum(r.cost_per_durability for r in rates)
+            implied_loss = repair_flow.per_capita_daily / sum_cost  # 均匀损耗假设下每槽日损耗
+            MAX_LOSS = 200.0  # 单槽日耐久损耗合理上限（≈最大耐久，极端情形）
+            if implied_loss > MAX_LOSS:
+                rep.warn("REPAIR", f"repair_gold 汇 {int(repair_flow.per_capita_daily)}/日 在'均匀损耗'假设下隐含每槽 {implied_loss:.0f} 耐久/日损耗，"
+                                   f"远超合理上限({MAX_LOSS:.0f})—— 现有 repair_rates 无法解释该汇，需补充其余槽位与真实耐久损耗率（GAP-7）")
+            else:
+                rep.pass_("REPAIR", f"repair_gold 汇 {int(repair_flow.per_capita_daily)}/日 可由 repair_rates（Σ费率={sum_cost}）在合理损耗({implied_loss:.0f}/槽/日)内解释")
+            rep.info("REPAIR", f"仅 {len(rates)} 个槽位定义 repair_rates（完整装备约 16 槽），当前对账基于已定义槽位均匀损耗假设；"
+                                f"完整对账需补充其余槽位与真实耐久损耗率")
+
+    # ===================================================================
+    rep.section("M. 囤积率上限 (GAP-8)")
+    if "balance" not in cfgs:
+        rep.warn("HOARD", "缺少 balance，跳过囤积率校验")
+    else:
+        for fl in cfgs["balance"].economy_flows:
+            tag = f"hoard:{fl.flow_id}"
+            if fl.hoard_rate > 0.5:
+                rep.warn(tag, f"hoard_rate={fl.hoard_rate} 过高（>0.5）：货币过度沉淀，流动性枯竭风险")
+            elif fl.leak_rate > 0.02 and fl.hoard_rate > 0.1 and not getattr(fl, "intentional_destroy", False):
+                rep.warn(tag, f"同时存在泄漏(leak={fl.leak_rate})与囤积(hoard={fl.hoard_rate})：双重货币退出，需确认是否设计意图")
+            else:
+                rep.pass_(tag, f"hoard_rate={fl.hoard_rate}（leak={fl.leak_rate}）在合理区间")
 
 
 # ----------------------------------------------------------------------------
