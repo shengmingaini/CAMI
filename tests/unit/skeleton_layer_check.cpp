@@ -10,6 +10,7 @@
 #include "game/game_layer.h"
 #include "gateway/codec/codec_selfcheck.h"
 #include "gateway/connection/connection_selfcheck.h"
+#include "gateway/heartbeat/heartbeat_selfcheck.h"
 #include "gateway/gateway_layer.h"
 #include "ops/ops_layer.h"
 
@@ -75,6 +76,14 @@ int main() {
         ok = false;
     } else {
         std::printf("[ OK ] codec functional (sticky/half/oversized framing)\n");
+    }
+
+    // Week2 周三交付物验证：心跳管理（保活/超时踢线/无泄漏/空闲回收）。
+    if (!cami::gateway::heartbeat::heartbeat_selfcheck()) {
+        std::fprintf(stderr, "[FAIL] heartbeat_selfcheck(): 心跳逻辑异常\n");
+        ok = false;
+    } else {
+        std::printf("[ OK ] heartbeat manager functional (keepalive / timeout-kick / idle-recycle)\n");
     }
 
     if (ok) {

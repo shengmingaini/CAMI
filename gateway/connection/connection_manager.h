@@ -6,6 +6,7 @@
 #include <boost/asio/ip/tcp.hpp>
 
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -33,6 +34,16 @@ public:
     // 停止接受新连接并关闭所有 acceptor；已建连接由各自空闲超时/外部 close 自然结束。
     void stop();
 
+    // [集成挂钩] 每条连接 accepted 后、start() 之前调用，供上层设置 on_data / 注册心跳等。
+    // 传入 shared_ptr<Connection> 便于上层在踢线闭包中安全持有并 close。
+    void set_on_accept(std::function<void(std::shared_ptr<Connection>)> cb) {
+        on_accept_ = std::move(cb);
+    }
+    // [集成挂钩] 连接到达终态(Closed)时先回调（上层做心跳注销/解码器清理），随后自动从 active_ 移除。
+    void set_on_connection_closed(std::function<void(Connection&)> cb) {
+        on_conn_closed_ = std::move(cb);
+    }
+
     std::size_t pool_size() const noexcept { return pool_.size(); }
 
 private:
@@ -43,6 +54,8 @@ private:
     std::vector<std::unique_ptr<boost::asio::ip::tcp::acceptor>> acceptors_;
     std::mutex active_mtx_;
     std::vector<std::shared_ptr<Connection>> active_;  // 冷路径（accept/close），可加锁
+    std::function<void(std::shared_ptr<Connection>)> on_accept_;  // 上层集成挂钩
+    std::function<void(Connection&)> on_conn_closed_;              // 上层终态清理挂钩
 };
 
 }  // namespace connection

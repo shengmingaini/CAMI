@@ -87,6 +87,17 @@ if(CAMI_BUILD_TESTS)
     add_executable(cami_codec_test tests/unit/codec_framing_test.cpp)
     target_link_libraries(cami_codec_test PRIVATE cami_gateway_codec GTest::gtest GTest::gtest_main)
     add_test(NAME codec_framing_test COMMAND cami_codec_test)
+
+    # 周三交付物：心跳管理单测（保活/超时踢线/误差<1s/边界/无泄漏/空闲回收）。
+    add_executable(cami_heartbeat_test tests/unit/heartbeat_test.cpp)
+    target_link_libraries(cami_heartbeat_test PRIVATE cami_gateway_heartbeat GTest::gtest GTest::gtest_main)
+    add_test(NAME heartbeat_test COMMAND cami_heartbeat_test)
+
+    # 周四"单测补齐"：connection 模块非 socket 核心路径（FSM 全迁移 + io_context 池）。
+    # cami_gateway_connection 链 Boost::system（Asio），故测试显式补链。
+    add_executable(cami_connection_test tests/unit/connection_test.cpp)
+    target_link_libraries(cami_connection_test PRIVATE cami_gateway_connection Boost::system GTest::gtest GTest::gtest_main)
+    add_test(NAME connection_test COMMAND cami_connection_test)
 endif()
 
 message(STATUS "=== CAMI Build Configuration ===")

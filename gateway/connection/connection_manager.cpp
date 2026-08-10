@@ -38,7 +38,16 @@ ConnectionManager::ConnectionManager(std::size_t pool_size, int listen_backlog)
 int ConnectionManager::start(const std::string& host, std::uint16_t port) {
     boost::asio::ip::tcp::endpoint ep(boost::asio::ip::make_address(host), port);
     pool_.run();  // 启动 io_context 线程（重复调用安全）
-    for (std::size_t i = 0; i < pool_.size(); ++i) {
+    // 监听 acceptor 数量：
+    //  - Linux：SO_REUSEPORT 允许多 acceptor 同端口（内核做连接负载均衡）→ 每 io_context 一个。
+    //  - Windows：无 SO_REUSEPORT，reuse_address 不允许两 listener 绑同端口 → 仅单 acceptor
+    //    （水平扩展靠"多网关进程"实现，符合架构 §4.1 无状态水平扩展模型）。
+#if defined(__linux__)
+    const std::size_t n_acceptors = pool_.size();
+#else
+    const std::size_t n_acceptors = 1;
+#endif
+    for (std::size_t i = 0; i < n_acceptors; ++i) {
         boost::asio::io_context& ctx = pool_.get_io_context();  // 轮询分配，每 context 一个 acceptor
         auto acceptor = std::make_unique<boost::asio::ip::tcp::acceptor>(ctx);
         set_reuseport(*acceptor);
@@ -77,8 +86,12 @@ void ConnectionManager::do_accept(boost::asio::ip::tcp::acceptor& acceptor) {
                 return;
             }
             auto conn = std::make_shared<Connection>(std::move(socket));
-            // 终态回调：从活动表移除。捕获裸指针避免 shared_ptr 环；manager 生命期覆盖连接。
+            // 上层集成挂钩：设置 on_data / 注册心跳等（在 start 前，确保读取启动前已接线）。
+            if (on_accept_) on_accept_(conn);
+            // 终态回调：先调上层清理（心跳注销/解码器清理），再从活动表移除，避免悬空/泄漏。
+            // 捕获裸指针避免 shared_ptr 环；manager 生命期覆盖连接。
             conn->set_on_closed([this, raw = conn.get()]() {
+                if (on_conn_closed_) on_conn_closed_(*raw);
                 std::lock_guard<std::mutex> lk(active_mtx_);
                 for (auto it = active_.begin(); it != active_.end(); ++it) {
                     if (it->get() == raw) { active_.erase(it); break; }

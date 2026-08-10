@@ -9,8 +9,11 @@
 #include <atomic>
 #include <chrono>
 #include <cstdint>
+#include <cstddef>
+#include <array>
 #include <functional>
 #include <memory>
+#include <vector>
 
 namespace cami {
 namespace gateway {
@@ -43,6 +46,15 @@ public:
     // codec 模块每成功解码一条消息调用，刷新空闲计时（防误杀长连接）。
     void mark_activity();
 
+    // [PROTOTYPE→集成] 收到对端字节时回调（原始字节，未做帧定界；由 codec 模块负责定界）。
+    // 供压测/真实网关把 socket 读到的数据喂给 FrameDecoder。可空。
+    void set_on_data(std::function<void(const std::uint8_t*, std::size_t)> cb) {
+        on_data_ = std::move(cb);
+    }
+
+    // 在连接所属 io_context 线程上安全地执行 close()（跨线程调用时避免竞态，见 HeartbeatManager 踢线）。
+    void close_via_executor();
+
     ConnectionState state() const noexcept {
         return state_.load(std::memory_order_acquire);
     }
@@ -60,15 +72,19 @@ private:
     void transition_to(ConnectionState to);
     void start_idle_timer();
     void on_idle_timeout(const boost::system::error_code& ec);
+    // 启动异步读取循环：async_read_some → on_data 回调 → 重新投递（aborted/EOF 即停，不重入）。
+    void begin_read();
 
     Socket socket_;
     boost::asio::steady_timer idle_timer_;
+    std::array<std::uint8_t, 4096> read_buf_{};  // 固定读缓冲，避免运行时分配
     std::atomic<ConnectionState> state_{ConnectionState::kIdle};
     std::uint32_t idle_timeout_ms_;
     std::uint64_t id_;
     static std::atomic<std::uint64_t> next_id_;
     std::function<void(ConnectionState, ConnectionState)> on_state_change_;
     std::function<void()> on_closed_;
+    std::function<void(const std::uint8_t*, std::size_t)> on_data_;
 };
 
 }  // namespace connection

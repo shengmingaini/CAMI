@@ -1,5 +1,6 @@
 #include "gateway/connection/connection.h"
 
+#include <boost/asio/dispatch.hpp>
 #include <boost/asio/error.hpp>
 
 namespace cami {
@@ -26,6 +27,7 @@ void Connection::start() {
     // 原型阶段直接置 Established，仅验证生命周期链路。
     transition_to(ConnectionState::kEstablished);
     start_idle_timer();
+    begin_read();  // [集成] 进入 Established 即开始异步读取，原始字节经 on_data 上抛。
 }
 
 void Connection::mark_activity() {
@@ -77,6 +79,31 @@ void Connection::on_idle_timeout(const boost::system::error_code& ec) {
     transition_to(ConnectionState::kClosed);
     boost::system::error_code close_ec;
     socket_.close(close_ec);
+}
+
+void Connection::begin_read() {
+    if (state_.load(std::memory_order_acquire) != ConnectionState::kEstablished) return;
+    auto self = shared_from_this();
+    socket_.async_read_some(
+        boost::asio::buffer(read_buf_),
+        [self](const boost::system::error_code& ec, std::size_t n) {
+            if (ec) {
+                // operation_aborted（close 取消）/ EOF / 其他错误：停止读取，不重入循环。
+                return;
+            }
+            if (self->on_data_) {
+                self->on_data_(self->read_buf_.data(), n);
+            }
+            // 继续投递下一次读取（单连接单线程亲和，无并发读竞态）。
+            self->begin_read();
+        });
+}
+
+void Connection::close_via_executor() {
+    // 在连接所属 io_context 线程上执行 close()，避免跨线程操作 socket/timer 的竞态
+    //（例如 HeartbeatManager 在 pool timer 线程判定超时后踢线）。
+    auto ex = socket_.get_executor();
+    boost::asio::dispatch(ex, [self = shared_from_this()]() { self->close(); });
 }
 
 }  // namespace connection
