@@ -493,13 +493,12 @@
     }
   ],
   "repair_rates": [
-    {
-      "slot": "SLOT_MAINHAND",
-      "cost_per_durability": 2
-    },
-    {
-      "slot": "SLOT_CHEST",
-      "cost_per_durability": 4
-    }
+    { "slot": "SLOT_HEAD",      "cost_per_durability": 4 },
+    { "slot": "SLOT_CHEST",     "cost_per_durability": 6 },
+    { "slot": "SLOT_LEGS",      "cost_per_durability": 6 },
+    { "slot": "SLOT_FEET",      "cost_per_durability": 3 },
+    { "slot": "SLOT_HANDS",     "cost_per_durability": 3 },
+    { "slot": "SLOT_MAINHAND",  "cost_per_durability": 5 },
+    { "slot": "SLOT_OFFHAND",   "cost_per_durability": 4 }
   ]
 }

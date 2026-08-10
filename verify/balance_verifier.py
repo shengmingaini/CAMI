@@ -484,21 +484,40 @@ def run(cfgs, rep):
 
     # ===================================================================
     rep.section("L. 修理成本对账 (GAP-7)")
+    # CAMI 装备模型中有耐久的槽位（EquipSlot 枚举值：HEAD=1,CHEST=2,LEGS=3,FEET=4,HANDS=5,MAINHAND=6,OFFHAND=7；
+    #   NECK=9/RING=10/TRINKET=8 无耐久，不计入修理成本）
+    SLOT_NAME = {0:"SLOT_NONE",1:"SLOT_HEAD",2:"SLOT_CHEST",3:"SLOT_LEGS",4:"SLOT_FEET",
+                 5:"SLOT_HANDS",6:"SLOT_MAINHAND",7:"SLOT_OFFHAND",8:"SLOT_TRINKET",9:"SLOT_NECK",10:"SLOT_RING"}
+    KNOWN_DURABLE_SLOTS = {1, 2, 3, 4, 5, 6, 7}
     if "balance" not in cfgs:
         rep.warn("REPAIR", "缺少 balance，跳过修理对账")
     else:
         bal = cfgs["balance"]
         rates = bal.repair_rates
-        # 结构：每个槽位费率 > 0
+        # 结构：每个槽位费率 > 0 且无重复定义
         struct_ok = True
+        seen = set()
         for r in rates:
             if r.cost_per_durability <= 0:
-                rep.fail("REPAIR", f"槽位 {r.slot} cost_per_durability={r.cost_per_durability} 非法（应>0）")
+                rep.fail("REPAIR", f"槽位 {SLOT_NAME.get(r.slot, r.slot)} cost_per_durability={r.cost_per_durability} 非法（应>0）")
                 struct_ok = False
+            if r.slot in seen:
+                rep.fail("REPAIR", f"槽位 {SLOT_NAME.get(r.slot, r.slot)} 重复定义 repair_rates")
+                struct_ok = False
+            seen.add(r.slot)
         if struct_ok and rates:
-            rep.pass_("REPAIR", f"repair_rates 结构合法：{len(rates)} 个槽位费率均>0")
+            rep.pass_("REPAIR", f"repair_rates 结构合法：{len(rates)} 个槽位费率均>0 且无重复")
         elif not rates:
             rep.info("REPAIR", "未定义 repair_rates（无修理费率）")
+        # 覆盖检查：有耐久槽是否全部建模（缺槽 = 真实缺口，WARN 暴露）
+        if rates:
+            defined = {r.slot for r in rates}
+            missing = sorted(KNOWN_DURABLE_SLOTS - defined)
+            if not missing:
+                rep.info("REPAIR", f"已建模完整有耐久槽（{len(defined)}/{len(KNOWN_DURABLE_SLOTS)}），对账基于均匀损耗假设；"
+                                   f"未来接入真实耐久损耗率 telemetry 后可按槽独立校准")
+            else:
+                rep.warn("REPAIR", f"有耐久槽未全覆盖（{len(defined)}/{len(KNOWN_DURABLE_SLOTS)}），缺：{', '.join(SLOT_NAME[m] for m in missing)}（GAP-7）")
         # 对账：repair_gold 汇 是否可由 repair_rates × 耐久损耗 解释
         repair_flow = next((f for f in bal.economy_flows
                             if f.source_category == "repair" and f.direction == 1), None)
@@ -515,8 +534,6 @@ def run(cfgs, rep):
                                    f"远超合理上限({MAX_LOSS:.0f})—— 现有 repair_rates 无法解释该汇，需补充其余槽位与真实耐久损耗率（GAP-7）")
             else:
                 rep.pass_("REPAIR", f"repair_gold 汇 {int(repair_flow.per_capita_daily)}/日 可由 repair_rates（Σ费率={sum_cost}）在合理损耗({implied_loss:.0f}/槽/日)内解释")
-            rep.info("REPAIR", f"仅 {len(rates)} 个槽位定义 repair_rates（完整装备约 16 槽），当前对账基于已定义槽位均匀损耗假设；"
-                                f"完整对账需补充其余槽位与真实耐久损耗率")
 
     # ===================================================================
     rep.section("M. 囤积率上限 (GAP-8)")
