@@ -13,7 +13,8 @@
 | D3 | 路由 | `gateway/router/`（一致性哈希 + 热更新；FNV+fmix64 虚拟节点）；`router_test`；`docs/modules/router.md` | ✅（修复 FNV 短串雪崩导致负载倾斜） |
 | D4 | 在线态存储 | `gateway/redis/`（OnlineStateStore 抽象 + InMemoryState + ShardRouter 16 分片 + RedisClusterState 门控 MODULES=ON）；`redis_test`；`docs/modules/redis.md` | ✅（修复故障切换重路由倾斜） |
 | D5 | 连接迁移设计 | `docs/design/connection-migration.md`（800ms 预算 + mermaid 时序图 + 四模块集成缝 + 周评审） | ✅ 设计文档 |
-| — | 提交 | 5 提交（含 D1 security）：`4cdbeb3` `46835b8` `9a9dbab` `5466c4e` `2d50287` + CRLF 归一化 `94aba22`；`ctest 8/8 绿` | ✅ 已 push `dev`（CI 双 job 已触发，见风险①解决记录） |
+| — | 集成缝落地 | `gateway/integration/`（GatewayPipeline 组合四模块缝成可单测策略；缝①限流/②鉴权/③选后端/④在线态） | ✅（详见风险③） |
+| — | 提交 | 9 提交已 push `dev`：`4cdbeb3`(security) `46835b8`(ratelimit) `9a9dbab`(router) `5466c4e`(redis) `2d50287`(迁移设计+周报) `94aba22`(CRLF) `7a312ff`(周报状态) `0597a36`(集成层) `bd15d85`(周报③)；`ctest 9/9 绿` | ✅ 已 push（CI 双 job 已触发） |
 
 ## 二、重点进展
 
@@ -44,14 +45,14 @@
 
 ## 三、指标与质量
 
-- 构建/测试：本地 MinGW64 `ctest` **8/8 绿**（skeleton_layer_check + codec + heartbeat + connection + security + ratelimit + router + redis）；
+- 构建/测试：本地 MinGW64 `ctest` **9/9 绿**（skeleton_layer_check + codec + heartbeat + connection + security + ratelimit + router + redis + integration）；
 - 路由迁移率：移除 1/20 ≈ 6.1%、新增 1/21 ≈ 5.0%（< 10% 验收）；
 - 路由负载均衡：max 2365 / avg 2000（1.18×）；
 - Redis 16 分片：max 1325 / avg 1250（均衡）；故障切换后 max 1397（仍均衡）；
 - 限流：单 IP check 纯内存哈希 + 整数运算（O(1)，无锁无系统调用）；
 - 安全：AES-GCM 真实路径 `<0.05ms/包` 验收在 `MODULES=ON` + OpenSSL 下实测（类 `security_bench`，OFF 不编译）；
 - 每个模块均为独立 STATIC target，`CAMI_BUILD_MODULES=OFF` 下轻量 CI 始终可编译 + selfcheck 验证；
-- 文档：4 份模块设计（`docs/modules/{security,ratelimit,router,redis}.md`）+ 1 份迁移设计（`docs/design/connection-migration.md`），均 `_TEMPLATE` 风格。
+- 文档：5 份模块设计（`docs/modules/{security,ratelimit,router,redis,integration}.md`）+ 1 份迁移设计（`docs/design/connection-migration.md`），均 `_TEMPLATE` 风格。
 
 ## 四、风险与待办（状态更新于 2026-08-11 补）
 
@@ -60,15 +61,15 @@
 3. ✅ **集成缝已落地**：新增 `gateway/integration/GatewayPipeline`，把 D5 设计的 4 处缝组合成可单测策略，仅经 `ConnectionManager` 既有 `set_on_accept` 挂钩接入（不改其逻辑本体）；auth/route/online 三缝由上层登录/迁移流程显式调用（Connection 不携带 player_id）。唯一轻微越界：`Connection` 加只读 `peer_address()` 访问器（限流缝取对端 IP 的必要胶水，逻辑零改动）。selfcheck 8 子项 + GTest 6 例全绿，本地 `ctest 9/9`。
 4. **800ms 预算未实测**：需真实网络/多网关迁移专项压测校准，非沙箱可证（环境不可达）。
 5. ✅ **行尾归一化已解决**：新增 `.gitattributes`（`* text=auto eol=lf`）+ `git add --renormalize .` 独立提交 `94aba22`，仅 7 文件纯行尾差异、无真实改动。
-6. ⚠️ **CI 结果待用户确认**：push 已触发，但本机未装 `gh`/无 token，无法程序化查 Actions 页；需用户在 GitHub 查 ubuntu runner 结果（本地 OFF 重跑 `ctest 8/8` 绿作为兜底证据）。
+6. ⚠️ **CI 结果待用户确认**：push 已触发，但本机未装 `gh`/无 token，无法程序化查 Actions 页；需用户在 GitHub 查 ubuntu runner 结果（本地 OFF 重跑 `ctest 9/9` 绿作为兜底证据）。
 
 ## 五、下周计划（建议）
 
-- **首要**：网络恢复后 push `dev`，确认 CI 双 job 全绿；
-- 集成缝落地：在 `ConnectionManager` 接入 ratelimit/security/router/redis 四缝（不改 Connection 本体）；
-- 开启 `CAMI_BUILD_MODULES=ON` 的 CI job，端到端验证 AES-GCM + RedisClusterState；
-- 迁移专项压测，实测 800ms 预算；
-- 视情况执行行尾归一化独立提交。
+- ~~网络恢复后 push `dev`~~ ✅ 已 push（远端改 `github.com:22` 绕过被墙的 ssh.github.com），待用户在 GitHub 确认 CI 双 job 全绿；
+- ~~集成缝落地~~ ✅ 已完成（`gateway/integration/GatewayPipeline`，仅经 `set_on_accept` 挂钩接入，不改 `ConnectionManager` 逻辑）；
+- 开启 `CAMI_BUILD_MODULES=ON` 的 CI job，端到端验证 AES-GCM + RedisClusterState（环境型：本机 vcpkg 重链未验证，留作下周任务）；
+- 迁移专项压测，实测 800ms 预算（环境型：需真实多网关网络，沙箱不可达）；
+- ~~行尾归一化~~ ✅ 已完成（`.gitattributes` + `renormalize`，独立提交 `94aba22`，零功能改动）。
 
 ---
-*生成：2026-08-11（周报落库日）；任务卡映射 Mon~Fri = 08-24~08-28。Week3 网关四件套 + 迁移设计已交付，架构闭环、边界严守（ADR-002）。*
+*生成/闭环：2026-08-11（周报落库日 + 闭环确认）；任务卡映射 Mon~Fri = 08-24~08-28。Week3 网关四件套 + 迁移设计 + 集成缝全部交付，架构闭环、边界严守（ADR-002）；本环境可闭环风险（push / 行尾 / CI 触发 / 集成缝）均已解决并 push，仅真实后端 CI 与 800ms 实测留作下周 / 环境任务。*
