@@ -70,7 +70,7 @@ jobs:
     timeout-minutes: 240
     services:
       redis-cluster:
-        image: grokzen/redis-cluster:7.0
+        image: grokzen/redis-cluster:7.2.5
     env:
       VCPKG_ROOT: ${{ github.workspace }}/vcpkg
       VCPKG_BINARY_SOURCES: "clear;files,${{ github.workspace }}/vcpkg-bincache,readwrite"
