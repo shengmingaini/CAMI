@@ -17,7 +17,8 @@ target_include_directories(cami_gateway_redis PUBLIC
 target_compile_features(cami_gateway_redis PUBLIC cxx_std_17)
 
 if(CAMI_BUILD_MODULES)
-    find_package(redis-plus-plus CONFIG REQUIRED)
-    target_link_libraries(cami_gateway_redis PRIVATE redis-plus-plus::redis-plus-plus)
+    # vcpkg port 名为 redis-plus-plus，但 CMake config 包名为 redis++（redis++Config.cmake）。
+    find_package(redis++ CONFIG REQUIRED)
+    target_link_libraries(cami_gateway_redis PRIVATE redis++::redis++_static)
     target_compile_definitions(cami_gateway_redis PRIVATE CAMI_BUILD_MODULES)
 endif()

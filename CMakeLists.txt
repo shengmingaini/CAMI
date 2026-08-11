@@ -53,7 +53,8 @@ find_package(Boost REQUIRED CONFIG COMPONENTS system)
 # Re-add them here + in vcpkg.json when game/data RPC / scripting layers are implemented.
 if(CAMI_BUILD_MODULES)
     find_package(OpenSSL REQUIRED)
-    find_package(redis-plus-plus CONFIG REQUIRED)
+    # vcpkg port 名为 redis-plus-plus，但 CMake config 包名为 redis++（redis++Config.cmake）。
+    find_package(redis++ CONFIG REQUIRED)
     # 全局透传：MODULES=ON 下各模块用 target_compile_definitions(PRIVATE ...) 仅作用于自身，
     # 测试可执行文件（cami_security_test / cami_redis_test）拿不到该宏，会导致
     # security_test.cpp 的 AES-GCM 真实路径 / redis_test.cpp 的 RedisCluster 真实测试被编译剔除。
