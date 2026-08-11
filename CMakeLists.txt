@@ -55,6 +55,11 @@ if(CAMI_BUILD_MODULES)
     find_package(redis-plus-plus CONFIG REQUIRED)
     find_package(sol2 CONFIG REQUIRED)
     find_package(Lua REQUIRED)
+    # 全局透传：MODULES=ON 下各模块用 target_compile_definitions(PRIVATE ...) 仅作用于自身，
+    # 测试可执行文件（cami_security_test / cami_redis_test）拿不到该宏，会导致
+    # security_test.cpp 的 AES-GCM 真实路径 / redis_test.cpp 的 RedisCluster 真实测试被编译剔除。
+    # 这里全局注入，保证 MODULES=ON 时所有目标（含测试）都看到 CAMI_BUILD_MODULES。
+    add_compile_definitions(CAMI_BUILD_MODULES)
 endif()
 
 # === Include Directories ===

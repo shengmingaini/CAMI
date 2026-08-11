@@ -57,7 +57,7 @@
 ## 四、风险与待办（状态更新于 2026-08-11 补）
 
 1. ✅ **push 已解决**：根因探明——`ssh.github.com:443/22` 均被墙，`github.com:22/443` 通；远端已永久改为 `git@github.com:shengmingaini/CAMI.git`（SCP，绕过 insteadOf 改写）。5 个提交已推上 `dev`，CI 双 job（build + economy-balance）已触发。
-2. ⚠️ **真实后端路径沙箱不可证（待 CI job）**：AES-GCM（OpenSSL）、RedisClusterState（redis-plus-plus + 运行 Redis Cluster）需在 `MODULES=ON` + vcpkg CI job 端到端验证；当前轻量 CI 只验内存/抽象路径。→ 见下周计划，需新增 MODULES=ON CI job。
+2. ✅ **真实后端 CI job 已落地**：新增 `build-modules-on` job（vcpkg + 二进制缓存 + `grokzen/redis-cluster` 服务容器），端到端验证 AES-GCM(OpenSSL) 真实加密路径 + RedisClusterState 连真集群 HSET/HGET/DEL；顺带修一处隐蔽 bug——`MODULES=ON` 下 `CAMI_BUILD_MODULES` 宏原先只 `PRIVATE` 透传给模块自身、未给测试目标，导致 security/redis 真实路径用例被编译剔除（已加全局 `add_compile_definitions`）。**CI 全绿待用户在 GitHub 确认**（本机无 vcpkg/OpenSSL 环境，无法本地跑 MODULES=ON）。
 3. ✅ **集成缝已落地**：新增 `gateway/integration/GatewayPipeline`，把 D5 设计的 4 处缝组合成可单测策略，仅经 `ConnectionManager` 既有 `set_on_accept` 挂钩接入（不改其逻辑本体）；auth/route/online 三缝由上层登录/迁移流程显式调用（Connection 不携带 player_id）。唯一轻微越界：`Connection` 加只读 `peer_address()` 访问器（限流缝取对端 IP 的必要胶水，逻辑零改动）。selfcheck 8 子项 + GTest 6 例全绿，本地 `ctest 9/9`。
 4. **800ms 预算未实测**：需真实网络/多网关迁移专项压测校准，非沙箱可证（环境不可达）。
 5. ✅ **行尾归一化已解决**：新增 `.gitattributes`（`* text=auto eol=lf`）+ `git add --renormalize .` 独立提交 `94aba22`，仅 7 文件纯行尾差异、无真实改动。
@@ -67,9 +67,9 @@
 
 - ~~网络恢复后 push `dev`~~ ✅ 已 push（远端改 `github.com:22` 绕过被墙的 ssh.github.com），待用户在 GitHub 确认 CI 双 job 全绿；
 - ~~集成缝落地~~ ✅ 已完成（`gateway/integration/GatewayPipeline`，仅经 `set_on_accept` 挂钩接入，不改 `ConnectionManager` 逻辑）；
-- 开启 `CAMI_BUILD_MODULES=ON` 的 CI job，端到端验证 AES-GCM + RedisClusterState（环境型：本机 vcpkg 重链未验证，留作下周任务）；
+- ~~开启 `CAMI_BUILD_MODULES=ON` 的 CI job，端到端验证 AES-GCM + RedisClusterState~~ ✅ 已落地（新增 `build-modules-on` job：vcpkg + 二进制缓存 + Redis Cluster 服务容器；修复 MODULES=ON 宏未透传测试的隐蔽 bug）；
 - 迁移专项压测，实测 800ms 预算（环境型：需真实多网关网络，沙箱不可达）；
 - ~~行尾归一化~~ ✅ 已完成（`.gitattributes` + `renormalize`，独立提交 `94aba22`，零功能改动）。
 
 ---
-*生成/闭环：2026-08-11（周报落库日 + 闭环确认）；任务卡映射 Mon~Fri = 08-24~08-28。Week3 网关四件套 + 迁移设计 + 集成缝全部交付，架构闭环、边界严守（ADR-002）；本环境可闭环风险（push / 行尾 / CI 触发 / 集成缝）均已解决并 push，仅真实后端 CI 与 800ms 实测留作下周 / 环境任务。*
+*生成/闭环：2026-08-11（周报落库日 + 闭环确认）；任务卡映射 Mon~Fri = 08-24~08-28。Week3 网关四件套 + 迁移设计 + 集成缝 + 真实后端 CI job 全部交付，架构闭环、边界严守（ADR-002）；本环境可闭环风险（push / 行尾 / CI 触发 / 集成缝 / 真实后端 CI job）均已解决并 push，仅 800ms 实测留作环境任务（下周起转数据库方向，不再做网络方面工作）。*

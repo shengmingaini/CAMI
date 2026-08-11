@@ -58,3 +58,62 @@ jobs:
       - name: Run balance verifier
         # 干净检出时直接 import 已提交的 verify/_pb 桩；仅当 .proto 比桩新才现场 regen。
         run: cd verify && python balance_verifier.py
+
+  # === 真实后端门禁（MODULES=ON）===
+  # 端到端验证 AES-GCM(OpenSSL) 真实路径 + RedisClusterState(redis-plus-plus) 连真集群读写。
+  # 重型依赖走 vcpkg（二进制缓存加速重跑）；Boost 由 apt 提供（vcpkg 不提供 umbrella Boost config）。
+  # 整个 job 跑在 ubuntu 容器里，redis-cluster 服务容器与 job 容器同网络：按服务名可达、集群内网 IP 互通。
+  build-modules-on:
+    name: Build & Real-Backend Tests (MODULES=ON)
+    runs-on: ubuntu-latest
+    container: ubuntu:24.04
+    timeout-minutes: 240
+    services:
+      redis-cluster:
+        image: grokzen/redis-cluster:7.0
+    env:
+      VCPKG_ROOT: ${{ github.workspace }}/vcpkg
+      VCPKG_BINARY_SOURCES: "clear;files,${{ github.workspace }}/vcpkg-bincache,readwrite"
+    steps:
+      - name: Install system build dependencies (git + Boost via apt)
+        # vcpkg 从源码构建重型依赖需要完整工具链（compiler/make/ninja/perl/pkg-config 等）。
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            git ca-certificates cmake ninja-build pkg-config perl python3 \
+            tar unzip curl zip autoconf automake libtool build-essential \
+            libboost-dev libboost-system-dev
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install vcpkg
+        run: |
+          git clone --depth 1 https://github.com/microsoft/vcpkg "$VCPKG_ROOT"
+          "$VCPKG_ROOT/bootstrap-vcpkg.sh"
+
+      - name: Cache vcpkg installed tree + binary cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ github.workspace }}/vcpkg_installed
+            ${{ github.workspace }}/vcpkg-bincache
+          key: ${{ runner.os }}-vcpkg-modules-${{ hashFiles('vcpkg.json') }}
+          restore-keys: |
+            ${{ runner.os }}-vcpkg-modules-
+
+      - name: Build dependencies (vcpkg, manifest mode)
+        run: "$VCPKG_ROOT/vcpkg" install
+
+      - name: Configure (MODULES=ON via vcpkg toolchain)
+        # Boost 由 apt 提供（-DBOOST_ROOT=/usr），其余重型依赖由 vcpkg 工具链注入。
+        run: cmake -B build-mod -DCMAKE_BUILD_TYPE=Release -DCAMI_BUILD_MODULES=ON -DCAMI_BUILD_TESTS=ON -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" -DBOOST_ROOT=/usr
+
+      - name: Build
+        run: cmake --build build-mod --config Release -j"$(nproc)"
+
+      - name: Real-backend tests (ctest + live Redis Cluster)
+        # CAMI_REDIS_CLUSTER_URI 驱动 redis_test.cpp 中 RedisClusterState 真实读写用例；未设置则跳过。
+        env:
+          CAMI_REDIS_CLUSTER_URI: redis://redis-cluster:7000
+        run: ctest --test-dir build-mod --output-on-failure

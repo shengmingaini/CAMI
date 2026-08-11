@@ -45,6 +45,11 @@ private:
     std::shared_ptr<sw::redis::RedisCluster> rc_;
 };
 
+std::unique_ptr<OnlineStateStore> make_redis_cluster_state(const std::string& cluster_uri) {
+    if (cluster_uri.empty()) return nullptr;
+    return std::make_unique<RedisClusterState>(cluster_uri);
+}
+
 } // namespace cami::gateway::redis
 
 #endif  // CAMI_BUILD_MODULES

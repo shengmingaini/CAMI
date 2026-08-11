@@ -57,3 +57,27 @@ TEST(RedisShard, FailoverReroutes) {
     for (int c : cnt) maxc = std::max(maxc, c);
     EXPECT_LE(maxc, 2 * (20000 / ShardRouter::kShards));
 }
+
+#ifdef CAMI_BUILD_MODULES
+// 真实后端端到端验证：连 Redis Cluster 做 HSET/HGET/DEL。
+// CI 由 MODULES=ON job 提供 grokzen/redis-cluster 服务容器并设置 CAMI_REDIS_CLUSTER_URI。
+// 本地 MODULES=ON 无集群时跳过（仍可编过、链上 redis-plus-plus）。
+TEST(RedisCluster, RealBackendRoundTrip) {
+    const char* uri = std::getenv("CAMI_REDIS_CLUSTER_URI");
+    if (!uri || uri[0] == '\0') {
+        GTEST_SKIP() << "CAMI_REDIS_CLUSTER_URI not set; skipping live Redis Cluster test";
+    }
+    auto store = make_redis_cluster_state(uri);
+    ASSERT_NE(store, nullptr);
+
+    constexpr uint64_t pid = 99009900;
+    store->set_online(pid, "game-real");
+    auto backend = store->get_backend(pid);
+    ASSERT_TRUE(backend.has_value());
+    EXPECT_EQ(*backend, "game-real");
+    EXPECT_TRUE(store->is_online(pid));
+
+    store->set_offline(pid);
+    EXPECT_FALSE(store->is_online(pid));
+}
+#endif

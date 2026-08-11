@@ -12,7 +12,6 @@
     "fmt",
     "spdlog",
     "gtest",
-    "boost-asio",
     "openssl",
     "abseil",
     "jsoncpp"
