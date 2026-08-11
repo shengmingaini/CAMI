@@ -113,6 +113,11 @@ if(CAMI_BUILD_TESTS)
     add_executable(cami_router_test tests/unit/router_test.cpp)
     target_link_libraries(cami_router_test PRIVATE cami_gateway_router GTest::gtest GTest::gtest_main)
     add_test(NAME router_test COMMAND cami_router_test)
+
+    # Week3 周四：redis 模块（内存后端语义 + 16 分片均衡 + 故障切换；确定性 selfcheck）。
+    add_executable(cami_redis_test tests/unit/redis_test.cpp)
+    target_link_libraries(cami_redis_test PRIVATE cami_gateway_redis GTest::gtest GTest::gtest_main)
+    add_test(NAME redis_test COMMAND cami_redis_test)
 endif()
 
 message(STATUS "=== CAMI Build Configuration ===")

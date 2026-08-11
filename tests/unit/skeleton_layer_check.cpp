@@ -14,6 +14,7 @@
 #include "gateway/security/security_selfcheck.h"
 #include "gateway/ratelimit/ratelimit_selfcheck.h"
 #include "gateway/router/router_selfcheck.h"
+#include "gateway/redis/redis_selfcheck.h"
 #include "gateway/gateway_layer.h"
 #include "ops/ops_layer.h"
 
@@ -111,6 +112,14 @@ int main() {
         ok = false;
     } else {
         std::printf("[ OK ] router functional (consistent-hash + hot-reload)\n");
+    }
+
+    // Week3 周四交付物验证：在线态存储（内存后端语义 + 16 分片均衡 + 故障切换重路由，确定性 selfcheck）。
+    if (!cami::gateway::redis::redis_selfcheck()) {
+        std::fprintf(stderr, "[FAIL] redis_selfcheck(): 在线态/分片逻辑异常\n");
+        ok = false;
+    } else {
+        std::printf("[ OK ] redis functional (in-memory backend + 16-shard + failover)\n");
     }
 
     if (ok) {

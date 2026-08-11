@@ -33,3 +33,7 @@ target_link_libraries(cami_gateway PUBLIC cami_gateway_ratelimit)
 # 路由模块（独立 STATIC target，见 gateway/router/CMakeLists.txt）。
 add_subdirectory(router)
 target_link_libraries(cami_gateway PUBLIC cami_gateway_router)
+
+# 在线态存储模块（独立 STATIC target，见 gateway/redis/CMakeLists.txt）。
+add_subdirectory(redis)
+target_link_libraries(cami_gateway PUBLIC cami_gateway_redis)
