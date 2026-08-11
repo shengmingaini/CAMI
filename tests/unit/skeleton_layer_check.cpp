@@ -12,6 +12,7 @@
 #include "gateway/connection/connection_selfcheck.h"
 #include "gateway/heartbeat/heartbeat_selfcheck.h"
 #include "gateway/security/security_selfcheck.h"
+#include "gateway/ratelimit/ratelimit_selfcheck.h"
 #include "gateway/gateway_layer.h"
 #include "ops/ops_layer.h"
 
@@ -93,6 +94,14 @@ int main() {
         ok = false;
     } else {
         std::printf("[ OK ] security functional (token auth; AES-GCM selfcheck)\n");
+    }
+
+    // Week3 周二交付物验证：限流防攻击（令牌桶 + 连接频率 + 黑白名单，确定性 selfcheck）。
+    if (!cami::gateway::ratelimit::ratelimit_selfcheck()) {
+        std::fprintf(stderr, "[FAIL] ratelimit_selfcheck(): 限流逻辑异常\n");
+        ok = false;
+    } else {
+        std::printf("[ OK ] ratelimit functional (token-bucket + conn-freq + ip-list)\n");
     }
 
     if (ok) {

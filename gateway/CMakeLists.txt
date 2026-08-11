@@ -25,3 +25,7 @@ target_link_libraries(cami_gateway PUBLIC cami_gateway_heartbeat)
 # 安全校验模块（独立 STATIC target，见 gateway/security/CMakeLists.txt）。
 add_subdirectory(security)
 target_link_libraries(cami_gateway PUBLIC cami_gateway_security)
+
+# 限流防攻击模块（独立 STATIC target，见 gateway/ratelimit/CMakeLists.txt）。
+add_subdirectory(ratelimit)
+target_link_libraries(cami_gateway PUBLIC cami_gateway_ratelimit)

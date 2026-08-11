@@ -103,6 +103,11 @@ if(CAMI_BUILD_TESTS)
     add_executable(cami_security_test tests/unit/security_test.cpp)
     target_link_libraries(cami_security_test PRIVATE cami_gateway_security GTest::gtest GTest::gtest_main)
     add_test(NAME security_test COMMAND cami_security_test)
+
+    # Week3 周二：ratelimit 模块（令牌桶 + 连接频率 + 黑白名单；确定性假时钟）。
+    add_executable(cami_ratelimit_test tests/unit/ratelimit_test.cpp)
+    target_link_libraries(cami_ratelimit_test PRIVATE cami_gateway_ratelimit GTest::gtest GTest::gtest_main)
+    add_test(NAME ratelimit_test COMMAND cami_ratelimit_test)
 endif()
 
 message(STATUS "=== CAMI Build Configuration ===")
