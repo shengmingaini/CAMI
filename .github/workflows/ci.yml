@@ -103,7 +103,7 @@ jobs:
             ${{ runner.os }}-vcpkg-modules-
 
       - name: Build dependencies (vcpkg, manifest mode)
-        run: "$VCPKG_ROOT/vcpkg" install
+        run: $VCPKG_ROOT/vcpkg install
 
       - name: Configure (MODULES=ON via vcpkg toolchain)
         # Boost 由 apt 提供（-DBOOST_ROOT=/usr），其余重型依赖由 vcpkg 工具链注入。
