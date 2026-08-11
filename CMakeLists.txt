@@ -45,16 +45,15 @@ endif()
 find_package(Boost REQUIRED CONFIG COMPONENTS system)
 
 # Heavy dependencies are only needed when building game modules (gRPC/Protobuf/etc).
-# For the tech-stack verification (benchmark only), these are skipped.
+# For the real-backend verification under MODULES=ON we only pull what gateway actually
+# links today: OpenSSL (AES-GCM in cami_gateway_security) and redis-plus-plus
+# (RedisClusterState in cami_gateway_redis). gRPC/Protobuf/sol2/Lua/fmt/spdlog/flatbuffers
+# are NOT linked or included by any target yet (game/data are still stubs), so they are
+# intentionally omitted to keep CI fast and avoid a fragile 20-min grpc build.
+# Re-add them here + in vcpkg.json when game/data RPC / scripting layers are implemented.
 if(CAMI_BUILD_MODULES)
-    find_package(fmt CONFIG REQUIRED)
-    find_package(spdlog CONFIG REQUIRED)
-    find_package(gRPC CONFIG REQUIRED)
-    find_package(Protobuf CONFIG REQUIRED)
-    find_package(flatbuffers CONFIG REQUIRED)
+    find_package(OpenSSL REQUIRED)
     find_package(redis-plus-plus CONFIG REQUIRED)
-    find_package(sol2 CONFIG REQUIRED)
-    find_package(Lua REQUIRED)
     # 全局透传：MODULES=ON 下各模块用 target_compile_definitions(PRIVATE ...) 仅作用于自身，
     # 测试可执行文件（cami_security_test / cami_redis_test）拿不到该宏，会导致
     # security_test.cpp 的 AES-GCM 真实路径 / redis_test.cpp 的 RedisCluster 真实测试被编译剔除。
