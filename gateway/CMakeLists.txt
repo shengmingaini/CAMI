@@ -21,3 +21,7 @@ target_link_libraries(cami_gateway PUBLIC cami_gateway_codec)
 # 心跳管理模块（独立 STATIC target，见 gateway/heartbeat/CMakeLists.txt）。
 add_subdirectory(heartbeat)
 target_link_libraries(cami_gateway PUBLIC cami_gateway_heartbeat)
+
+# 安全校验模块（独立 STATIC target，见 gateway/security/CMakeLists.txt）。
+add_subdirectory(security)
+target_link_libraries(cami_gateway PUBLIC cami_gateway_security)

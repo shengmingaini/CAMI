@@ -98,6 +98,11 @@ if(CAMI_BUILD_TESTS)
     add_executable(cami_connection_test tests/unit/connection_test.cpp)
     target_link_libraries(cami_connection_test PRIVATE cami_gateway_connection Boost::system GTest::gtest GTest::gtest_main)
     add_test(NAME connection_test COMMAND cami_connection_test)
+
+    # Week3 周一：security 模块（token 鉴权 + AES-GCM；AES-GCM 真实路径在 MODULES=ON 下）。
+    add_executable(cami_security_test tests/unit/security_test.cpp)
+    target_link_libraries(cami_security_test PRIVATE cami_gateway_security GTest::gtest GTest::gtest_main)
+    add_test(NAME security_test COMMAND cami_security_test)
 endif()
 
 message(STATUS "=== CAMI Build Configuration ===")

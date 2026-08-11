@@ -11,6 +11,7 @@
 #include "gateway/codec/codec_selfcheck.h"
 #include "gateway/connection/connection_selfcheck.h"
 #include "gateway/heartbeat/heartbeat_selfcheck.h"
+#include "gateway/security/security_selfcheck.h"
 #include "gateway/gateway_layer.h"
 #include "ops/ops_layer.h"
 
@@ -84,6 +85,14 @@ int main() {
         ok = false;
     } else {
         std::printf("[ OK ] heartbeat manager functional (keepalive / timeout-kick / idle-recycle)\n");
+    }
+
+    // Week3 周一交付物验证：安全校验（token 鉴权；AES-GCM 在 MODULES=ON 实跑，OFF 标记 DISABLED）。
+    if (!cami::gateway::security::security_selfcheck()) {
+        std::fprintf(stderr, "[FAIL] security_selfcheck(): token/加密异常\n");
+        ok = false;
+    } else {
+        std::printf("[ OK ] security functional (token auth; AES-GCM selfcheck)\n");
     }
 
     if (ok) {

@@ -96,3 +96,21 @@ target_link_libraries(gateway_stress_client
         ${CAMI_WINSOCK_LIBS}
 )
 target_compile_features(gateway_stress_client PRIVATE cxx_std_17)
+
+# === Gateway Security Crypto Benchmark (Mon) ===
+# 验收: AES-256-GCM 加解密 < 0.05ms/包。仅 CAMI_BUILD_MODULES=ON 编译（依赖 OpenSSL）。
+if(CAMI_BUILD_MODULES)
+    find_package(OpenSSL REQUIRED)
+    add_executable(gateway_security_bench
+        security_bench.cpp
+    )
+    target_link_libraries(gateway_security_bench
+        PRIVATE
+            cami_gateway_security
+            OpenSSL::Crypto
+            Threads::Threads
+            ${CAMI_WINSOCK_LIBS}
+    )
+    target_compile_features(gateway_security_bench PRIVATE cxx_std_17)
+    target_compile_definitions(gateway_security_bench PRIVATE CAMI_BUILD_MODULES)
+endif()
