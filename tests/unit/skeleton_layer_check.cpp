@@ -15,6 +15,7 @@
 #include "gateway/ratelimit/ratelimit_selfcheck.h"
 #include "gateway/router/router_selfcheck.h"
 #include "gateway/redis/redis_selfcheck.h"
+#include "gateway/integration/gateway_pipeline_selfcheck.h"
 #include "gateway/gateway_layer.h"
 #include "ops/ops_layer.h"
 
@@ -120,6 +121,14 @@ int main() {
         ok = false;
     } else {
         std::printf("[ OK ] redis functional (in-memory backend + 16-shard + failover)\n");
+    }
+
+    // Week3 集成层验证：四模块集成缝组合成可单测策略（限流/鉴权/选后端/在线态）。
+    if (!cami::gateway::integration::gateway_pipeline_selfcheck()) {
+        std::fprintf(stderr, "[FAIL] gateway_pipeline_selfcheck(): 集成缝逻辑异常\n");
+        ok = false;
+    } else {
+        std::printf("[ OK ] integration pipeline functional (ratelimit+security+router+redis seams)\n");
     }
 
     if (ok) {

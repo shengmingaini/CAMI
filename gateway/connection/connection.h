@@ -60,6 +60,10 @@ public:
     }
     std::uint64_t id() const noexcept { return id_; }
 
+    // 对端地址（IP:port 的 IP 部分），供集成层按源 IP 限流/审计。
+    // 只读访问器，不触任何连接逻辑（Week3 集成缝唯一必要的胶水点）。
+    std::string peer_address() const;
+
     // 状态变更回调（供连接管理器统计/路由模块挂钩），可空。
     void set_state_change_callback(
         std::function<void(ConnectionState, ConnectionState)> cb) {

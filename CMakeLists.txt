@@ -118,6 +118,11 @@ if(CAMI_BUILD_TESTS)
     add_executable(cami_redis_test tests/unit/redis_test.cpp)
     target_link_libraries(cami_redis_test PRIVATE cami_gateway_redis GTest::gtest GTest::gtest_main)
     add_test(NAME redis_test COMMAND cami_redis_test)
+
+    # Week3 集成层：四模块集成缝组合策略（限流/鉴权/选后端/在线态，确定性 selfcheck + GTest）。
+    add_executable(cami_integration_test tests/unit/gateway_pipeline_test.cpp)
+    target_link_libraries(cami_integration_test PRIVATE cami_gateway_integration GTest::gtest GTest::gtest_main)
+    add_test(NAME integration_test COMMAND cami_integration_test)
 endif()
 
 message(STATUS "=== CAMI Build Configuration ===")

@@ -37,3 +37,9 @@ target_link_libraries(cami_gateway PUBLIC cami_gateway_router)
 # 在线态存储模块（独立 STATIC target，见 gateway/redis/CMakeLists.txt）。
 add_subdirectory(redis)
 target_link_libraries(cami_gateway PUBLIC cami_gateway_redis)
+
+# 集成层（独立 STATIC target，见 gateway/integration/CMakeLists.txt）：
+# 把 ratelimit/security/router/redis 四模块的集成缝组合成可单测策略。
+# 不修改 connection.cpp / connection_manager.cpp 逻辑，仅经既有 set_on_accept 挂钩接入。
+add_subdirectory(integration)
+target_link_libraries(cami_gateway PUBLIC cami_gateway_integration)

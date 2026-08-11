@@ -2,6 +2,7 @@
 
 #include <boost/asio/dispatch.hpp>
 #include <boost/asio/error.hpp>
+#include <string>
 
 namespace cami {
 namespace gateway {
@@ -104,6 +105,14 @@ void Connection::close_via_executor() {
     //（例如 HeartbeatManager 在 pool timer 线程判定超时后踢线）。
     auto ex = socket_.get_executor();
     boost::asio::dispatch(ex, [self = shared_from_this()]() { self->close(); });
+}
+
+std::string Connection::peer_address() const {
+    // 只读：取对端端点 IP。socket 已关闭/无效时返回空串（调用方按"未知来源"处理）。
+    boost::system::error_code ec;
+    const auto ep = socket_.remote_endpoint(ec);
+    if (ec) return std::string();
+    return ep.address().to_string();
 }
 
 }  // namespace connection
