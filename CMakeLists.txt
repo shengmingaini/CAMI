@@ -45,12 +45,11 @@ endif()
 find_package(Boost REQUIRED CONFIG COMPONENTS system)
 
 # Heavy dependencies are only needed when building game modules (gRPC/Protobuf/etc).
-# For the real-backend verification under MODULES=ON we only pull what gateway actually
-# links today: OpenSSL (AES-GCM in cami_gateway_security) and redis-plus-plus
-# (RedisClusterState in cami_gateway_redis). gRPC/Protobuf/sol2/Lua/fmt/spdlog/flatbuffers
-# are NOT linked or included by any target yet (game/data are still stubs), so they are
-# intentionally omitted to keep CI fast and avoid a fragile 20-min grpc build.
-# Re-add them here + in vcpkg.json when game/data RPC / scripting layers are implemented.
+# Gateway links OpenSSL (AES-GCM) + redis-plus-plus (RedisClusterState).
+# D6 可选生产后端 (gRPC Data Service / Kafka / MySQL 落库) 由 data/CMakeLists.txt
+# 以 find_package(... QUIET) + if(FOUND) 优雅引入: 装了的编译, 没装(MinGW 缺 libmysql 等)
+# 跳过。故根处不再 REQUIRED 这些重型依赖, 避免本地子集安装时整体配置失败。
+# vcpkg.json 已加回 grpc/protobuf/cppkafka/libmysql (重装会重新触发 ~20-40min 源码构建)。
 if(CAMI_BUILD_MODULES)
     find_package(OpenSSL REQUIRED)
     # vcpkg port 名为 redis-plus-plus，但 CMake config 包名为 redis++（redis++Config.cmake）。
@@ -64,6 +63,9 @@ endif()
 
 # === Include Directories ===
 include_directories(${CMAKE_SOURCE_DIR})
+
+# enable_testing 必须在 add_subdirectory 之前, 否则子目录里的 add_test 不注册
+enable_testing()
 
 # === Subdirectories — 五层架构 (spec §3.1 / §3.2 单向依赖) ===
 # 依赖方向: gateway → game → data → common ; ops → common (控制面)
@@ -80,7 +82,6 @@ endif()
 
 # === Layered skeleton self-check (CI green proof) ===
 # 零外部依赖：编译期验证五层已接入 monorepo 构建，且 目录↔分层↔target 一一对应。
-enable_testing()
 add_executable(cami_skeleton_check tests/unit/skeleton_layer_check.cpp)
 target_link_libraries(cami_skeleton_check PRIVATE cami_gateway cami_game cami_data cami_common cami_ops)
 add_test(NAME skeleton_layer_check COMMAND cami_skeleton_check)

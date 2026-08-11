@@ -5,6 +5,10 @@
   "dependencies": [
     "redis-plus-plus",
     "openssl",
-    "gtest"
+    "gtest",
+    "grpc",
+    "protobuf",
+    "cppkafka",
+    "libmysql"
   ]
 }

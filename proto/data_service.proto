@@ -1,0 +1,82 @@
+// data_service.proto — 数据服务 gRPC 接口 (Week4 D6-T2)
+//
+// 架构规约 §3.1 数据管理层 / §4 全局公共服务层:
+//   GameNode 禁止直连 MySQL/Redis; 所有读写经统一 Data Service (gRPC) 代理。
+//   - 读: CacheProxy 读穿 (命中 Redis -> 未命中回源 BackingStore -> 回填)
+//   - 写: 落 Redis (Write-Back) + 经 Kafka 异步落库 (见 D6-T3), 或 Write-Through 强一致
+//   - 版本: VersionedStore 乐观锁 CAS, 防多节点并发覆盖 (红线)
+//
+// 版本: v1.0.0 (D6-T2)
+
+syntax = "proto3";
+
+package CAMI.Data;
+
+option go_package = "cami/data;datapb";
+
+// ---------------------------------------------------------------------------
+// 玩家行载荷 (value): 序列化的玩家数据 blob (protobuf/json)
+// 这里用 bytes 承载, 具体编解码由业务层 (character 模块) 决定, Data Service 不解析。
+// ---------------------------------------------------------------------------
+message PlayerRow {
+  uint64 player_id = 1;     // 分片键 (统一 player_id)
+  bytes  payload   = 2;     // 序列化后的玩家行
+  uint64 version   = 3;     // 乐观锁版本号 (CAS 用)
+}
+
+// ---- 请求/响应 ----
+message GetReq {
+  uint64 player_id = 1;
+}
+message GetResp {
+  bool    found   = 1;
+  bytes   payload = 2;      // 命中时返回 (来自 Redis 或回源)
+  uint64  version = 3;
+}
+
+message PutReq {
+  uint64 player_id = 1;
+  bytes  payload   = 2;
+  bool   write_through = 3; // true=直写(强一致); false=写回(默认, 异步落库)
+}
+message PutResp {
+  bool   ok      = 1;
+  uint64 version = 2;       // 写入后的版本号
+}
+
+// 乐观锁写: 仅当当前版本 == expected_version 才写入, 并 version+1
+message CasReq {
+  uint64 player_id     = 1;
+  bytes  payload       = 2;
+  uint64 expected_version = 3;
+}
+message CasResp {
+  bool   ok      = 1;       // false = 版本冲突, 写入被拒
+  uint64 version = 2;       // 冲突时为当前最新版本, 供调用方重试
+}
+
+message BatchPutReq {
+  repeated PlayerRow rows = 1;
+}
+message BatchPutResp {
+  uint32 ok_count = 1;
+  uint32 fail_count = 2;
+}
+
+message DeleteReq {
+  uint64 player_id = 1;
+}
+message DeleteResp {
+  bool ok = 1;
+}
+
+// ---------------------------------------------------------------------------
+// DataService: GameNode 经此代理读写玩家数据 (禁止直连 MySQL/Redis)
+// ---------------------------------------------------------------------------
+service DataService {
+  rpc Get(GetReq) returns (GetResp);
+  rpc Put(PutReq) returns (PutResp);
+  rpc Cas(CasReq) returns (CasResp);          // 乐观锁写, 防并发覆盖
+  rpc BatchPut(BatchPutReq) returns (BatchPutResp);
+  rpc Delete(DeleteReq) returns (DeleteResp);
+}
