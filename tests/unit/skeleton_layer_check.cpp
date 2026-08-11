@@ -13,6 +13,7 @@
 #include "gateway/heartbeat/heartbeat_selfcheck.h"
 #include "gateway/security/security_selfcheck.h"
 #include "gateway/ratelimit/ratelimit_selfcheck.h"
+#include "gateway/router/router_selfcheck.h"
 #include "gateway/gateway_layer.h"
 #include "ops/ops_layer.h"
 
@@ -102,6 +103,14 @@ int main() {
         ok = false;
     } else {
         std::printf("[ OK ] ratelimit functional (token-bucket + conn-freq + ip-list)\n");
+    }
+
+    // Week3 周三交付物验证：路由（一致性哈希 + 热更新；迁移 <10%、负载均衡、确定性 selfcheck）。
+    if (!cami::gateway::router::router_selfcheck()) {
+        std::fprintf(stderr, "[FAIL] router_selfcheck(): 路由逻辑异常\n");
+        ok = false;
+    } else {
+        std::printf("[ OK ] router functional (consistent-hash + hot-reload)\n");
     }
 
     if (ok) {

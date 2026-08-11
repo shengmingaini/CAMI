@@ -108,6 +108,11 @@ if(CAMI_BUILD_TESTS)
     add_executable(cami_ratelimit_test tests/unit/ratelimit_test.cpp)
     target_link_libraries(cami_ratelimit_test PRIVATE cami_gateway_ratelimit GTest::gtest GTest::gtest_main)
     add_test(NAME ratelimit_test COMMAND cami_ratelimit_test)
+
+    # Week3 周三：router 模块（一致性哈希 + 热更新；迁移 <10%、均衡、确定性）。
+    add_executable(cami_router_test tests/unit/router_test.cpp)
+    target_link_libraries(cami_router_test PRIVATE cami_gateway_router GTest::gtest GTest::gtest_main)
+    add_test(NAME router_test COMMAND cami_router_test)
 endif()
 
 message(STATUS "=== CAMI Build Configuration ===")

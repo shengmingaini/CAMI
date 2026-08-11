@@ -29,3 +29,7 @@ target_link_libraries(cami_gateway PUBLIC cami_gateway_security)
 # 限流防攻击模块（独立 STATIC target，见 gateway/ratelimit/CMakeLists.txt）。
 add_subdirectory(ratelimit)
 target_link_libraries(cami_gateway PUBLIC cami_gateway_ratelimit)
+
+# 路由模块（独立 STATIC target，见 gateway/router/CMakeLists.txt）。
+add_subdirectory(router)
+target_link_libraries(cami_gateway PUBLIC cami_gateway_router)
