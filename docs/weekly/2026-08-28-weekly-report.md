@@ -13,7 +13,7 @@
 | D3 | 路由 | `gateway/router/`（一致性哈希 + 热更新；FNV+fmix64 虚拟节点）；`router_test`；`docs/modules/router.md` | ✅（修复 FNV 短串雪崩导致负载倾斜） |
 | D4 | 在线态存储 | `gateway/redis/`（OnlineStateStore 抽象 + InMemoryState + ShardRouter 16 分片 + RedisClusterState 门控 MODULES=ON）；`redis_test`；`docs/modules/redis.md` | ✅（修复故障切换重路由倾斜） |
 | D5 | 连接迁移设计 | `docs/design/connection-migration.md`（800ms 预算 + mermaid 时序图 + 四模块集成缝 + 周评审） | ✅ 设计文档 |
-| — | 提交 | 本地 4 提交：`46835b8`(ratelimit) `9a9dbab`(router) `5466c4e`(redis) + 设计文档；`ctest 8/8 绿` | ⚠️ 待 push（网络阻断，见风险①） |
+| — | 提交 | 5 提交（含 D1 security）：`4cdbeb3` `46835b8` `9a9dbab` `5466c4e` `2d50287` + CRLF 归一化 `94aba22`；`ctest 8/8 绿` | ✅ 已 push `dev`（CI 双 job 已触发，见风险①解决记录） |
 
 ## 二、重点进展
 
@@ -53,14 +53,14 @@
 - 每个模块均为独立 STATIC target，`CAMI_BUILD_MODULES=OFF` 下轻量 CI 始终可编译 + selfcheck 验证；
 - 文档：4 份模块设计（`docs/modules/{security,ratelimit,router,redis}.md`）+ 1 份迁移设计（`docs/design/connection-migration.md`），均 `_TEMPLATE` 风格。
 
-## 四、风险与待办
+## 四、风险与待办（状态更新于 2026-08-11 补）
 
-1. ⚠️ **push 被网络阻断（当前最高优先）**：4 个本地提交（含 D1~D5）已就绪，`git push origin dev` 两次均 `ssh: connect to host ssh.github.com port 443: Connection timed out`（已知出口墙，非代码问题）。待网络恢复即 push，CI 才会重跑 `build` + `economy-balance` 双 job；
-2. ⚠️ **真实后端路径沙箱不可证**：AES-GCM（OpenSSL）、RedisClusterState（redis-plus-plus + 运行 Redis Cluster）仅在 `MODULES=ON` + vcpkg CI job 端到端验证；当前轻量 CI 只验内存/抽象路径；
-3. ⚠️ **集成缝尚未落地**：D5 设计的 4 处缝仅在文档，未在 `ConnectionManager` 实际插入调用（下周任务，遵守"不改 Connection 本体"纪律）；
-4. **800ms 预算未实测**：需真实网络/多网关迁移专项压测校准，非沙箱可证；
-5. **行尾归一化待办**：仓库 ~50 文件 CRLF/LF 噪声，仅带 4 文件有真实改动；建议 `.gitattributes` + `git add --renormalize .` 作独立提交（涉及 50 文件，待用户确认，不混入功能提交）；
-6. **CI 结果待确认**：push 成功后方能在 Actions 页查 ubuntu runner 结果。
+1. ✅ **push 已解决**：根因探明——`ssh.github.com:443/22` 均被墙，`github.com:22/443` 通；远端已永久改为 `git@github.com:shengmingaini/CAMI.git`（SCP，绕过 insteadOf 改写）。5 个提交已推上 `dev`，CI 双 job（build + economy-balance）已触发。
+2. ⚠️ **真实后端路径沙箱不可证（待 CI job）**：AES-GCM（OpenSSL）、RedisClusterState（redis-plus-plus + 运行 Redis Cluster）需在 `MODULES=ON` + vcpkg CI job 端到端验证；当前轻量 CI 只验内存/抽象路径。→ 见下周计划，需新增 MODULES=ON CI job。
+3. ⚠️ **集成缝尚未落地（下周任务）**：D5 设计的 4 处缝仅在文档，未在 `ConnectionManager` 实际插入调用（遵守"不改 Connection 本体"纪律，落地为独立集成层）。
+4. **800ms 预算未实测**：需真实网络/多网关迁移专项压测校准，非沙箱可证（环境不可达）。
+5. ✅ **行尾归一化已解决**：新增 `.gitattributes`（`* text=auto eol=lf`）+ `git add --renormalize .` 独立提交 `94aba22`，仅 7 文件纯行尾差异、无真实改动。
+6. ⚠️ **CI 结果待用户确认**：push 已触发，但本机未装 `gh`/无 token，无法程序化查 Actions 页；需用户在 GitHub 查 ubuntu runner 结果（本地 OFF 重跑 `ctest 8/8` 绿作为兜底证据）。
 
 ## 五、下周计划（建议）
 
