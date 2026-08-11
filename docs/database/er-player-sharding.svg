@@ -1,0 +1,130 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1240 800" font-family="Consolas, 'Courier New', monospace">
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#444"/>
+    </marker>
+    <style>
+      .gtitle { fill:#fff; font-size:13px; font-weight:bold; }
+      .stitle { fill:#fff; font-size:13px; font-weight:bold; }
+      .attr   { fill:#222; font-size:12px; }
+      .lbl    { fill:#333; font-size:12px; font-weight:bold; }
+      .note   { fill:#666; font-size:11px; }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="1240" height="800" fill="#ffffff"/>
+  <text x="40" y="20" class="note">CAMI 玩家分片 ER 图 — 全局库(紫) / 分片库 player_id(绿) · Week4 D1</text>
+
+  <!-- ===================== LEFT: cami_global ===================== -->
+  <!-- ACCOUNT -->
+  <g>
+    <rect x="40" y="40" width="320" height="170" fill="#f3eefe" stroke="#7b4ddb" stroke-width="1.5"/>
+    <rect x="40" y="40" width="320" height="28" fill="#7b4ddb"/>
+    <text x="52" y="59" class="gtitle">ACCOUNT  (cami_global)</text>
+    <text x="52" y="90"  class="attr">account_id      BIGINT  PK</text>
+    <text x="52" y="110" class="attr">username        VARCHAR UK</text>
+    <text x="52" y="130" class="attr">email           VARCHAR UK</text>
+    <text x="52" y="150" class="attr">status / deleted_at</text>
+    <text x="52" y="170" class="attr">version         INT    乐观锁</text>
+    <text x="52" y="192" class="note">账号域(全局, 不按 player_id 分片)</text>
+  </g>
+
+  <!-- ACCOUNT_CHARACTER -->
+  <g>
+    <rect x="40" y="250" width="320" height="110" fill="#f3eefe" stroke="#7b4ddb" stroke-width="1.5"/>
+    <rect x="40" y="250" width="320" height="28" fill="#7b4ddb"/>
+    <text x="52" y="269" class="gtitle">ACCOUNT_CHARACTER</text>
+    <text x="52" y="300" class="attr">account_id  BIGINT  PK  → account</text>
+    <text x="52" y="320" class="attr">player_id   BIGINT  PK  → player_base</text>
+    <text x="52" y="340" class="attr">deleted_at  DATETIME</text>
+    <text x="52" y="360" class="note">登录列举: 避免广播 8 分库</text>
+  </g>
+
+  <!-- PLAYER_NAME_RESERVATION -->
+  <g>
+    <rect x="40" y="400" width="320" height="120" fill="#f3eefe" stroke="#7b4ddb" stroke-width="1.5"/>
+    <rect x="40" y="400" width="320" height="28" fill="#7b4ddb"/>
+    <text x="52" y="419" class="gtitle">PLAYER_NAME_RESERVATION</text>
+    <text x="52" y="450" class="attr">name        VARCHAR PK  全服唯一</text>
+    <text x="52" y="470" class="attr">player_id   BIGINT  UK  → player_base</text>
+    <text x="52" y="490" class="attr">account_id  BIGINT</text>
+    <text x="52" y="510" class="note">跨分片唯一性收口(分片内 UNIQUE 不足)</text>
+  </g>
+
+  <!-- ===================== RIGHT: cami_shard_N ===================== -->
+  <!-- PLAYER_BASE -->
+  <g>
+    <rect x="720" y="40" width="380" height="190" fill="#eafaf0" stroke="#2d8c4f" stroke-width="1.5"/>
+    <rect x="720" y="40" width="380" height="28" fill="#2d8c4f"/>
+    <text x="732" y="59" class="stitle">PLAYER_BASE  (分片键 player_id)</text>
+    <text x="732" y="90"  class="attr">player_id   BIGINT  PK</text>
+    <text x="732" y="110" class="attr">account_id  BIGINT  → account(全局)</text>
+    <text x="732" y="130" class="attr">name        VARCHAR (全局预留保障唯一)</text>
+    <text x="732" y="150" class="attr">class_id / scene_id</text>
+    <text x="732" y="170" class="attr">deleted_at  DATETIME</text>
+    <text x="732" y="190" class="attr">version     INT    乐观锁</text>
+  </g>
+
+  <!-- PLAYER_INVENTORY -->
+  <g>
+    <rect x="720" y="260" width="380" height="130" fill="#eafaf0" stroke="#2d8c4f" stroke-width="1.5"/>
+    <rect x="720" y="260" width="380" height="28" fill="#2d8c4f"/>
+    <text x="732" y="279" class="stitle">PLAYER_INVENTORY</text>
+    <text x="732" y="310" class="attr">(player_id, slot)  PK</text>
+    <text x="732" y="330" class="attr">item_id / item_count</text>
+    <text x="732" y="350" class="attr">item_data   BLOB(FlatBuffers)</text>
+    <text x="732" y="370" class="attr">version     INT</text>
+  </g>
+
+  <!-- PLAYER_CURRENCY -->
+  <g>
+    <rect x="720" y="430" width="380" height="120" fill="#eafaf0" stroke="#2d8c4f" stroke-width="1.5"/>
+    <rect x="720" y="430" width="380" height="28" fill="#2d8c4f"/>
+    <text x="732" y="449" class="stitle">PLAYER_CURRENCY</text>
+    <text x="732" y="480" class="attr">(player_id, currency_type)  PK</text>
+    <text x="732" y="500" class="attr">amount  BIGINT 整数最小单位(禁浮点)</text>
+    <text x="732" y="520" class="attr">version INT</text>
+    <text x="732" y="540" class="note">货币余额, 整数铜币</text>
+  </g>
+
+  <!-- PLAYER_MAIL -->
+  <g>
+    <rect x="720" y="590" width="380" height="150" fill="#eafaf0" stroke="#2d8c4f" stroke-width="1.5"/>
+    <rect x="720" y="590" width="380" height="28" fill="#2d8c4f"/>
+    <text x="732" y="609" class="stitle">PLAYER_MAIL</text>
+    <text x="732" y="640" class="attr">mail_id    BIGINT  PK(分片内自增)</text>
+    <text x="732" y="660" class="attr">player_id  BIGINT  分片键(收件人)</text>
+    <text x="732" y="680" class="attr">sender_id / sender_name(快照)</text>
+    <text x="732" y="700" class="attr">is_read / is_claimed / expire_time</text>
+    <text x="732" y="720" class="attr">version    INT</text>
+  </g>
+
+  <!-- ===================== RELATIONSHIPS ===================== -->
+  <!-- ACCOUNT 1--N ACCOUNT_CHARACTER -->
+  <line x1="200" y1="210" x2="200" y2="250" stroke="#444" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="206" y="236" class="lbl">1 : N (owns)</text>
+
+  <!-- ACCOUNT_CHARACTER N--1 PLAYER_BASE -->
+  <line x1="360" y1="305" x2="716" y2="140" stroke="#444" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="430" y="220" class="lbl">N : 1 (maps)</text>
+
+  <!-- PLAYER_NAME_RESERVATION 1--1 PLAYER_BASE -->
+  <line x1="360" y1="455" x2="716" y2="110" stroke="#444" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="430" y="300" class="lbl">1 : 1 (reserves)</text>
+
+  <!-- PLAYER_BASE 1--N PLAYER_INVENTORY -->
+  <line x1="910" y1="230" x2="910" y2="260" stroke="#444" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="916" y="252" class="lbl">1 : N (has)</text>
+
+  <!-- PLAYER_BASE 1--N PLAYER_CURRENCY -->
+  <path d="M1100,150 L1160,150 L1160,485 L1100,485" fill="none" stroke="#444" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="1166" y="320" class="lbl">1 : N (has)</text>
+
+  <!-- PLAYER_BASE 1--N PLAYER_MAIL -->
+  <path d="M1100,180 L1195,180 L1195,665 L1100,665" fill="none" stroke="#444" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="1201" y="430" class="lbl">1 : N (has)</text>
+
+  <!-- PLAYER_MAIL sender ref (cross-shard, dashed) -->
+  <path d="M1100,700 L1140,700 L1140,210 L1100,210" fill="none" stroke="#999" stroke-width="1.2" stroke-dasharray="5,4" marker-end="url(#arrow)"/>
+  <text x="1146" y="460" class="note">sender(跨分片引用, 非实时JOIN)</text>
+</svg>

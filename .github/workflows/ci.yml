@@ -6,6 +6,9 @@ on:
     branches: [ main, master, dev ]
   pull_request:
     branches: [ main, master, dev ]
+  # 重型 MODULES=ON job 默认随 push/PR 自动跑 (真编译门禁);
+  # 也开放手动触发, 便于不必等轻量 build 门禁、单独重跑该 job。
+  workflow_dispatch:
 
 jobs:
   build:
