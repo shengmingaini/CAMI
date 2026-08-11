@@ -57,7 +57,7 @@
 
 1. ✅ **push 已解决**：根因探明——`ssh.github.com:443/22` 均被墙，`github.com:22/443` 通；远端已永久改为 `git@github.com:shengmingaini/CAMI.git`（SCP，绕过 insteadOf 改写）。5 个提交已推上 `dev`，CI 双 job（build + economy-balance）已触发。
 2. ⚠️ **真实后端路径沙箱不可证（待 CI job）**：AES-GCM（OpenSSL）、RedisClusterState（redis-plus-plus + 运行 Redis Cluster）需在 `MODULES=ON` + vcpkg CI job 端到端验证；当前轻量 CI 只验内存/抽象路径。→ 见下周计划，需新增 MODULES=ON CI job。
-3. ⚠️ **集成缝尚未落地（下周任务）**：D5 设计的 4 处缝仅在文档，未在 `ConnectionManager` 实际插入调用（遵守"不改 Connection 本体"纪律，落地为独立集成层）。
+3. ✅ **集成缝已落地**：新增 `gateway/integration/GatewayPipeline`，把 D5 设计的 4 处缝组合成可单测策略，仅经 `ConnectionManager` 既有 `set_on_accept` 挂钩接入（不改其逻辑本体）；auth/route/online 三缝由上层登录/迁移流程显式调用（Connection 不携带 player_id）。唯一轻微越界：`Connection` 加只读 `peer_address()` 访问器（限流缝取对端 IP 的必要胶水，逻辑零改动）。selfcheck 8 子项 + GTest 6 例全绿，本地 `ctest 9/9`。
 4. **800ms 预算未实测**：需真实网络/多网关迁移专项压测校准，非沙箱可证（环境不可达）。
 5. ✅ **行尾归一化已解决**：新增 `.gitattributes`（`* text=auto eol=lf`）+ `git add --renormalize .` 独立提交 `94aba22`，仅 7 文件纯行尾差异、无真实改动。
 6. ⚠️ **CI 结果待用户确认**：push 已触发，但本机未装 `gh`/无 token，无法程序化查 Actions 页；需用户在 GitHub 查 ubuntu runner 结果（本地 OFF 重跑 `ctest 8/8` 绿作为兜底证据）。
