@@ -71,6 +71,19 @@ public:
         return it->second.version;
     }
 
+    // D6 方案 B: 显式版本写 (本地版本 = DB 已知版本)。
+    // 本地版本仅是"最近已知"缓存, 权威在 MySQL player_state.version。
+    void UpsertVersion(std::string_view key, std::string value, uint64_t version) {
+        std::lock_guard<std::mutex> lk(mu_);
+        rows_[std::string(key)] = VersionedRow{std::move(value), version};
+    }
+
+    // 删除本地版本记录 (Delete 双删后清理)
+    void Erase(std::string_view key) {
+        std::lock_guard<std::mutex> lk(mu_);
+        rows_.erase(std::string(key));
+    }
+
     // 批量 CAS (sync 落库): 返回成功落库条数
     // changes: (key,new_value); expected: key->期望版本
     std::size_t BatchCas(const std::vector<std::pair<std::string, std::string>>& changes,

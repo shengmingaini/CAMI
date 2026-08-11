@@ -1,7 +1,7 @@
 # D6 后续架构待办设计（2026-08-12 产出，待拍板后实现）
 
-> 状态：设计稿，未实现。三项待办源于 `d6-code-review.md` 第八节全面复查 + 本次 schema 契约核对。
-> 原则：先测量后优化 / 零停机迁移（新增表与列，无破坏性变更）/ 每项配 Up、Down 与验证。
+> 状态：**方案 B 已实现（2026-08-12），方案 A 弃用**。`player_state` 表与四路径 SQL 已落地，
+> 见文末「实现记录」。方案 B 的完整描述见 §2.3。
 
 ---
 
@@ -127,3 +127,22 @@ grpc::EnableDefaultHealthCheckService(true);
 - 方案 A 下本地 version 可能短暂落后 DB（30s 落库窗口内）——读写路径仍可能放行一次覆盖，但 DB 层最终裁决拦截落库冲突；严格一致场景（交易/货币）应走 WriteThrough + 后续方案 B。
 - 不改动 `player_base` 现有结构化语义；不动 ShardingSphere 配置（player_state 同分片键复用现有路由）。
 - 落库 SQL 变更在非生产（docker 环境）验证后才上生产，绝不未经确认执行 DROP/破坏性变更。
+
+---
+
+## 6. 实现记录（2026-08-12，用户拍板方案 B）
+
+已落地（dev 分支 commit `feat(data): D6 方案 B 多副本 CAS 下沉 MySQL`）：
+
+| 文件 | 改动 |
+|------|------|
+| `docker/mysql/schema.sql` / `init-shard.sql` | 新增 `player_state(player_id, payload MEDIUMBLOB, version BIGINT UNSIGNED, updated_at)` 分片表 |
+| `data/redis_proxy/cache_proxy.h` | `BackingStore` +`StoreRow`/`LoadWithVersion`/`CasStore`/`Delete`；`InMemoryStore` 带版本语义实现；`CacheProxy` +`CasStore`/`LoadWithVersion`/`PutCachedOnly` |
+| `data/redis_proxy/cache_proxy.cpp` | `Delete` 改 `store_.Delete(key)`（废弃 `Store(key,"")` hack） |
+| `data/version/version.h` | +`UpsertVersion(key,val,ver)` 显式版本写 / `Erase(key)` |
+| `data/mysql_proxy/mysql_backing_store.{h,cpp}` | 四路径 SQL 改 `player_state`：Load 修二进制长度截断（`mysql_fetch_lengths`）、LoadWithVersion、Store UPSERT(version+1)、CasStore（`UPDATE ... WHERE version=?` 判 affected_rows + 行不存在时 expected=0 才 INSERT）、Delete；`StripKeyPrefix` 抽取 |
+| `data/data_service/data_service_impl.cpp` | `Cas` 走 DB 版本裁决（成功才 `PutCachedOnly`，不 dirty）；`Get` 首读补 DB 版本；`BatchPut` 无条件；`Delete` 清本地版本 |
+| `data/data_service/data_service_main.cpp` | sink 无条件 UPSERT（dirty 仅来自 Put）；`grpc::EnableDefaultHealthCheckService(true)`（K8s Health probe） |
+
+- 验证：OFF 复跑 ctest **12/12 零回归**（接口扩展在 OFF 编译范围）；MODULES 真编译仍待 `build-modules-on` CI / WSL2。
+- 待实演（需 Docker/真实环境）：`player_state` 建表 + 双副本并发 Cas 冲突 → 后写者 `ok=false` 返回当前版本；Put 落库 UPSERT 版本单调递增；Delete 双删后重建。

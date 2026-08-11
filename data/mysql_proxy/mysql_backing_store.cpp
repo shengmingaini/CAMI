@@ -69,19 +69,26 @@ MySQLBackingStore::~MySQLBackingStore() {
     if (conn_) { mysql_close(conn_); conn_ = nullptr; }
 }
 
-std::optional<std::string> MySQLBackingStore::Load(std::string_view key) {
-    std::lock_guard<std::mutex> lk(mu_);
-    if (!ensure_conn()) return std::nullopt;
-
-    // key 形式为 "player:<id>" (与缓存 key 一致); 剥前缀取数值 id (schema 中 player_id 为分片键)。
+namespace {
+// 剥 "player:" 前缀, 返回数值 id 字符串 (非数值则原样返回, 由 strtoull 归一)
+std::string StripKeyPrefix(std::string_view key) {
     std::string pid(key);
     constexpr char kPrefix[] = "player:";
     if (pid.size() > sizeof(kPrefix) - 1 && pid.compare(0, sizeof(kPrefix) - 1, kPrefix) == 0)
         pid = pid.substr(sizeof(kPrefix) - 1);
-    // strtoull 归一为纯数值白名单再拼 SQL: 与 Store 的预处理绑定同级别防注入
-    // (杜绝任意 key 内容进入 SQL 文本)。
-    unsigned long long pid_val = std::strtoull(pid.c_str(), nullptr, 10);
-    std::string sql = "SELECT payload FROM player_base WHERE player_id = " +
+    return pid;
+}
+}  // namespace
+
+std::optional<std::string> MySQLBackingStore::Load(std::string_view key) {
+    std::lock_guard<std::mutex> lk(mu_);
+    if (!ensure_conn()) return std::nullopt;
+
+    // key 形式为 "player:<id>" (与缓存 key 一致); 剥前缀取数值 id。
+    // strtoull 归一为纯数值白名单再拼 SQL: 与写路径预处理同级别防注入。
+    unsigned long long pid_val =
+        std::strtoull(StripKeyPrefix(key).c_str(), nullptr, 10);
+    std::string sql = "SELECT payload FROM player_state WHERE player_id = " +
                       std::to_string(pid_val) + " LIMIT 1";
     if (mysql_real_query(conn_, sql.c_str(), sql.size()) != 0) {
         // 查询失败: 返回空 (回源失败, CacheProxy 视为未命中)
@@ -91,7 +98,11 @@ std::optional<std::string> MySQLBackingStore::Load(std::string_view key) {
     if (!res) return std::nullopt;
     MYSQL_ROW row = mysql_fetch_row(res);
     std::optional<std::string> out;
-    if (row && row[0]) out = std::string(row[0]);
+    if (row && row[0]) {
+        // payload 为二进制 blob 可能含 \0: 必须用 mysql_fetch_lengths 的实际长度, 防 strlen 截断。
+        unsigned long* lens = mysql_fetch_lengths(res);
+        out = std::string(row[0], lens ? lens[0] : strlen(row[0]));
+    }
     mysql_free_result(res);
     return out;
 }
@@ -101,18 +112,15 @@ void MySQLBackingStore::Store(std::string_view key, std::string_view value) {
     if (!ensure_conn()) return;
 
     // key 形式为 "player:<id>"; 剥前缀取数值 id (schema 中 player_id 为 BIGINT UNSIGNED 分片键)。
-    std::string pid(key);
-    constexpr char kPrefix[] = "player:";
-    if (pid.size() > sizeof(kPrefix) - 1 && pid.compare(0, sizeof(kPrefix) - 1, kPrefix) == 0)
-        pid = pid.substr(sizeof(kPrefix) - 1);
-    // player_id 为 BIGINT UNSIGNED (64 位), 统一 strtoull 归一为纯数值 (防注入 + 防 32 位截断)。
-    unsigned long long pid_val = std::strtoull(pid.c_str(), nullptr, 10);
+    unsigned long long pid_val =
+        std::strtoull(StripKeyPrefix(key).c_str(), nullptr, 10);
 
     if (value.empty()) {
-        // 空 payload = 删除语义 (CacheProxy::Delete 双删调用): DELETE 行, 而非写入空串。
+        // 空 payload = 删除语义 (防御; 常规双删走 Delete 方法)。
+        // 注意: 此处已持有 mu_, 不能调 Delete() (会重入加锁死锁), 内联 DELETE。
         MYSQL_STMT* stmt = mysql_stmt_init(conn_);
         if (!stmt) return;
-        const char* q = "DELETE FROM player_base WHERE player_id = ?";
+        const char* q = "DELETE FROM player_state WHERE player_id = ?";
         if (mysql_stmt_prepare(stmt, q, strlen(q)) != 0) { mysql_stmt_close(stmt); return; }
         MYSQL_BIND bind[1];
         memset(bind, 0, sizeof(bind));
@@ -127,10 +135,13 @@ void MySQLBackingStore::Store(std::string_view key, std::string_view value) {
         return;
     }
 
-    // 用预处理语句防注入 (payload 为二进制 blob, 用 ? 绑定)
+    // 无条件 UPSERT (Put 语义 = last-write-wins): 新行 version=1, 已存在 version+1。
+    // 目标表 player_state (方案 B: Data Service 序列化行专用, 与 player_base 结构化列分离)。
     MYSQL_STMT* stmt = mysql_stmt_init(conn_);
     if (!stmt) return;
-    const char* q = "REPLACE INTO player_base (player_id, payload) VALUES (?, ?)";
+    const char* q = "INSERT INTO player_state (player_id, payload, version) "
+                    "VALUES (?, ?, 1) "
+                    "ON DUPLICATE KEY UPDATE payload = VALUES(payload), version = version + 1";
     if (mysql_stmt_prepare(stmt, q, strlen(q)) != 0) { mysql_stmt_close(stmt); return; }
 
     MYSQL_BIND bind[2];
@@ -148,6 +159,126 @@ void MySQLBackingStore::Store(std::string_view key, std::string_view value) {
 
     if (mysql_stmt_bind_param(stmt, bind) != 0 ||
         mysql_stmt_execute(stmt) != 0) {
+        mysql_stmt_close(stmt);
+        return;
+    }
+    mysql_stmt_close(stmt);
+}
+
+std::optional<redis_proxy::StoreRow> MySQLBackingStore::LoadWithVersion(std::string_view key) {
+    std::lock_guard<std::mutex> lk(mu_);
+    if (!ensure_conn()) return std::nullopt;
+
+    unsigned long long pid_val =
+        std::strtoull(StripKeyPrefix(key).c_str(), nullptr, 10);
+    std::string sql = "SELECT payload, version FROM player_state WHERE player_id = " +
+                      std::to_string(pid_val) + " LIMIT 1";
+    if (mysql_real_query(conn_, sql.c_str(), sql.size()) != 0) return std::nullopt;
+    MYSQL_RES* res = mysql_store_result(conn_);
+    if (!res) return std::nullopt;
+    MYSQL_ROW row = mysql_fetch_row(res);
+    std::optional<redis_proxy::StoreRow> out;
+    if (row && row[0]) {
+        unsigned long* lens = mysql_fetch_lengths(res);  // 二进制 blob 用实际长度
+        redis_proxy::StoreRow r;
+        r.payload = std::string(row[0], lens ? lens[0] : strlen(row[0]));
+        r.version = row[1] ? std::strtoull(row[1], nullptr, 10) : 0;
+        out = std::move(r);
+    }
+    mysql_free_result(res);
+    return out;
+}
+
+bool MySQLBackingStore::CasStore(std::string_view key, std::string_view value,
+                                 uint64_t expected_version) {
+    std::lock_guard<std::mutex> lk(mu_);
+    if (!ensure_conn()) return false;
+
+    unsigned long long pid_val =
+        std::strtoull(StripKeyPrefix(key).c_str(), nullptr, 10);
+    const char* pdata = value.data();
+    unsigned long plen = static_cast<unsigned long>(value.size());
+    unsigned long long exp = expected_version;
+
+    // 1) 版本条件更新: 仅当 DB version == expected 才写并 +1 (affected_rows==1 成功)
+    MYSQL_STMT* stmt = mysql_stmt_init(conn_);
+    if (!stmt) return false;
+    const char* q_upd = "UPDATE player_state SET payload = ?, version = version + 1 "
+                        "WHERE player_id = ? AND version = ?";
+    if (mysql_stmt_prepare(stmt, q_upd, strlen(q_upd)) != 0) { mysql_stmt_close(stmt); return false; }
+    MYSQL_BIND bind[3];
+    memset(bind, 0, sizeof(bind));
+    bind[0].buffer_type = MYSQL_TYPE_MEDIUM_BLOB;
+    bind[0].buffer = const_cast<char*>(pdata);
+    bind[0].buffer_length = plen;
+    bind[0].length = &plen;
+    bind[1].buffer_type = MYSQL_TYPE_LONGLONG;
+    bind[1].buffer = &pid_val;
+    bind[1].is_unsigned = 1;
+    bind[2].buffer_type = MYSQL_TYPE_LONGLONG;
+    bind[2].buffer = &exp;
+    bind[2].is_unsigned = 1;
+    bool upd_ok = mysql_stmt_bind_param(stmt, bind) == 0 && mysql_stmt_execute(stmt) == 0;
+    my_ulonglong affected = upd_ok ? mysql_stmt_affected_rows(stmt) : 0;
+    mysql_stmt_close(stmt);
+    if (affected == 1) return true;
+
+    // 2) affected==0: 行不存在 或 版本冲突。查存在性区分。
+    MYSQL_STMT* chk = mysql_stmt_init(conn_);
+    if (!chk) return false;
+    const char* q_sel = "SELECT 1 FROM player_state WHERE player_id = ? LIMIT 1";
+    if (mysql_stmt_prepare(chk, q_sel, strlen(q_sel)) != 0) { mysql_stmt_close(chk); return false; }
+    MYSQL_BIND cb[1];
+    memset(cb, 0, sizeof(cb));
+    cb[0].buffer_type = MYSQL_TYPE_LONGLONG;
+    cb[0].buffer = &pid_val;
+    cb[0].is_unsigned = 1;
+    bool chk_ok = mysql_stmt_bind_param(chk, cb) == 0 && mysql_stmt_execute(chk) == 0;
+    my_ulonglong exists = 0;
+    if (chk_ok) {
+        mysql_stmt_store_result(chk);
+        exists = mysql_stmt_num_rows(chk);
+    }
+    mysql_stmt_close(chk);
+    if (exists == 0) {
+        // 行不存在: 仅允许 expected=0 创建 (version 0 -> 1)
+        if (expected_version != 0) return false;
+        MYSQL_STMT* ins = mysql_stmt_init(conn_);
+        if (!ins) return false;
+        const char* q_ins = "INSERT INTO player_state (player_id, payload, version) VALUES (?, ?, 1)";
+        if (mysql_stmt_prepare(ins, q_ins, strlen(q_ins)) != 0) { mysql_stmt_close(ins); return false; }
+        MYSQL_BIND ib[2];
+        memset(ib, 0, sizeof(ib));
+        ib[0].buffer_type = MYSQL_TYPE_LONGLONG;
+        ib[0].buffer = &pid_val;
+        ib[0].is_unsigned = 1;
+        ib[1].buffer_type = MYSQL_TYPE_MEDIUM_BLOB;
+        ib[1].buffer = const_cast<char*>(pdata);
+        ib[1].buffer_length = plen;
+        ib[1].length = &plen;
+        bool ins_ok = mysql_stmt_bind_param(ins, ib) == 0 && mysql_stmt_execute(ins) == 0;
+        my_ulonglong ia = ins_ok ? mysql_stmt_affected_rows(ins) : 0;
+        mysql_stmt_close(ins);
+        return ins_ok && ia == 1;  // 并发创建 PK 冲突 -> affected=0 -> false
+    }
+    return false;  // 行存在但版本不匹配 = 冲突
+}
+
+void MySQLBackingStore::Delete(std::string_view key) {
+    std::lock_guard<std::mutex> lk(mu_);
+    if (!ensure_conn()) return;
+    unsigned long long pid_val =
+        std::strtoull(StripKeyPrefix(key).c_str(), nullptr, 10);
+    MYSQL_STMT* stmt = mysql_stmt_init(conn_);
+    if (!stmt) return;
+    const char* q = "DELETE FROM player_state WHERE player_id = ?";
+    if (mysql_stmt_prepare(stmt, q, strlen(q)) != 0) { mysql_stmt_close(stmt); return; }
+    MYSQL_BIND bind[1];
+    memset(bind, 0, sizeof(bind));
+    bind[0].buffer_type = MYSQL_TYPE_LONGLONG;
+    bind[0].buffer = &pid_val;
+    bind[0].is_unsigned = 1;
+    if (mysql_stmt_bind_param(stmt, bind) != 0 || mysql_stmt_execute(stmt) != 0) {
         mysql_stmt_close(stmt);
         return;
     }

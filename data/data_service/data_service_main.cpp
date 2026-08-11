@@ -15,6 +15,7 @@
 #include "data/version/version.h"
 
 #include <grpcpp/grpcpp.h>
+#include <grpcpp/health_check_service_interface.h>
 
 #include <atomic>
 #include <chrono>
@@ -78,13 +79,12 @@ int main(int argc, char** argv) {
         return kafka_flush.PublishBatch(msgs) == msgs.size();
     });
 
-    // 异步落库消费者: 消费 -> 调 VersionedStore.Cas + BackingStore.Store
+    // 异步落库消费者: 消费 -> 无条件 UPSERT 到 player_state。
+    // 方案 B 下 dirty 只来自 Put (last-write-wins); Cas 已由 data_service_impl 直接
+    // CasStore 同步落库 (DB 版本裁决), 不经过 Kafka。故此处无条件写, 不做版本裁决 (避免误进 DLQ)。
     sync::KafkaSinkWorker::SinkFunc sink = [&](const sync::FlushMessage& msg) -> bool {
-        auto cur = version.Load(msg.key);
-        bool ok = cur ? version.Cas(msg.key, msg.value, cur->version)
-                      : (version.Init(msg.key, msg.value), true);
-        if (ok) store.Store(msg.key, msg.value);
-        return ok;
+        store.Store(msg.key, msg.value);
+        return true;
     };
     sync::KafkaSinkWorker sink_worker(kafka_brokers, "cami.player.flush", "data-service-sink", sink);
     std::thread sink_thread([&]() { sink_worker.Run(); });
@@ -104,6 +104,9 @@ int main(int argc, char** argv) {
     // 优雅停机: SIGINT/SIGTERM -> 信号处理器只置 g_stop_flag (见上)
     std::signal(SIGINT, CamiSignalHandler);
     std::signal(SIGTERM, CamiSignalHandler);
+
+    // D6 方案 B: gRPC 内置 Health 服务 (K8s liveness/readiness probe 用, 零 proto 改动)
+    grpc::EnableDefaultHealthCheckService(true);
 
     // gRPC 服务 (注入 CacheProxy: 读穿/写回/双删统一由它做; version 独立管乐观锁)
     DataServiceImpl service(proxy, version);

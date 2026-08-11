@@ -126,7 +126,21 @@ CREATE TABLE IF NOT EXISTS `player_base` (
 -- 说明: name 不在此建 UNIQUE —— 跨分片唯一性由 cami_global.player_name_reservation 保障。
 
 -- ----------------------------------------------------------------------------
--- 2.2 背包表 (背包) —— 分片键 player_id
+-- 2.2 玩家序列化状态表 (角色) —— 分片键 player_id
+--     Data Service 落库专用: 存储 character 模块序列化的整行玩家状态 blob。
+--     与 player_base (结构化基础信息, 角色创建/登录模块写) 分离, 互不覆盖。
+--     方案 B: 本表 version 为 MySQL 权威版本源, Cas 写经 UPDATE ... WHERE version=? 裁决。
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `player_state` (
+    `player_id`  BIGINT UNSIGNED NOT NULL                COMMENT 'PlayerID (分片键 / PK首列)',
+    `payload`    MEDIUMBLOB     NOT NULL                COMMENT '序列化玩家行 (protobuf/blob, Data Service 不解析)',
+    `version`    BIGINT UNSIGNED NOT NULL DEFAULT 0     COMMENT '乐观锁版本号 (DB 权威版本源, CAS 用)',
+    `updated_at` DATETIME        DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (`player_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='玩家序列化状态 (Data Service 落库专用)';
+
+-- ----------------------------------------------------------------------------
+-- 2.3 背包表 (背包) —— 分片键 player_id
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS `player_inventory` (
     `player_id`  BIGINT UNSIGNED NOT NULL                COMMENT 'PlayerID (分片键 / PK首列)',

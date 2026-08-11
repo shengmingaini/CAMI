@@ -34,6 +34,11 @@ public:
 
     std::optional<std::string> Load(std::string_view key) override;
     void Store(std::string_view key, std::string_view value) override;
+    // D6 方案 B: 回源带 DB 权威版本 / 版本条件写 / 删行
+    std::optional<redis_proxy::StoreRow> LoadWithVersion(std::string_view key) override;
+    bool CasStore(std::string_view key, std::string_view value,
+                  uint64_t expected_version) override;
+    void Delete(std::string_view key) override;
 
 private:
     // 连接参数缓存, 供断线后重连 (ShardingSphere 代理重启场景)

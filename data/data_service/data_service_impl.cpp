@@ -18,7 +18,18 @@ grpc::Status DataServiceImpl::Get(grpc::ServerContext*, const CAMI::Data::GetReq
         resp->set_found(true);
         resp->set_payload(*v);
         auto cur = version_.Load(key);
-        if (cur) resp->set_version(cur->version);
+        if (cur) {
+            resp->set_version(cur->version);
+        } else {
+            // 本地无版本记录 (首读/回源场景): 从 DB 补权威版本并写回本地 (D6 方案 B)
+            auto db = proxy_.LoadWithVersion(key);
+            if (db) {
+                resp->set_version(db->version);
+                version_.UpsertVersion(key, db->payload, db->version);
+            } else {
+                resp->set_version(0);
+            }
+        }
         return grpc::Status::OK;
     }
     resp->set_found(false);
@@ -46,13 +57,19 @@ grpc::Status DataServiceImpl::Cas(grpc::ServerContext*, const CAMI::Data::CasReq
                                   CAMI::Data::CasResp* resp) {
     std::string key = "player:" + std::to_string(req->player_id());
     std::string val(req->payload());
-    bool ok = version_.Cas(key, val, req->expected_version());  // 仅版本匹配才写
-    resp->set_ok(ok);
-    auto cur = version_.Load(key);
-    resp->set_version(cur ? cur->version : req->expected_version());
+    // D6 方案 B: MySQL 为权威版本源, CasStore 直接 DB 版本条件写 (affected_rows 裁决),
+    // 多 Data Service 副本并发时由 DB 层拦截, 不再依赖进程内 VersionedStore。
+    bool ok = proxy_.CasStore(key, val, req->expected_version());
+    auto db = proxy_.LoadWithVersion(key);   // 取当前 DB 版本 (成功=新版本; 失败=冲突时当前版本)
     if (ok) {
-        // CAS 成功才落缓存 (Write-Back, 由同步模块异步落库)
-        proxy_.Put(key, std::move(val));
+        // DB 已落库: 仅同步缓存 (不标记 dirty, 避免二次异步落库把 version 再 +1)
+        proxy_.PutCachedOnly(key, val);
+        if (db) version_.UpsertVersion(key, db->payload, db->version);
+        resp->set_ok(true);
+        resp->set_version(db ? db->version : req->expected_version() + 1);
+    } else {
+        resp->set_ok(false);
+        resp->set_version(db ? db->version : req->expected_version());
     }
     return grpc::Status::OK;
 }
@@ -63,14 +80,10 @@ grpc::Status DataServiceImpl::BatchPut(grpc::ServerContext*, const CAMI::Data::B
     for (const auto& row : req->rows()) {
         std::string key = "player:" + std::to_string(row.player_id());
         std::string val(row.payload());
-        auto cur = version_.Load(key);
-        bool written = cur ? version_.Cas(key, val, cur->version) : (version_.Init(key, val), true);
-        if (written) {
-            proxy_.Put(key, std::move(val));
-            ++ok;
-        } else {
-            ++fail;
-        }
+        // Put 语义 = 无条件写 (last-write-wins): 缓存 + 本地版本推进 + dirty 异步落库
+        proxy_.Put(key, val);
+        version_.Set(key, val);
+        ++ok;
     }
     resp->set_ok_count(ok);
     resp->set_fail_count(fail);
@@ -80,7 +93,8 @@ grpc::Status DataServiceImpl::BatchPut(grpc::ServerContext*, const CAMI::Data::B
 grpc::Status DataServiceImpl::Delete(grpc::ServerContext*, const CAMI::Data::DeleteReq* req,
                                      CAMI::Data::DeleteResp* resp) {
     std::string key = "player:" + std::to_string(req->player_id());
-    proxy_.Delete(key);   // CacheProxy::Delete 同时清缓存 + 回源删 DB (双删)
+    proxy_.Delete(key);            // 双删: 清缓存 + BackingStore::Delete 删行 (player_state)
+    version_.Erase(key);           // 清理本地版本记录, 防已删角色被旧版本号复活
     resp->set_ok(true);
     return grpc::Status::OK;
 }

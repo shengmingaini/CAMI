@@ -53,8 +53,8 @@ void CacheProxy::Delete(std::string_view key) {
         std::lock_guard<std::mutex> lk(dirty_mu_);
         dirty_.erase(std::string(key));
     }
-    // 回源删除 (缓存与 DB 双删, 避免脏读)
-    store_.Store(key, "");
+    // 回源删除 (缓存与 DB 双删, 避免脏读); BackingStore::Delete 删行 (方案 B, 替代原 Store(key,"") hack)
+    store_.Delete(key);
 }
 
 std::size_t CacheProxy::FlushDirty() {

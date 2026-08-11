@@ -114,40 +114,83 @@ private:
 // ---------------------------------------------------------------------------
 // BackingStore: 回源存储抽象 (分片 MySQL / 未来 KV 落库)
 // ---------------------------------------------------------------------------
+// D6 方案 B: MySQL 为权威版本源。读带版本 (LoadWithVersion), 条件写 (CasStore)。
+struct StoreRow {
+    std::string payload;
+    uint64_t version = 0;
+};
+
 class BackingStore {
 public:
     virtual ~BackingStore() = default;
     // 缓存未命中时回源; 返回 nullopt 表示数据不存在
     virtual std::optional<std::string> Load(std::string_view key) = 0;
-    // Write-Back 批量落库时调用
+    // Write-Back 批量落库时调用 (无条件 UPSERT, last-write-wins)
     virtual void Store(std::string_view key, std::string_view value) = 0;
+    // 回源并携带 DB 权威版本 (方案 B: Get 回源 / Cas 冲突时取当前版本)
+    virtual std::optional<StoreRow> LoadWithVersion(std::string_view key) = 0;
+    // 版本条件写: 仅当 DB 当前版本 == expected_version 才写并 version+1 (affected_rows==1)。
+    // 返回 true=成功; false=版本冲突 或 行不存在(expected!=0)。
+    virtual bool CasStore(std::string_view key, std::string_view value,
+                          uint64_t expected_version) = 0;
+    // 删除行 (CacheProxy 双删语义)
+    virtual void Delete(std::string_view key) = 0;
 };
 
-// [PROTOTYPE] 无依赖内存存储, 仿真分片 DB (零延迟)
+// [PROTOTYPE] 无依赖内存存储, 仿真分片 DB (零延迟); 带版本语义 (方案 B demo/单测)
 class InMemoryStore : public BackingStore {
 public:
     std::optional<std::string> Load(std::string_view key) override {
         std::lock_guard<std::mutex> lk(mu_);
-        std::string k(key);
-        auto it = db_.find(k);
+        auto it = db_.find(std::string(key));
         if (it == db_.end()) return std::nullopt;
-        return it->second;
+        return it->second.payload;
     }
     void Store(std::string_view key, std::string_view value) override {
         std::lock_guard<std::mutex> lk(mu_);
-        if (value.empty()) {  // 空 payload = 删除语义 (CacheProxy::Delete 双删)
+        if (value.empty()) {  // 空 payload = 删除语义 (防御; 常规走 Delete)
             db_.erase(std::string(key));
             return;
         }
-        db_.emplace(std::string(key), std::string(value));
+        auto it = db_.find(std::string(key));
+        if (it == db_.end()) db_.emplace(std::string(key), Row{std::string(value), 1});
+        else { it->second.payload = std::string(value); it->second.version += 1; }
+    }
+    std::optional<StoreRow> LoadWithVersion(std::string_view key) override {
+        std::lock_guard<std::mutex> lk(mu_);
+        auto it = db_.find(std::string(key));
+        if (it == db_.end()) return std::nullopt;
+        return StoreRow{it->second.payload, it->second.version};
+    }
+    bool CasStore(std::string_view key, std::string_view value,
+                  uint64_t expected_version) override {
+        std::lock_guard<std::mutex> lk(mu_);
+        auto it = db_.find(std::string(key));
+        if (it == db_.end()) {
+            if (expected_version != 0) return false;  // 新行只接受 expected=0
+            db_.emplace(std::string(key), Row{std::string(value), 1});
+            return true;
+        }
+        if (it->second.version != expected_version) return false;
+        it->second.payload = std::string(value);
+        it->second.version += 1;
+        return true;
+    }
+    void Delete(std::string_view key) override {
+        std::lock_guard<std::mutex> lk(mu_);
+        db_.erase(std::string(key));
     }
     std::size_t Size() const {
         std::lock_guard<std::mutex> lk(mu_);
         return db_.size();
     }
 private:
+    struct Row {
+        std::string payload;
+        uint64_t version = 0;
+    };
     mutable std::mutex mu_;
-    std::unordered_map<std::string, std::string> db_;
+    std::unordered_map<std::string, Row> db_;
 };
 
 // ---------------------------------------------------------------------------
@@ -229,6 +272,21 @@ public:
     // 若已注入异步落库 sink (SetAsyncFlushSink), 则走 Kafka 异步发布, 不再同步 STORE;
     // 否则走同步 store_.Store (OFF/demo 回退)。真实环境由 D4 sync 模块以 30s 节奏调用。
     std::size_t FlushDirty();
+
+    // D6 方案 B (DB 权威版本源):
+    // 版本条件落库 (转发 BackingStore::CasStore); 成功=DB 已写, 调用方再 PutCachedOnly 同步缓存。
+    bool CasStore(std::string_view key, std::string_view value, uint64_t expected_version) {
+        return store_.CasStore(key, value, expected_version);
+    }
+    // 回源并携带 DB 权威版本 (Get 回源 / Cas 冲突时取当前版本)
+    std::optional<StoreRow> LoadWithVersion(std::string_view key) {
+        return store_.LoadWithVersion(key);
+    }
+    // 只写缓存不标记 dirty (Cas 成功后调用: DB 已由 CasStore 落库, 缓存同步但不再异步落库)
+    void PutCachedOnly(std::string_view key, std::string value) {
+        backend_.Put(key, std::move(value));
+        if (enable_hot_) hot_.record(key);
+    }
 
     double hit_rate() const {
         std::lock_guard<std::mutex> lk(stats_mu_);

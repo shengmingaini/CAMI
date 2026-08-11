@@ -24,6 +24,15 @@ CREATE TABLE IF NOT EXISTS `player_base` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Player base info (shard key player_id)';
 -- 注意: name 不在此建 UNIQUE —— 跨分片唯一性由 cami_global.player_name_reservation 保障。
 
+-- Player serialized state (Data Service 落库专用; 方案 B: DB 权威版本源)
+CREATE TABLE IF NOT EXISTS `player_state` (
+    `player_id`  BIGINT UNSIGNED NOT NULL                COMMENT 'PlayerID (shard key / PK首列)',
+    `payload`    MEDIUMBLOB     NOT NULL                COMMENT '序列化玩家行 (protobuf/blob, Data Service 不解析)',
+    `version`    BIGINT UNSIGNED NOT NULL DEFAULT 0     COMMENT '乐观锁版本号 (DB 权威版本源, CAS 用)',
+    `updated_at` DATETIME        DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (`player_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Player serialized state (Data Service only)';
+
 -- Player inventory
 CREATE TABLE IF NOT EXISTS `player_inventory` (
     `player_id`  BIGINT UNSIGNED NOT NULL                COMMENT 'PlayerID (shard key / PK首列)',
