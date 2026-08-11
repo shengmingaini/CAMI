@@ -1,30 +1,218 @@
 databaseName: cami_db
 
+# ============================================================================
+# CAMI ShardingSphere 配置 — 8 分库 + 读写分离 (Week 4 Day 2)
+# ----------------------------------------------------------------------------
+# 分片键 : player_id  (ADR-003)
+# 分片算法: player_id % 8  -> ds_0 .. ds_7
+# 读写分离: 每个分片 ds_N 由 RW-Splitting 逻辑名承载
+#            写 -> ds_N_m (主, mysql-shard-N)
+#            读 -> ds_N_s (从, mysql-shard-N-s, GTID 复制)
+# 注意    : 代理登录用 root/root (SS 5.5.0 frontend 怪癖, 见 server.yaml);
+#           后端 MySQL 仍用 cami_dev_2026。
+# ============================================================================
+
 dataSources:
-  ds_0:
+  # ---- shard 0 ----
+  ds_0_m:
+    url: "jdbc:mysql://mysql-shard-0:3306/cami_shard_0?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai"
+    username: root
+    password: cami_dev_2026
+    connectionTimeoutMilliseconds: 30000
+    idleTimeoutMilliseconds: 60000
+    maxLifetimeMilliseconds: 1800000
+    maxPoolSize: 5
+    minPoolSize: 1
+  ds_0_s:
+    url: "jdbc:mysql://mysql-shard-0-s:3306/cami_shard_0?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai"
+    username: root
+    password: cami_dev_2026
+    connectionTimeoutMilliseconds: 30000
+    idleTimeoutMilliseconds: 60000
+    maxLifetimeMilliseconds: 1800000
+    maxPoolSize: 5
+    minPoolSize: 1
+  # ---- shard 1 ----
+  ds_1_m:
     url: "jdbc:mysql://mysql-shard-1:3306/cami_shard_1?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai"
     username: root
     password: cami_dev_2026
     connectionTimeoutMilliseconds: 30000
     idleTimeoutMilliseconds: 60000
     maxLifetimeMilliseconds: 1800000
-    maxPoolSize: 50
-    minPoolSize: 5
-  ds_1:
+    maxPoolSize: 5
+    minPoolSize: 1
+  ds_1_s:
+    url: "jdbc:mysql://mysql-shard-1-s:3306/cami_shard_1?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai"
+    username: root
+    password: cami_dev_2026
+    connectionTimeoutMilliseconds: 30000
+    idleTimeoutMilliseconds: 60000
+    maxLifetimeMilliseconds: 1800000
+    maxPoolSize: 5
+    minPoolSize: 1
+  # ---- shard 2 ----
+  ds_2_m:
     url: "jdbc:mysql://mysql-shard-2:3306/cami_shard_2?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai"
     username: root
     password: cami_dev_2026
     connectionTimeoutMilliseconds: 30000
     idleTimeoutMilliseconds: 60000
     maxLifetimeMilliseconds: 1800000
-    maxPoolSize: 50
-    minPoolSize: 5
+    maxPoolSize: 5
+    minPoolSize: 1
+  ds_2_s:
+    url: "jdbc:mysql://mysql-shard-2-s:3306/cami_shard_2?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai"
+    username: root
+    password: cami_dev_2026
+    connectionTimeoutMilliseconds: 30000
+    idleTimeoutMilliseconds: 60000
+    maxLifetimeMilliseconds: 1800000
+    maxPoolSize: 5
+    minPoolSize: 1
+  # ---- shard 3 ----
+  ds_3_m:
+    url: "jdbc:mysql://mysql-shard-3:3306/cami_shard_3?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai"
+    username: root
+    password: cami_dev_2026
+    connectionTimeoutMilliseconds: 30000
+    idleTimeoutMilliseconds: 60000
+    maxLifetimeMilliseconds: 1800000
+    maxPoolSize: 5
+    minPoolSize: 1
+  ds_3_s:
+    url: "jdbc:mysql://mysql-shard-3-s:3306/cami_shard_3?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai"
+    username: root
+    password: cami_dev_2026
+    connectionTimeoutMilliseconds: 30000
+    idleTimeoutMilliseconds: 60000
+    maxLifetimeMilliseconds: 1800000
+    maxPoolSize: 5
+    minPoolSize: 1
+  # ---- shard 4 ----
+  ds_4_m:
+    url: "jdbc:mysql://mysql-shard-4:3306/cami_shard_4?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai"
+    username: root
+    password: cami_dev_2026
+    connectionTimeoutMilliseconds: 30000
+    idleTimeoutMilliseconds: 60000
+    maxLifetimeMilliseconds: 1800000
+    maxPoolSize: 5
+    minPoolSize: 1
+  ds_4_s:
+    url: "jdbc:mysql://mysql-shard-4-s:3306/cami_shard_4?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai"
+    username: root
+    password: cami_dev_2026
+    connectionTimeoutMilliseconds: 30000
+    idleTimeoutMilliseconds: 60000
+    maxLifetimeMilliseconds: 1800000
+    maxPoolSize: 5
+    minPoolSize: 1
+  # ---- shard 5 ----
+  ds_5_m:
+    url: "jdbc:mysql://mysql-shard-5:3306/cami_shard_5?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai"
+    username: root
+    password: cami_dev_2026
+    connectionTimeoutMilliseconds: 30000
+    idleTimeoutMilliseconds: 60000
+    maxLifetimeMilliseconds: 1800000
+    maxPoolSize: 5
+    minPoolSize: 1
+  ds_5_s:
+    url: "jdbc:mysql://mysql-shard-5-s:3306/cami_shard_5?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai"
+    username: root
+    password: cami_dev_2026
+    connectionTimeoutMilliseconds: 30000
+    idleTimeoutMilliseconds: 60000
+    maxLifetimeMilliseconds: 1800000
+    maxPoolSize: 5
+    minPoolSize: 1
+  # ---- shard 6 ----
+  ds_6_m:
+    url: "jdbc:mysql://mysql-shard-6:3306/cami_shard_6?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai"
+    username: root
+    password: cami_dev_2026
+    connectionTimeoutMilliseconds: 30000
+    idleTimeoutMilliseconds: 60000
+    maxLifetimeMilliseconds: 1800000
+    maxPoolSize: 5
+    minPoolSize: 1
+  ds_6_s:
+    url: "jdbc:mysql://mysql-shard-6-s:3306/cami_shard_6?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai"
+    username: root
+    password: cami_dev_2026
+    connectionTimeoutMilliseconds: 30000
+    idleTimeoutMilliseconds: 60000
+    maxLifetimeMilliseconds: 1800000
+    maxPoolSize: 5
+    minPoolSize: 1
+  # ---- shard 7 ----
+  ds_7_m:
+    url: "jdbc:mysql://mysql-shard-7:3306/cami_shard_7?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai"
+    username: root
+    password: cami_dev_2026
+    connectionTimeoutMilliseconds: 30000
+    idleTimeoutMilliseconds: 60000
+    maxLifetimeMilliseconds: 1800000
+    maxPoolSize: 5
+    minPoolSize: 1
+  ds_7_s:
+    url: "jdbc:mysql://mysql-shard-7-s:3306/cami_shard_7?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai"
+    username: root
+    password: cami_dev_2026
+    connectionTimeoutMilliseconds: 30000
+    idleTimeoutMilliseconds: 60000
+    maxLifetimeMilliseconds: 1800000
+    maxPoolSize: 5
+    minPoolSize: 1
 
 rules:
+  # --------------------------------------------------------------------------
+  # 读写分离: 逻辑数据源 ds_0..7 指向 (主=写, 从=读)
+  # --------------------------------------------------------------------------
+  - !READWRITE_SPLITTING
+    # SS 5.2+ 语法: 去掉 type:Static / props 包裹, 直接写驼峰字段
+    dataSources:
+      ds_0:
+        writeDataSourceName: ds_0_m
+        readDataSourceNames:
+          - ds_0_s
+      ds_1:
+        writeDataSourceName: ds_1_m
+        readDataSourceNames:
+          - ds_1_s
+      ds_2:
+        writeDataSourceName: ds_2_m
+        readDataSourceNames:
+          - ds_2_s
+      ds_3:
+        writeDataSourceName: ds_3_m
+        readDataSourceNames:
+          - ds_3_s
+      ds_4:
+        writeDataSourceName: ds_4_m
+        readDataSourceNames:
+          - ds_4_s
+      ds_5:
+        writeDataSourceName: ds_5_m
+        readDataSourceNames:
+          - ds_5_s
+      ds_6:
+        writeDataSourceName: ds_6_m
+        readDataSourceNames:
+          - ds_6_s
+      ds_7:
+        writeDataSourceName: ds_7_m
+        readDataSourceNames:
+          - ds_7_s
+
+  # --------------------------------------------------------------------------
+  # 分片: 8 张玩家表, 按 player_id % 8 路由到 ds_0..7 (RW 逻辑名)
+  # --------------------------------------------------------------------------
   - !SHARDING
     tables:
       player_base:
-        actualDataNodes: ds_${0..1}.player_base
+        actualDataNodes: ds_${0..7}.player_base
         databaseStrategy:
           standard:
             shardingColumn: player_id
@@ -32,7 +220,7 @@ rules:
         tableStrategy:
           none:
       player_inventory:
-        actualDataNodes: ds_${0..1}.player_inventory
+        actualDataNodes: ds_${0..7}.player_inventory
         databaseStrategy:
           standard:
             shardingColumn: player_id
@@ -40,7 +228,7 @@ rules:
         tableStrategy:
           none:
       player_currency:
-        actualDataNodes: ds_${0..1}.player_currency
+        actualDataNodes: ds_${0..7}.player_currency
         databaseStrategy:
           standard:
             shardingColumn: player_id
@@ -48,7 +236,7 @@ rules:
         tableStrategy:
           none:
       player_equipment:
-        actualDataNodes: ds_${0..1}.player_equipment
+        actualDataNodes: ds_${0..7}.player_equipment
         databaseStrategy:
           standard:
             shardingColumn: player_id
@@ -56,7 +244,7 @@ rules:
         tableStrategy:
           none:
       player_quest:
-        actualDataNodes: ds_${0..1}.player_quest
+        actualDataNodes: ds_${0..7}.player_quest
         databaseStrategy:
           standard:
             shardingColumn: player_id
@@ -64,7 +252,7 @@ rules:
         tableStrategy:
           none:
       player_skill:
-        actualDataNodes: ds_${0..1}.player_skill
+        actualDataNodes: ds_${0..7}.player_skill
         databaseStrategy:
           standard:
             shardingColumn: player_id
@@ -72,7 +260,7 @@ rules:
         tableStrategy:
           none:
       player_mail:
-        actualDataNodes: ds_${0..1}.player_mail
+        actualDataNodes: ds_${0..7}.player_mail
         databaseStrategy:
           standard:
             shardingColumn: player_id
@@ -80,7 +268,7 @@ rules:
         tableStrategy:
           none:
       player_social:
-        actualDataNodes: ds_${0..1}.player_social
+        actualDataNodes: ds_${0..7}.player_social
         databaseStrategy:
           standard:
             shardingColumn: player_id
@@ -95,4 +283,4 @@ rules:
       player_id_inline:
         type: INLINE
         props:
-          algorithm-expression: ds_${player_id % 2}
+          algorithm-expression: ds_${player_id % 8}

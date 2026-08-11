@@ -181,50 +181,288 @@ services:
       retries: 5
 
   # ================================================================
-  # MySQL — 2 shard DBs + 1 global DB
+  # MySQL — 8 shard masters + 8 shard replicas (GTID) + 1 global
   # ================================================================
-  mysql-shard-1:
+  # ---- shard 0 ----
+  mysql-shard-0:
     image: mysql:8.0
     environment:
-      MYSQL_ROOT_PASSWORD: cami_dev_2026
-      MYSQL_DATABASE: cami_shard_1
+      - MYSQL_ROOT_PASSWORD=cami_dev_2026
+      - MYSQL_DATABASE=cami_shard_0
     ports:
       - "3306:3306"
     volumes:
-      - mysql-1-data:/var/lib/mysql
-      - ./mysql/init-shard.sql:/docker-entrypoint-initdb.d/init.sql
-    networks:
-      - cami-net
-    command: --default-authentication-plugin=mysql_native_password --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
-
-  mysql-shard-2:
+      - mysql-shard-0-data:/var/lib/mysql
+      - ./mysql/init-shard.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+      - ./mysql/repl-master.sql:/docker-entrypoint-initdb.d/02-repl.sql:ro
+    networks: [cami-net]
+    command: >-
+      --default-authentication-plugin=mysql_native_password
+      --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+      --server-id=10 --log-bin=mysql-bin --binlog-format=ROW
+      --gtid_mode=ON --enforce_gtid_consistency=ON
+      --innodb-buffer-pool-size=32M --performance-schema=OFF --max-connections=200
+  mysql-shard-0-s:
     image: mysql:8.0
     environment:
-      MYSQL_ROOT_PASSWORD: cami_dev_2026
-      MYSQL_DATABASE: cami_shard_2
+      - MYSQL_ROOT_PASSWORD=cami_dev_2026
+      - MASTER_HOST=mysql-shard-0
+    volumes:
+      - mysql-shard-0-s-data:/var/lib/mysql
+      - ./mysql/repl-slave.sh:/docker-entrypoint-initdb.d/repl-slave.sh:ro
+    networks: [cami-net]
+    command: >-
+      --default-authentication-plugin=mysql_native_password
+      --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+      --server-id=20 --gtid_mode=ON --enforce_gtid_consistency=ON
+      --innodb-buffer-pool-size=32M --performance-schema=OFF --max-connections=200
+  # ---- shard 1 ----
+  mysql-shard-1:
+    image: mysql:8.0
+    environment:
+      - MYSQL_ROOT_PASSWORD=cami_dev_2026
+      - MYSQL_DATABASE=cami_shard_1
     ports:
       - "3307:3306"
     volumes:
-      - mysql-2-data:/var/lib/mysql
-      - ./mysql/init-shard.sql:/docker-entrypoint-initdb.d/init.sql
-    networks:
-      - cami-net
-    command: --default-authentication-plugin=mysql_native_password --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
-
-  # Independent DB for auction house and guild
+      - mysql-shard-1-data:/var/lib/mysql
+      - ./mysql/init-shard.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+      - ./mysql/repl-master.sql:/docker-entrypoint-initdb.d/02-repl.sql:ro
+    networks: [cami-net]
+    command: >-
+      --default-authentication-plugin=mysql_native_password
+      --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+      --server-id=11 --log-bin=mysql-bin --binlog-format=ROW
+      --gtid_mode=ON --enforce_gtid_consistency=ON
+      --innodb-buffer-pool-size=32M --performance-schema=OFF --max-connections=200
+  mysql-shard-1-s:
+    image: mysql:8.0
+    environment:
+      - MYSQL_ROOT_PASSWORD=cami_dev_2026
+      - MASTER_HOST=mysql-shard-1
+    volumes:
+      - mysql-shard-1-s-data:/var/lib/mysql
+      - ./mysql/repl-slave.sh:/docker-entrypoint-initdb.d/repl-slave.sh:ro
+    networks: [cami-net]
+    command: >-
+      --default-authentication-plugin=mysql_native_password
+      --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+      --server-id=21 --gtid_mode=ON --enforce_gtid_consistency=ON
+            --innodb-buffer-pool-size=32M --performance-schema=OFF --max-connections=200
+  # ---- shard 2 ----
+  mysql-shard-2:
+    image: mysql:8.0
+    environment:
+      - MYSQL_ROOT_PASSWORD=cami_dev_2026
+      - MYSQL_DATABASE=cami_shard_2
+    ports:
+      - "3310:3306"
+    volumes:
+      - mysql-shard-2-data:/var/lib/mysql
+      - ./mysql/init-shard.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+      - ./mysql/repl-master.sql:/docker-entrypoint-initdb.d/02-repl.sql:ro
+    networks: [cami-net]
+    command: >-
+      --default-authentication-plugin=mysql_native_password
+      --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+      --server-id=12 --log-bin=mysql-bin --binlog-format=ROW
+      --gtid_mode=ON --enforce_gtid_consistency=ON
+      --innodb-buffer-pool-size=32M --performance-schema=OFF --max-connections=200
+  mysql-shard-2-s:
+    image: mysql:8.0
+    environment:
+      - MYSQL_ROOT_PASSWORD=cami_dev_2026
+      - MASTER_HOST=mysql-shard-2
+    volumes:
+      - mysql-shard-2-s-data:/var/lib/mysql
+      - ./mysql/repl-slave.sh:/docker-entrypoint-initdb.d/repl-slave.sh:ro
+    networks: [cami-net]
+    command: >-
+      --default-authentication-plugin=mysql_native_password
+      --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+      --server-id=22 --gtid_mode=ON --enforce_gtid_consistency=ON
+            --innodb-buffer-pool-size=32M --performance-schema=OFF --max-connections=200
+  # ---- shard 3 ----
+  mysql-shard-3:
+    image: mysql:8.0
+    environment:
+      - MYSQL_ROOT_PASSWORD=cami_dev_2026
+      - MYSQL_DATABASE=cami_shard_3
+    ports:
+      - "3311:3306"
+    volumes:
+      - mysql-shard-3-data:/var/lib/mysql
+      - ./mysql/init-shard.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+      - ./mysql/repl-master.sql:/docker-entrypoint-initdb.d/02-repl.sql:ro
+    networks: [cami-net]
+    command: >-
+      --default-authentication-plugin=mysql_native_password
+      --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+      --server-id=13 --log-bin=mysql-bin --binlog-format=ROW
+      --gtid_mode=ON --enforce_gtid_consistency=ON
+      --innodb-buffer-pool-size=32M --performance-schema=OFF --max-connections=200
+  mysql-shard-3-s:
+    image: mysql:8.0
+    environment:
+      - MYSQL_ROOT_PASSWORD=cami_dev_2026
+      - MASTER_HOST=mysql-shard-3
+    volumes:
+      - mysql-shard-3-s-data:/var/lib/mysql
+      - ./mysql/repl-slave.sh:/docker-entrypoint-initdb.d/repl-slave.sh:ro
+    networks: [cami-net]
+    command: >-
+      --default-authentication-plugin=mysql_native_password
+      --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+      --server-id=23 --gtid_mode=ON --enforce_gtid_consistency=ON
+            --innodb-buffer-pool-size=32M --performance-schema=OFF --max-connections=200
+  # ---- shard 4 ----
+  mysql-shard-4:
+    image: mysql:8.0
+    environment:
+      - MYSQL_ROOT_PASSWORD=cami_dev_2026
+      - MYSQL_DATABASE=cami_shard_4
+    ports:
+      - "3312:3306"
+    volumes:
+      - mysql-shard-4-data:/var/lib/mysql
+      - ./mysql/init-shard.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+      - ./mysql/repl-master.sql:/docker-entrypoint-initdb.d/02-repl.sql:ro
+    networks: [cami-net]
+    command: >-
+      --default-authentication-plugin=mysql_native_password
+      --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+      --server-id=14 --log-bin=mysql-bin --binlog-format=ROW
+      --gtid_mode=ON --enforce_gtid_consistency=ON
+      --innodb-buffer-pool-size=32M --performance-schema=OFF --max-connections=200
+  mysql-shard-4-s:
+    image: mysql:8.0
+    environment:
+      - MYSQL_ROOT_PASSWORD=cami_dev_2026
+      - MASTER_HOST=mysql-shard-4
+    volumes:
+      - mysql-shard-4-s-data:/var/lib/mysql
+      - ./mysql/repl-slave.sh:/docker-entrypoint-initdb.d/repl-slave.sh:ro
+    networks: [cami-net]
+    command: >-
+      --default-authentication-plugin=mysql_native_password
+      --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+      --server-id=24 --gtid_mode=ON --enforce_gtid_consistency=ON
+            --innodb-buffer-pool-size=32M --performance-schema=OFF --max-connections=200
+  # ---- shard 5 ----
+  mysql-shard-5:
+    image: mysql:8.0
+    environment:
+      - MYSQL_ROOT_PASSWORD=cami_dev_2026
+      - MYSQL_DATABASE=cami_shard_5
+    ports:
+      - "3313:3306"
+    volumes:
+      - mysql-shard-5-data:/var/lib/mysql
+      - ./mysql/init-shard.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+      - ./mysql/repl-master.sql:/docker-entrypoint-initdb.d/02-repl.sql:ro
+    networks: [cami-net]
+    command: >-
+      --default-authentication-plugin=mysql_native_password
+      --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+      --server-id=15 --log-bin=mysql-bin --binlog-format=ROW
+      --gtid_mode=ON --enforce_gtid_consistency=ON
+      --innodb-buffer-pool-size=32M --performance-schema=OFF --max-connections=200
+  mysql-shard-5-s:
+    image: mysql:8.0
+    environment:
+      - MYSQL_ROOT_PASSWORD=cami_dev_2026
+      - MASTER_HOST=mysql-shard-5
+    volumes:
+      - mysql-shard-5-s-data:/var/lib/mysql
+      - ./mysql/repl-slave.sh:/docker-entrypoint-initdb.d/repl-slave.sh:ro
+    networks: [cami-net]
+    command: >-
+      --default-authentication-plugin=mysql_native_password
+      --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+      --server-id=25 --gtid_mode=ON --enforce_gtid_consistency=ON
+            --innodb-buffer-pool-size=32M --performance-schema=OFF --max-connections=200
+  # ---- shard 6 ----
+  mysql-shard-6:
+    image: mysql:8.0
+    environment:
+      - MYSQL_ROOT_PASSWORD=cami_dev_2026
+      - MYSQL_DATABASE=cami_shard_6
+    ports:
+      - "3314:3306"
+    volumes:
+      - mysql-shard-6-data:/var/lib/mysql
+      - ./mysql/init-shard.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+      - ./mysql/repl-master.sql:/docker-entrypoint-initdb.d/02-repl.sql:ro
+    networks: [cami-net]
+    command: >-
+      --default-authentication-plugin=mysql_native_password
+      --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+      --server-id=16 --log-bin=mysql-bin --binlog-format=ROW
+      --gtid_mode=ON --enforce_gtid_consistency=ON
+      --innodb-buffer-pool-size=32M --performance-schema=OFF --max-connections=200
+  mysql-shard-6-s:
+    image: mysql:8.0
+    environment:
+      - MYSQL_ROOT_PASSWORD=cami_dev_2026
+      - MASTER_HOST=mysql-shard-6
+    volumes:
+      - mysql-shard-6-s-data:/var/lib/mysql
+      - ./mysql/repl-slave.sh:/docker-entrypoint-initdb.d/repl-slave.sh:ro
+    networks: [cami-net]
+    command: >-
+      --default-authentication-plugin=mysql_native_password
+      --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+      --server-id=26 --gtid_mode=ON --enforce_gtid_consistency=ON
+            --innodb-buffer-pool-size=32M --performance-schema=OFF --max-connections=200
+  # ---- shard 7 ----
+  mysql-shard-7:
+    image: mysql:8.0
+    environment:
+      - MYSQL_ROOT_PASSWORD=cami_dev_2026
+      - MYSQL_DATABASE=cami_shard_7
+    ports:
+      - "3315:3306"
+    volumes:
+      - mysql-shard-7-data:/var/lib/mysql
+      - ./mysql/init-shard.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+      - ./mysql/repl-master.sql:/docker-entrypoint-initdb.d/02-repl.sql:ro
+    networks: [cami-net]
+    command: >-
+      --default-authentication-plugin=mysql_native_password
+      --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+      --server-id=17 --log-bin=mysql-bin --binlog-format=ROW
+      --gtid_mode=ON --enforce_gtid_consistency=ON
+      --innodb-buffer-pool-size=32M --performance-schema=OFF --max-connections=200
+  mysql-shard-7-s:
+    image: mysql:8.0
+    environment:
+      - MYSQL_ROOT_PASSWORD=cami_dev_2026
+      - MASTER_HOST=mysql-shard-7
+    volumes:
+      - mysql-shard-7-s-data:/var/lib/mysql
+      - ./mysql/repl-slave.sh:/docker-entrypoint-initdb.d/repl-slave.sh:ro
+    networks: [cami-net]
+    command: >-
+      --default-authentication-plugin=mysql_native_password
+      --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+      --server-id=27 --gtid_mode=ON --enforce_gtid_consistency=ON
+            --innodb-buffer-pool-size=32M --performance-schema=OFF --max-connections=200
+  # Independent DB for auction house, guild and account (global, not sharded)
   mysql-global:
     image: mysql:8.0
     environment:
-      MYSQL_ROOT_PASSWORD: cami_dev_2026
-      MYSQL_DATABASE: cami_global
+      - MYSQL_ROOT_PASSWORD=cami_dev_2026
+      - MYSQL_DATABASE=cami_global
     ports:
       - "3308:3306"
     volumes:
       - mysql-global-data:/var/lib/mysql
-      - ./mysql/init-global.sql:/docker-entrypoint-initdb.d/init.sql
-    networks:
-      - cami-net
-    command: --default-authentication-plugin=mysql_native_password --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+      - ./mysql/init-global.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks: [cami-net]
+    command: >-
+      --default-authentication-plugin=mysql_native_password
+      --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+      --innodb-buffer-pool-size=32M --performance-schema=OFF --max-connections=200
 
   # ================================================================
   # ShardingSphere Proxy — PlayerID-based sharding
@@ -232,8 +470,22 @@ services:
   shardingsphere-proxy:
     image: apache/shardingsphere-proxy:5.5.0
     depends_on:
+      - mysql-shard-0
+      - mysql-shard-0-s
       - mysql-shard-1
+      - mysql-shard-1-s
       - mysql-shard-2
+      - mysql-shard-2-s
+      - mysql-shard-3
+      - mysql-shard-3-s
+      - mysql-shard-4
+      - mysql-shard-4-s
+      - mysql-shard-5
+      - mysql-shard-5-s
+      - mysql-shard-6
+      - mysql-shard-6-s
+      - mysql-shard-7
+      - mysql-shard-7-s
     ports:
       - "3309:3307"
     volumes:
@@ -302,8 +554,22 @@ volumes:
   redis-4-data:
   redis-5-data:
   redis-6-data:
-  mysql-1-data:
-  mysql-2-data:
+  mysql-shard-0-data:
+  mysql-shard-0-s-data:
+  mysql-shard-1-data:
+  mysql-shard-1-s-data:
+  mysql-shard-2-data:
+  mysql-shard-2-s-data:
+  mysql-shard-3-data:
+  mysql-shard-3-s-data:
+  mysql-shard-4-data:
+  mysql-shard-4-s-data:
+  mysql-shard-5-data:
+  mysql-shard-5-s-data:
+  mysql-shard-6-data:
+  mysql-shard-6-s-data:
+  mysql-shard-7-data:
+  mysql-shard-7-s-data:
   mysql-global-data:
 
 networks:
