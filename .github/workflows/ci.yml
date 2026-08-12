@@ -77,6 +77,10 @@ jobs:
     env:
       VCPKG_ROOT: ${{ github.workspace }}/vcpkg
       VCPKG_BINARY_SOURCES: "clear;files,${{ github.workspace }}/vcpkg-bincache,readwrite"
+      # 防 OOM: ubuntu-latest runner 仅 16GB, vcpkg 双配置(debug+release)编 grpc/protobuf 峰值内存高,
+      # 顶层并发=容器 nproc 会同时编多个包 → 内核 OOM kill (多次红在 Building x64-linux-dbg 且无错误输出)。
+      # 限顶层并发到 1: 单 port 内部 ninja 并行保留, 每个包峰值 ~2-3GB 安全; 首次全量 ~1.5h, bincache 命中后重跑几分钟。
+      VCPKG_MAX_CONCURRENCY: 1
     steps:
       - name: Install system build dependencies (git + Boost via apt)
         # vcpkg 从源码构建重型依赖需要完整工具链（compiler/make/ninja/perl/pkg-config 等）。
@@ -113,7 +117,7 @@ jobs:
         run: cmake -B build-mod -DCMAKE_BUILD_TYPE=Release -DCAMI_BUILD_MODULES=ON -DCAMI_BUILD_TESTS=ON -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" -DBOOST_ROOT=/usr
 
       - name: Build
-        run: cmake --build build-mod --config Release -j"$(nproc)"
+        run: cmake --build build-mod --config Release -j2
 
       - name: Real-backend tests (ctest + live Redis Cluster)
         # CAMI_REDIS_CLUSTER_URI 驱动 redis_test.cpp 中 RedisClusterState 真实读写用例；未设置则跳过。
