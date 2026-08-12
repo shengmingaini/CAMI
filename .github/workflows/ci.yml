@@ -77,9 +77,12 @@ jobs:
     env:
       VCPKG_ROOT: ${{ github.workspace }}/vcpkg
       VCPKG_BINARY_SOURCES: "clear;files,${{ github.workspace }}/vcpkg-bincache,readwrite"
-      # 防 OOM: ubuntu-latest runner 仅 16GB, vcpkg 双配置(debug+release)编 grpc/protobuf 峰值内存高,
-      # 顶层并发=容器 nproc 会同时编多个包 → 内核 OOM kill (多次红在 Building x64-linux-dbg 且无错误输出)。
-      # 限顶层并发到 1: 单 port 内部 ninja 并行保留, 每个包峰值 ~2-3GB 安全; 首次全量 ~1.5h, bincache 命中后重跑几分钟。
+      # 只构建 Release triplet: CI 仅消费 Release 产物(ctest 跑 --config Release),
+      # Debug 版 gRPC/Protobuf 静态库对门禁无用, 且其链接期内存峰值会吃爆 16GB runner
+      # (实测死在 grpc/x64-linux-dbg 的 install 步骤)。跳过 Debug 同时把构建量砍半。
+      VCPKG_BUILD_TYPE: release
+      # 防 OOM: ubuntu-latest runner 仅 16GB, 单 port(如 grpc)内部 ninja 并行仍可能多编译单元同时占内存。
+      # 限顶层并发到 1: 单包内部 ninja 并行保留, 每个包峰值 ~2-3GB 安全; 首次全量 ~1.5h, bincache 命中后重跑几分钟。
       VCPKG_MAX_CONCURRENCY: 1
     steps:
       - name: Install system build dependencies (git + Boost via apt)
