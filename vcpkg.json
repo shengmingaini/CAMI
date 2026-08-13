@@ -10,7 +10,7 @@
     "grpc",
     "protobuf",
     "cppkafka",
-    "libmysql",
+    "libmariadb",
     "capnproto",
     "entt",
     "rocksdb",

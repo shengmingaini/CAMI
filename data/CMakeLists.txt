@@ -43,15 +43,19 @@ if(CAMI_BUILD_MODULES)
         message(STATUS "[data] cppkafka 未安装, 跳过 Kafka 后端")
     endif()
 
-    # libmysql 底层为 MariaDB Connector/C, vcpkg 导出的 CMake 包名为 unofficial-libmysql
-    # (find_package(libmysql) 不存在, 会导致 MySQL 后端被静默跳过)。
-    find_package(unofficial-libmysql CONFIG QUIET)
-    if(unofficial-libmysql_FOUND)
+    # libmariadb (MariaDB Connector/C) 替代 libmysql (MySQL 官方 8.0.x)。
+    # 原因: vcpkg 的 libmysql port 依赖 boost×5 + ncurses + lz4 + zstd + rapidjson,
+    # 构建极易失败 (已知 issue #46011), 且 MySQL 8.0 硬编码 boost_1_77_0。
+    # libmariadb 是 MySQL 客户端的 drop-in 替代 (<mysql.h> API 兼容, 头文件同样
+    # 装在 include/mysql/), 依赖仅 zlib+openssl, 构建稳定, 服务器端仍是 MySQL 8.0+SS。
+    # vcpkg 导出包名 unofficial-libmariadb, target 名 unofficial::libmariadb。
+    find_package(unofficial-libmariadb CONFIG QUIET)
+    if(unofficial-libmariadb_FOUND)
         target_sources(cami_data PRIVATE mysql_proxy/mysql_backing_store.cpp)  # MySQL 落库后端
-        target_link_libraries(cami_data PUBLIC unofficial::libmysql::libmysql)
-        message(STATUS "[data] MySQL 落库后端已启用 (libmysql)")
+        target_link_libraries(cami_data PUBLIC unofficial::libmariadb)
+        message(STATUS "[data] MySQL 落库后端已启用 (libmariadb)")
     else()
-        message(STATUS "[data] libmysql 未安装 (MinGW 不支持), 跳过 MySQL 后端")
+        message(STATUS "[data] libmariadb 未安装 (MinGW 不支持), 跳过 MySQL 后端")
     endif()
 
     # --- [阶段 A W4] RocksDB 嵌入式 KV 落库后端 (vcpkg: rocksdb) ---

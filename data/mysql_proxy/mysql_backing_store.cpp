@@ -1,8 +1,8 @@
 // data/mysql_proxy/mysql_backing_store.cpp — [PRODUCTION] MySQL 落库后端实现
-// 仅在 CAMI_BUILD_MODULES=ON 编译 (vcpkg: libmysql)。OFF 构建本文件为空 TU。
+// 仅在 CAMI_BUILD_MODULES=ON 编译 (vcpkg: libmariadb)。OFF 构建本文件为空 TU。
 //
 // 通过 ShardingSphere 代理 (MySQL 协议) 访问分片库; 代理按 player_id%8 路由。
-// 使用 libmysql C API + 预处理语句 (防注入)。
+// 使用 libmariadb C API + 预处理语句 (防注入)。
 #include "data/mysql_proxy/mysql_backing_store.h"
 
 #ifdef CAMI_BUILD_MODULES

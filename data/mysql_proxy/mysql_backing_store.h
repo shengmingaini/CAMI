@@ -6,7 +6,7 @@
 // 通过 ShardingSphere 代理 (MySQL 协议) 访问, 由代理做 player_id%8 分片路由,
 // 因此本类只连代理地址, 不感知 8 个物理分库。
 //
-// 仅在 CAMI_BUILD_MODULES=ON (vcpkg: libmysql C 客户端) 下编译。
+// 仅在 CAMI_BUILD_MODULES=ON (vcpkg: libmariadb C 客户端) 下编译。
 // 红线: GameNode 不直连; 仅 Data Service 经此落库 (缓存未命中回源 + 异步落库)。
 // ============================================================================
 #ifdef CAMI_BUILD_MODULES
