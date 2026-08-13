@@ -172,11 +172,13 @@ jobs:
         run: $VCPKG_ROOT/vcpkg install --triplet x64-linux-release --host-triplet x64-linux-release
 
       - name: Configure (MODULES=ON via vcpkg toolchain)
-        # Boost 由 apt 提供（-DBOOST_ROOT=/usr），其余重型依赖由 vcpkg 工具链注入。
+        # Boost 由 vcpkg 提供 (vcpkg.json 已声明 boost-system, 版本 1.91.0)。
+        # 不再用 -DBOOST_ROOT=/usr: 系统 apt boost 是 1.83.0, 与 vcpkg 的 1.91.0 冲突
+        # (vcpkg boost wrapper 要求 boost_system 1.91.0, BOOST_ROOT=/usr 却指向 1.83.0)。
         # -G Ninja + job pools(compile<=2,link=1): 链接串行, 峰值=单 target,
         #   修复之前 Makefiles -j2 两个 gRPC 级 target 并行链接导致的 OOM。
         # ccache + lld: 见 build job 注释。
-        run: cmake -B build-mod -G Ninja -DCMAKE_BUILD_TYPE=Release -DCAMI_BUILD_MODULES=ON -DCAMI_BUILD_TESTS=ON -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=x64-linux-release -DVCPKG_HOST_TRIPLET=x64-linux-release -DBOOST_ROOT=/usr -DCMAKE_EXE_LINKER_FLAGS="-fuse-ld=lld"
+        run: cmake -B build-mod -G Ninja -DCMAKE_BUILD_TYPE=Release -DCAMI_BUILD_MODULES=ON -DCAMI_BUILD_TESTS=ON -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=x64-linux-release -DVCPKG_HOST_TRIPLET=x64-linux-release -DCMAKE_EXE_LINKER_FLAGS="-fuse-ld=lld"
 
       - name: Build
         # Ninja 受 job pools 限制自动调度; ccache 命中时增量修改只编改动文件。
