@@ -165,15 +165,18 @@ jobs:
       - name: Build dependencies (vcpkg, manifest mode)
         # vcpkg.json 已锁定 builtin-baseline, 依赖版本不再随 vcpkg 上游每日漂移,
         # bincache key 稳定, 命中率显著提升 (之前 vcpkg 每日更新导致 ABI 变化重触发全量源码构建)。
-        # --triplet 指定 overlay triplet (仅 Release), 跳过 Debug 构建。
-        run: $VCPKG_ROOT/vcpkg install --triplet x64-linux-release
+        # --triplet 指定 target triplet (仅 Release); --host-triplet 必须同时指定 ——
+        # grpc 有 host 依赖 (host grpc/protobuf, 用于生成 grpc_cpp_plugin 工具), 而 host triplet
+        # 默认是固定的 x64-linux 不跟随 --triplet, 若不显式指定会继续构建 host 的 x64-linux-dbg,
+        # 叠加完整 clone 历史撑爆磁盘 (No space left on device)。
+        run: $VCPKG_ROOT/vcpkg install --triplet x64-linux-release --host-triplet x64-linux-release
 
       - name: Configure (MODULES=ON via vcpkg toolchain)
         # Boost 由 apt 提供（-DBOOST_ROOT=/usr），其余重型依赖由 vcpkg 工具链注入。
         # -G Ninja + job pools(compile<=2,link=1): 链接串行, 峰值=单 target,
         #   修复之前 Makefiles -j2 两个 gRPC 级 target 并行链接导致的 OOM。
         # ccache + lld: 见 build job 注释。
-        run: cmake -B build-mod -G Ninja -DCMAKE_BUILD_TYPE=Release -DCAMI_BUILD_MODULES=ON -DCAMI_BUILD_TESTS=ON -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=x64-linux-release -DBOOST_ROOT=/usr -DCMAKE_EXE_LINKER_FLAGS="-fuse-ld=lld"
+        run: cmake -B build-mod -G Ninja -DCMAKE_BUILD_TYPE=Release -DCAMI_BUILD_MODULES=ON -DCAMI_BUILD_TESTS=ON -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=x64-linux-release -DVCPKG_HOST_TRIPLET=x64-linux-release -DBOOST_ROOT=/usr -DCMAKE_EXE_LINKER_FLAGS="-fuse-ld=lld"
 
       - name: Build
         # Ninja 受 job pools 限制自动调度; ccache 命中时增量修改只编改动文件。
