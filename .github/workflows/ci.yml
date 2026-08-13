@@ -137,7 +137,10 @@ jobs:
       - name: Install vcpkg (skip if cached)
         if: steps.cache-vcpkg.outputs.cache-hit != 'true'
         run: |
-          git clone --depth 1 https://github.com/microsoft/vcpkg "$VCPKG_ROOT"
+          # 完整 clone (禁用 --depth 1): manifest mode + builtin-baseline 需要访问
+          # baseline commit 的 versions/baseline.json, 浅克隆只拉 HEAD 的历史,
+          # 会报 "failed to git show versions/baseline.json" (exit 128)。
+          git clone https://github.com/microsoft/vcpkg "$VCPKG_ROOT"
           "$VCPKG_ROOT/bootstrap-vcpkg.sh"
 
       - name: Cache vcpkg installed tree + binary cache
