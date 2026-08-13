@@ -2,6 +2,7 @@
   "name": "cami",
   "version": "0.1.0",
   "description": "Industrial MMORPG backend - 50K concurrent online",
+  "builtin-baseline": "aae277acf4e7de287ddb5e208b5316614de6aad7",
   "dependencies": [
     "redis-plus-plus",
     "openssl",
@@ -9,6 +10,10 @@
     "grpc",
     "protobuf",
     "cppkafka",
-    "libmysql"
+    "libmysql",
+    "capnproto",
+    "entt",
+    "rocksdb",
+    "msquic"
   ]
 }

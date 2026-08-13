@@ -1,0 +1,178 @@
+databaseName: cami_db
+
+# ============================================================================
+# CAMI ShardingSphere 配置 — Dev-Mini 起步档 (Scale-to-Fit)
+# ----------------------------------------------------------------------------
+# 逻辑分片固定 8 (player_id % 8, ADR-003), 但 8 个分片库全部位于同一物理 MySQL
+# 实例 (mysql-mini)。扩容时: 起新实例 -> 搬库 -> 仅改本文件 dataSource URL,
+# 分片算法与业务代码零改动、数据零重分布。详见 docs/architecture/scale-to-fit.md。
+#
+# 与 Dev-Std (config-cami_db.yaml) 的差异:
+#   - 无 READWRITE_SPLITTING (从库未部署, 读写分离在扩容阶段开启)
+#   - maxPoolSize 2 (起步连接数减半, 省内存)
+#   - 8 个逻辑分片 URL 指向同一实例的不同库
+# 注意    : 代理登录 root/root (SS 5.5.0 frontend 怪癖, 见 server.yaml)。
+# ============================================================================
+
+dataSources:
+  ds_0:
+    url: "jdbc:mysql://mysql-mini:3306/cami_shard_0?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai"
+    username: root
+    password: cami_dev_2026
+    connectionTimeoutMilliseconds: 30000
+    idleTimeoutMilliseconds: 60000
+    maxLifetimeMilliseconds: 1800000
+    maxPoolSize: 2
+    minPoolSize: 1
+  ds_1:
+    url: "jdbc:mysql://mysql-mini:3306/cami_shard_1?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai"
+    username: root
+    password: cami_dev_2026
+    connectionTimeoutMilliseconds: 30000
+    idleTimeoutMilliseconds: 60000
+    maxLifetimeMilliseconds: 1800000
+    maxPoolSize: 2
+    minPoolSize: 1
+  ds_2:
+    url: "jdbc:mysql://mysql-mini:3306/cami_shard_2?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai"
+    username: root
+    password: cami_dev_2026
+    connectionTimeoutMilliseconds: 30000
+    idleTimeoutMilliseconds: 60000
+    maxLifetimeMilliseconds: 1800000
+    maxPoolSize: 2
+    minPoolSize: 1
+  ds_3:
+    url: "jdbc:mysql://mysql-mini:3306/cami_shard_3?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai"
+    username: root
+    password: cami_dev_2026
+    connectionTimeoutMilliseconds: 30000
+    idleTimeoutMilliseconds: 60000
+    maxLifetimeMilliseconds: 1800000
+    maxPoolSize: 2
+    minPoolSize: 1
+  ds_4:
+    url: "jdbc:mysql://mysql-mini:3306/cami_shard_4?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai"
+    username: root
+    password: cami_dev_2026
+    connectionTimeoutMilliseconds: 30000
+    idleTimeoutMilliseconds: 60000
+    maxLifetimeMilliseconds: 1800000
+    maxPoolSize: 2
+    minPoolSize: 1
+  ds_5:
+    url: "jdbc:mysql://mysql-mini:3306/cami_shard_5?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai"
+    username: root
+    password: cami_dev_2026
+    connectionTimeoutMilliseconds: 30000
+    idleTimeoutMilliseconds: 60000
+    maxLifetimeMilliseconds: 1800000
+    maxPoolSize: 2
+    minPoolSize: 1
+  ds_6:
+    url: "jdbc:mysql://mysql-mini:3306/cami_shard_6?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai"
+    username: root
+    password: cami_dev_2026
+    connectionTimeoutMilliseconds: 30000
+    idleTimeoutMilliseconds: 60000
+    maxLifetimeMilliseconds: 1800000
+    maxPoolSize: 2
+    minPoolSize: 1
+  ds_7:
+    url: "jdbc:mysql://mysql-mini:3306/cami_shard_7?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai"
+    username: root
+    password: cami_dev_2026
+    connectionTimeoutMilliseconds: 30000
+    idleTimeoutMilliseconds: 60000
+    maxLifetimeMilliseconds: 1800000
+    maxPoolSize: 2
+    minPoolSize: 1
+
+rules:
+  # --------------------------------------------------------------------------
+  # 分片: 8 张玩家表, 按 player_id % 8 路由到 ds_0..7 (直接物理名, 无 RW 逻辑名)
+  # 扩容时此规则段【零改动】, 仅改上方 dataSource URL。
+  # --------------------------------------------------------------------------
+  - !SHARDING
+    tables:
+      player_base:
+        actualDataNodes: ds_${0..7}.player_base
+        databaseStrategy:
+          standard:
+            shardingColumn: player_id
+            shardingAlgorithmName: player_id_inline
+        tableStrategy:
+          none:
+      player_state:
+        actualDataNodes: ds_${0..7}.player_state
+        databaseStrategy:
+          standard:
+            shardingColumn: player_id
+            shardingAlgorithmName: player_id_inline
+        tableStrategy:
+          none:
+      player_inventory:
+        actualDataNodes: ds_${0..7}.player_inventory
+        databaseStrategy:
+          standard:
+            shardingColumn: player_id
+            shardingAlgorithmName: player_id_inline
+        tableStrategy:
+          none:
+      player_currency:
+        actualDataNodes: ds_${0..7}.player_currency
+        databaseStrategy:
+          standard:
+            shardingColumn: player_id
+            shardingAlgorithmName: player_id_inline
+        tableStrategy:
+          none:
+      player_equipment:
+        actualDataNodes: ds_${0..7}.player_equipment
+        databaseStrategy:
+          standard:
+            shardingColumn: player_id
+            shardingAlgorithmName: player_id_inline
+        tableStrategy:
+          none:
+      player_quest:
+        actualDataNodes: ds_${0..7}.player_quest
+        databaseStrategy:
+          standard:
+            shardingColumn: player_id
+            shardingAlgorithmName: player_id_inline
+        tableStrategy:
+          none:
+      player_skill:
+        actualDataNodes: ds_${0..7}.player_skill
+        databaseStrategy:
+          standard:
+            shardingColumn: player_id
+            shardingAlgorithmName: player_id_inline
+        tableStrategy:
+          none:
+      player_mail:
+        actualDataNodes: ds_${0..7}.player_mail
+        databaseStrategy:
+          standard:
+            shardingColumn: player_id
+            shardingAlgorithmName: player_id_inline
+        tableStrategy:
+          none:
+      player_social:
+        actualDataNodes: ds_${0..7}.player_social
+        databaseStrategy:
+          standard:
+            shardingColumn: player_id
+            shardingAlgorithmName: player_id_inline
+        tableStrategy:
+          none:
+    defaultDatabaseStrategy:
+      none:
+    defaultTableStrategy:
+      none:
+    shardingAlgorithms:
+      player_id_inline:
+        type: INLINE
+        props:
+          algorithm-expression: ds_${player_id % 8}

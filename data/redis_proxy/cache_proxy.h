@@ -14,6 +14,7 @@
 //   - InMemoryBackend / InMemoryStore 为 [PROTOTYPE] 仿真与单测用。
 //   - RedisBackend 为 [PRODUCTION], 由 CAMI_BUILD_MODULES=ON + vcpkg(redis-plus-plus) 提供。
 // ============================================================================
+#include <atomic>
 #include <cstddef>
 #include <functional>
 #include <mutex>
@@ -46,20 +47,17 @@ public:
 };
 
 // [PROTOTYPE] 无依赖内存后端, 带容量上限的 LRU 驱逐
+// [2026-08-12 优化] 读命中不搬 LRU 链表：热 key 读多写少，读路径仅查找（省 2 次 list 操作）；
+// 写侧 Put 仍维护 LRU 位置（写回频繁，热 key 写侧已刷新），驱逐近似性足够。
 class InMemoryBackend : public CacheBackend {
 public:
     explicit InMemoryBackend(std::size_t capacity = 100000) : capacity_(capacity) {}
 
     std::optional<std::string> Get(std::string_view key) override {
         std::lock_guard<std::mutex> lk(mu_);
-        std::string k(key);
-        auto it = map_.find(k);
+        auto it = map_.find(std::string(key));
         if (it == map_.end()) return std::nullopt;
-        // 提到 LRU 队首
-        lru_.erase(it->second.second);
-        lru_.push_front(k);
-        it->second.second = lru_.begin();
-        return it->second.first;
+        return it->second.first;  // 读命中不搬 LRU（近似 LRU：写侧维护位置）
     }
 
     void Put(std::string_view key, std::string value) override {
@@ -195,13 +193,23 @@ private:
 
 // ---------------------------------------------------------------------------
 // HotKeyDetector: LFU 计数 + 周期衰减 (热点 key 识别)
+// [2026-08-12 优化] 采样降频: sample_ratio>1 时每 N 次 record 才真正计数
+// (原子自增判定, 无锁), 热路径锁频率 ↓N×; 热 key 高频访问下统计意义不变。
 // ---------------------------------------------------------------------------
 class HotKeyDetector {
 public:
-    explicit HotKeyDetector(uint64_t hot_threshold = 64, double decay = 0.5)
-        : hot_threshold_(hot_threshold), decay_(decay) {}
+    explicit HotKeyDetector(uint64_t hot_threshold = 64, double decay = 0.5,
+                            uint32_t sample_ratio = 1)
+        : sample_ratio_(sample_ratio),
+          hot_threshold_(hot_threshold),
+          decay_(decay) {}
 
     void record(std::string_view key) {
+        // 采样: 每 sample_ratio 次调用记录 1 次 (原子计数器, 无锁热路径)
+        if (sample_ratio_ > 1 &&
+            (counter_.fetch_add(1, std::memory_order_relaxed) % sample_ratio_) != 0) {
+            return;
+        }
         std::lock_guard<std::mutex> lk(mu_);
         std::string k(key);
         counts_[k] += 1;
@@ -234,6 +242,8 @@ public:
 private:
     mutable std::mutex mu_;
     std::unordered_map<std::string, uint64_t> counts_;
+    std::atomic<uint64_t> counter_{0};  // 采样计数器（无锁自增）
+    uint32_t sample_ratio_;
     uint64_t hot_threshold_;
     double decay_;
     uint64_t total_ = 0;
@@ -246,12 +256,18 @@ enum class WritePolicy { WriteBack, WriteThrough };
 // ---------------------------------------------------------------------------
 class CacheProxy {
 public:
-    // policy: 默认写策略; enable_hot: 是否启用热点识别
+    // policy: 默认写策略; enable_hot: 是否启用热点识别; hot_sample_ratio: 热点采样比
+    // (默认 1=全量; 生产建议 64, 热路径锁频率 ↓64×, 见 gateway 层同类优化)。
     static constexpr WritePolicy kDefault = WritePolicy::WriteBack;  // Put 默认=沿用代理策略
     CacheProxy(CacheBackend& backend, BackingStore& store,
                WritePolicy policy = WritePolicy::WriteBack,
-               bool enable_hot = true)
-        : backend_(backend), store_(store), policy_(policy), enable_hot_(enable_hot) {}
+               bool enable_hot = true,
+               uint32_t hot_sample_ratio = 1)
+        : backend_(backend),
+          store_(store),
+          policy_(policy),
+          enable_hot_(enable_hot),
+          hot_(64, 0.5, hot_sample_ratio) {}
 
     // 异步落库注入点 (D6-T3): 把 dirty 的 {key,value} 批量交给调用方发布到 Kafka。
     // sink 返回 true=全部发布成功; 返回 false=部分失败(FlushDirty 会把失败 key 重新标记 dirty 重试)。
@@ -288,13 +304,15 @@ public:
         if (enable_hot_) hot_.record(key);
     }
 
+    // [2026-08-12 优化] 统计改 atomic：热路径无锁计数（原 stats_mu_ 锁已移除）。
     double hit_rate() const {
-        std::lock_guard<std::mutex> lk(stats_mu_);
-        uint64_t total = hits_ + misses_;
-        return total == 0 ? 0.0 : static_cast<double>(hits_) / total;
+        uint64_t total = hits_.load(std::memory_order_relaxed) +
+                         misses_.load(std::memory_order_relaxed);
+        return total == 0 ? 0.0
+                          : static_cast<double>(hits_.load(std::memory_order_relaxed)) / total;
     }
-    uint64_t hits() const { std::lock_guard<std::mutex> lk(stats_mu_); return hits_; }
-    uint64_t misses() const { std::lock_guard<std::mutex> lk(stats_mu_); return misses_; }
+    uint64_t hits() const { return hits_.load(std::memory_order_relaxed); }
+    uint64_t misses() const { return misses_.load(std::memory_order_relaxed); }
     std::vector<std::string> hot_keys() const { return hot_.hot_keys(); }
 
 private:
@@ -304,12 +322,13 @@ private:
     bool enable_hot_;
     HotKeyDetector hot_;
 
-    mutable std::mutex stats_mu_;
-    uint64_t hits_ = 0;
-    uint64_t misses_ = 0;
+    std::atomic<uint64_t> hits_{0};    // 命中计数（无锁）
+    std::atomic<uint64_t> misses_{0};  // 未命中计数（无锁）
 
     std::mutex dirty_mu_;
-    std::unordered_set<std::string> dirty_;
+    // [2026-08-12 优化] dirty 缓冲存 {key, value}：FlushDirty 免回读缓存
+    //（消除逐 key RTT 突发 + 根治"缓存驱逐致脏值丢失"告警）。
+    std::unordered_map<std::string, std::string> dirty_;
 
     // D6-T3: 异步落库注入点。空 = 同步 STORE 回退 (OFF/demo); 非空 = Kafka 发布。
     AsyncFlushSink async_flush_sink_;

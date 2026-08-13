@@ -26,6 +26,30 @@ elseif(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
     add_compile_options(/W4 /permissive- /Wno-unused-parameter)
 endif()
 
+# === Build Acceleration & Memory Guardrails (CI OOM 防线) ===
+# 1) ccache: 自动启用编译缓存。CI 跨 run 复用编译产物(含 protobuf 生成代码),
+#    本地增量编译同样受益。需在第一个 target 前设置 CMAKE_CXX_COMPILER_LAUNCHER。
+#    若系统无 ccache 或用户已显式指定 launcher, 则跳过, 不影响任何构建路径。
+find_program(CCACHE_PROGRAM ccache)
+if(CCACHE_PROGRAM AND NOT CMAKE_CXX_COMPILER_LAUNCHER)
+    set(CMAKE_CXX_COMPILER_LAUNCHER "${CCACHE_PROGRAM}" CACHE FILEPATH "ccache compiler launcher")
+    message(STATUS "ccache enabled: ${CCACHE_PROGRAM}")
+endif()
+
+# 2) Ninja job pools: 强制限制编译/链接并发, 防止链接期内存峰值吃爆 CI runner。
+#    - link=1: 链接阶段串行, 峰值 = 单个最大 target 的内存 (gRPC/Protobuf 静态库链接
+#      峰值 ~2-3GB, 串行后 16GB runner 绝对安全; 之前 Makefiles -j2 允许两个大 target
+#      并行链接, 是 Week3/4 MODULES=ON job OOM 的主因之一)。
+#    - compile=2: 编译并发封顶, 大型生成代码 (data_service.pb.cc 等) 单文件峰值已高,
+#      双编译单元并行即可跑满 CPU 又不越内存。
+#    仅对 Ninja 生成器生效 (Makefiles 忽略, 本地 MinGW 路径不受影响)。
+if(CMAKE_GENERATOR STREQUAL "Ninja" AND NOT CMAKE_JOB_POOLS)
+    set(CMAKE_JOB_POOLS "compile=2;link=1" CACHE STRING "Ninja job pools (compile/link concurrency caps)")
+    set(CMAKE_JOB_POOL_COMPILE compile CACHE STRING "Ninja compile job pool")
+    set(CMAKE_JOB_POOL_LINK link CACHE STRING "Ninja link job pool")
+    message(STATUS "Ninja job pools: compile<=2, link=1 (OOM guardrail)")
+endif()
+
 # === vcpkg Integration ===
 if(CAMI_USE_VCPKG AND NOT DEFINED CMAKE_TOOLCHAIN_FILE)
     if(DEFINED ENV{VCPKG_ROOT})
@@ -67,6 +91,12 @@ include_directories(${CMAKE_SOURCE_DIR})
 # enable_testing 必须在 add_subdirectory 之前, 否则子目录里的 add_test 不注册
 enable_testing()
 
+# === Test dependencies (必须在 add_subdirectory 之前, 子目录测试需 GTest/Threads target) ===
+if(CAMI_BUILD_TESTS)
+    find_package(GTest REQUIRED)
+    find_package(Threads REQUIRED)
+endif()
+
 # === Subdirectories — 五层架构 (spec §3.1 / §3.2 单向依赖) ===
 # 依赖方向: gateway → game → data → common ; ops → common (控制面)
 add_subdirectory(common)      # 全局公共服务层
@@ -88,7 +118,7 @@ add_test(NAME skeleton_layer_check COMMAND cami_skeleton_check)
 
 # === Tests (GTest-based unit/integration, 重型依赖就绪后开启) ===
 if(CAMI_BUILD_TESTS)
-    find_package(GTest REQUIRED)
+    # GTest/Threads 已在 add_subdirectory 前引入 (子目录测试需其 target)。
     # 各层实现后接入 add_subdirectory(tests)；此处直接注册已就绪的 codec 单测。
     add_executable(cami_codec_test tests/unit/codec_framing_test.cpp)
     target_link_libraries(cami_codec_test PRIVATE cami_gateway_codec GTest::gtest GTest::gtest_main)
@@ -129,6 +159,17 @@ if(CAMI_BUILD_TESTS)
     add_executable(cami_integration_test tests/unit/gateway_pipeline_test.cpp)
     target_link_libraries(cami_integration_test PRIVATE cami_gateway_integration GTest::gtest GTest::gtest_main)
     add_test(NAME integration_test COMMAND cami_integration_test)
+
+    # 内容模块化骨架：注册表/依赖拓扑/双闸门/分阶段等级上限/配置 LRU/Lua 懒加载 (纯 STL)。
+    add_executable(cami_content_test tests/unit/content_module_test.cpp)
+    target_link_libraries(cami_content_test PRIVATE cami_game GTest::gtest GTest::gtest_main)
+    add_test(NAME content_module_test COMMAND cami_content_test)
+
+    # 阶段 A 基础设施：Arena 分配器 + SPMC 无锁队列 (纯 header, common 层)
+    add_executable(cami_arena_spmc_test tests/unit/arena_spmc_test.cpp)
+    target_link_libraries(cami_arena_spmc_test PRIVATE cami_common GTest::gtest GTest::gtest_main)
+    target_link_libraries(cami_arena_spmc_test PRIVATE Threads::Threads)  # 多消费者测试
+    add_test(NAME arena_spmc_test COMMAND cami_arena_spmc_test)
 endif()
 
 message(STATUS "=== CAMI Build Configuration ===")

@@ -50,6 +50,7 @@ bool MySQLBackingStore::ensure_conn() {
     if (mysql_ping(conn_) == 0) return true;
     // 断线: 显式重连 (Data Service 常驻进程, 代理重启/网络抖动后必须能恢复)
     mysql_close(conn_);
+    CloseStmts();  // 预编译语句与旧连接绑定, 重连后全部失效, 必须重建
     conn_ = mysql_init(nullptr);
     if (!conn_) return false;
     configure_opts();
@@ -64,8 +65,33 @@ bool MySQLBackingStore::ensure_conn() {
     return true;
 }
 
+// [2026-08-12 优化] statement 预编译缓存: 同构 SQL 只 prepare 一次, 后续 execute 复用。
+// 调用方持锁 (mu_) 调用; 返回 nullptr 表示 prepare 失败 (调用方按失败处理)。
+MYSQL_STMT* MySQLBackingStore::GetStmt(MYSQL_STMT*& cache, const char* sql) {
+    if (cache) return cache;  // 已预编译, 直接复用 (5 万次落库只需 1 次 prepare)
+    cache = mysql_stmt_init(conn_);
+    if (!cache) return nullptr;
+    if (mysql_stmt_prepare(cache, sql, strlen(sql)) != 0) {
+        std::cerr << "[MySQLBackingStore] stmt prepare failed: " << mysql_error(conn_)
+                  << " sql=" << sql << std::endl;
+        mysql_stmt_close(cache);
+        cache = nullptr;
+        return nullptr;
+    }
+    return cache;
+}
+
+void MySQLBackingStore::CloseStmts() {
+    if (upsert_stmt_) { mysql_stmt_close(upsert_stmt_); upsert_stmt_ = nullptr; }
+    if (delete_stmt_) { mysql_stmt_close(delete_stmt_); delete_stmt_ = nullptr; }
+    if (cas_upd_stmt_) { mysql_stmt_close(cas_upd_stmt_); cas_upd_stmt_ = nullptr; }
+    if (cas_sel_stmt_) { mysql_stmt_close(cas_sel_stmt_); cas_sel_stmt_ = nullptr; }
+    if (cas_ins_stmt_) { mysql_stmt_close(cas_ins_stmt_); cas_ins_stmt_ = nullptr; }
+}
+
 MySQLBackingStore::~MySQLBackingStore() {
     std::lock_guard<std::mutex> lk(mu_);
+    CloseStmts();
     if (conn_) { mysql_close(conn_); conn_ = nullptr; }
 }
 
@@ -117,32 +143,27 @@ void MySQLBackingStore::Store(std::string_view key, std::string_view value) {
 
     if (value.empty()) {
         // 空 payload = 删除语义 (防御; 常规双删走 Delete 方法)。
-        // 注意: 此处已持有 mu_, 不能调 Delete() (会重入加锁死锁), 内联 DELETE。
-        MYSQL_STMT* stmt = mysql_stmt_init(conn_);
+        // 注意: 此处已持有 mu_, 不能调 Delete() (会重入加锁死锁), 内联 DELETE (复用 delete_stmt_)。
+        MYSQL_STMT* stmt = GetStmt(delete_stmt_,
+                                   "DELETE FROM player_state WHERE player_id = ?");
         if (!stmt) return;
-        const char* q = "DELETE FROM player_state WHERE player_id = ?";
-        if (mysql_stmt_prepare(stmt, q, strlen(q)) != 0) { mysql_stmt_close(stmt); return; }
         MYSQL_BIND bind[1];
         memset(bind, 0, sizeof(bind));
         bind[0].buffer_type = MYSQL_TYPE_LONGLONG;
         bind[0].buffer = &pid_val;
         bind[0].is_unsigned = 1;
         if (mysql_stmt_bind_param(stmt, bind) != 0 || mysql_stmt_execute(stmt) != 0) {
-            mysql_stmt_close(stmt);
-            return;
+            return;  // stmt 缓存保留, 下次复用
         }
-        mysql_stmt_close(stmt);
         return;
     }
 
     // 无条件 UPSERT (Put 语义 = last-write-wins): 新行 version=1, 已存在 version+1。
     // 目标表 player_state (方案 B: Data Service 序列化行专用, 与 player_base 结构化列分离)。
-    MYSQL_STMT* stmt = mysql_stmt_init(conn_);
+    MYSQL_STMT* stmt = GetStmt(upsert_stmt_,
+        "INSERT INTO player_state (player_id, payload, version) VALUES (?, ?, 1) "
+        "ON DUPLICATE KEY UPDATE payload = VALUES(payload), version = version + 1");
     if (!stmt) return;
-    const char* q = "INSERT INTO player_state (player_id, payload, version) "
-                    "VALUES (?, ?, 1) "
-                    "ON DUPLICATE KEY UPDATE payload = VALUES(payload), version = version + 1";
-    if (mysql_stmt_prepare(stmt, q, strlen(q)) != 0) { mysql_stmt_close(stmt); return; }
 
     MYSQL_BIND bind[2];
     memset(bind, 0, sizeof(bind));
@@ -157,12 +178,8 @@ void MySQLBackingStore::Store(std::string_view key, std::string_view value) {
     bind[1].buffer_length = plen;
     bind[1].length = &plen;
 
-    if (mysql_stmt_bind_param(stmt, bind) != 0 ||
-        mysql_stmt_execute(stmt) != 0) {
-        mysql_stmt_close(stmt);
-        return;
-    }
-    mysql_stmt_close(stmt);
+    (void)mysql_stmt_bind_param(stmt, bind);
+    (void)mysql_stmt_execute(stmt);
 }
 
 std::optional<redis_proxy::StoreRow> MySQLBackingStore::LoadWithVersion(std::string_view key) {
@@ -201,11 +218,10 @@ bool MySQLBackingStore::CasStore(std::string_view key, std::string_view value,
     unsigned long long exp = expected_version;
 
     // 1) 版本条件更新: 仅当 DB version == expected 才写并 +1 (affected_rows==1 成功)
-    MYSQL_STMT* stmt = mysql_stmt_init(conn_);
+    MYSQL_STMT* stmt = GetStmt(cas_upd_stmt_,
+        "UPDATE player_state SET payload = ?, version = version + 1 "
+        "WHERE player_id = ? AND version = ?");
     if (!stmt) return false;
-    const char* q_upd = "UPDATE player_state SET payload = ?, version = version + 1 "
-                        "WHERE player_id = ? AND version = ?";
-    if (mysql_stmt_prepare(stmt, q_upd, strlen(q_upd)) != 0) { mysql_stmt_close(stmt); return false; }
     MYSQL_BIND bind[3];
     memset(bind, 0, sizeof(bind));
     bind[0].buffer_type = MYSQL_TYPE_MEDIUM_BLOB;
@@ -220,14 +236,12 @@ bool MySQLBackingStore::CasStore(std::string_view key, std::string_view value,
     bind[2].is_unsigned = 1;
     bool upd_ok = mysql_stmt_bind_param(stmt, bind) == 0 && mysql_stmt_execute(stmt) == 0;
     my_ulonglong affected = upd_ok ? mysql_stmt_affected_rows(stmt) : 0;
-    mysql_stmt_close(stmt);
     if (affected == 1) return true;
 
     // 2) affected==0: 行不存在 或 版本冲突。查存在性区分。
-    MYSQL_STMT* chk = mysql_stmt_init(conn_);
+    MYSQL_STMT* chk = GetStmt(cas_sel_stmt_,
+                              "SELECT 1 FROM player_state WHERE player_id = ? LIMIT 1");
     if (!chk) return false;
-    const char* q_sel = "SELECT 1 FROM player_state WHERE player_id = ? LIMIT 1";
-    if (mysql_stmt_prepare(chk, q_sel, strlen(q_sel)) != 0) { mysql_stmt_close(chk); return false; }
     MYSQL_BIND cb[1];
     memset(cb, 0, sizeof(cb));
     cb[0].buffer_type = MYSQL_TYPE_LONGLONG;
@@ -239,14 +253,12 @@ bool MySQLBackingStore::CasStore(std::string_view key, std::string_view value,
         mysql_stmt_store_result(chk);
         exists = mysql_stmt_num_rows(chk);
     }
-    mysql_stmt_close(chk);
     if (exists == 0) {
         // 行不存在: 仅允许 expected=0 创建 (version 0 -> 1)
         if (expected_version != 0) return false;
-        MYSQL_STMT* ins = mysql_stmt_init(conn_);
+        MYSQL_STMT* ins = GetStmt(cas_ins_stmt_,
+            "INSERT INTO player_state (player_id, payload, version) VALUES (?, ?, 1)");
         if (!ins) return false;
-        const char* q_ins = "INSERT INTO player_state (player_id, payload, version) VALUES (?, ?, 1)";
-        if (mysql_stmt_prepare(ins, q_ins, strlen(q_ins)) != 0) { mysql_stmt_close(ins); return false; }
         MYSQL_BIND ib[2];
         memset(ib, 0, sizeof(ib));
         ib[0].buffer_type = MYSQL_TYPE_LONGLONG;
@@ -258,7 +270,6 @@ bool MySQLBackingStore::CasStore(std::string_view key, std::string_view value,
         ib[1].length = &plen;
         bool ins_ok = mysql_stmt_bind_param(ins, ib) == 0 && mysql_stmt_execute(ins) == 0;
         my_ulonglong ia = ins_ok ? mysql_stmt_affected_rows(ins) : 0;
-        mysql_stmt_close(ins);
         return ins_ok && ia == 1;  // 并发创建 PK 冲突 -> affected=0 -> false
     }
     return false;  // 行存在但版本不匹配 = 冲突
@@ -269,20 +280,16 @@ void MySQLBackingStore::Delete(std::string_view key) {
     if (!ensure_conn()) return;
     unsigned long long pid_val =
         std::strtoull(StripKeyPrefix(key).c_str(), nullptr, 10);
-    MYSQL_STMT* stmt = mysql_stmt_init(conn_);
+    MYSQL_STMT* stmt = GetStmt(delete_stmt_,
+                               "DELETE FROM player_state WHERE player_id = ?");
     if (!stmt) return;
-    const char* q = "DELETE FROM player_state WHERE player_id = ?";
-    if (mysql_stmt_prepare(stmt, q, strlen(q)) != 0) { mysql_stmt_close(stmt); return; }
     MYSQL_BIND bind[1];
     memset(bind, 0, sizeof(bind));
     bind[0].buffer_type = MYSQL_TYPE_LONGLONG;
     bind[0].buffer = &pid_val;
     bind[0].is_unsigned = 1;
-    if (mysql_stmt_bind_param(stmt, bind) != 0 || mysql_stmt_execute(stmt) != 0) {
-        mysql_stmt_close(stmt);
-        return;
-    }
-    mysql_stmt_close(stmt);
+    (void)mysql_stmt_bind_param(stmt, bind);
+    (void)mysql_stmt_execute(stmt);
 }
 
 }  // namespace mysql_proxy

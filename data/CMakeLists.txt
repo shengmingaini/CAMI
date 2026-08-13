@@ -32,22 +32,46 @@ if(CAMI_BUILD_MODULES)
     # 这些后端在 Linux CI (build-modules-on, 全量安装) 上照常编译。
     # 链接统一用 PUBLIC: 同 Redis 理由, KafkaFlush / MySQLBackingStore 由 main 直接实例化,
     # cami_data_service_main 经 cami_data_service(PUBLIC cami_data) 必须取得这些传递依赖。
-    find_package(cppkafka CONFIG QUIET)
-    if(cppkafka_FOUND)
+    # cppkafka 上游 CMake 包名为 CppKafka (大写 C/K), target 为 CppKafka::cppkafka。
+    # (find_package(cppkafka) 小写找不到 config, 会导致 Kafka 后端被静默跳过。)
+    find_package(CppKafka CONFIG QUIET)
+    if(CppKafka_FOUND)
         target_sources(cami_data PRIVATE sync/kafka_flush.cpp)   # Kafka 异步落库 + 死信队列
-        target_link_libraries(cami_data PUBLIC cppkafka)
+        target_link_libraries(cami_data PUBLIC CppKafka::cppkafka)
         message(STATUS "[data] Kafka 落库后端已启用 (cppkafka)")
     else()
         message(STATUS "[data] cppkafka 未安装, 跳过 Kafka 后端")
     endif()
 
-    find_package(libmysql CONFIG QUIET)
-    if(libmysql_FOUND)
+    # libmysql 底层为 MariaDB Connector/C, vcpkg 导出的 CMake 包名为 unofficial-libmysql
+    # (find_package(libmysql) 不存在, 会导致 MySQL 后端被静默跳过)。
+    find_package(unofficial-libmysql CONFIG QUIET)
+    if(unofficial-libmysql_FOUND)
         target_sources(cami_data PRIVATE mysql_proxy/mysql_backing_store.cpp)  # MySQL 落库后端
-        target_link_libraries(cami_data PUBLIC libmysql)
+        target_link_libraries(cami_data PUBLIC unofficial::libmysql::libmysql)
         message(STATUS "[data] MySQL 落库后端已启用 (libmysql)")
     else()
         message(STATUS "[data] libmysql 未安装 (MinGW 不支持), 跳过 MySQL 后端")
+    endif()
+
+    # --- [阶段 A W4] RocksDB 嵌入式 KV 落库后端 (vcpkg: rocksdb) ---
+    # 替代 MySQL/SS/Redis 外部栈, 单进程内嵌 KV + WAL + 事件溯源; 与 MySQL 后端并存,
+    # 由 StorageRouter 做影子部署/熔断/自主晋升 (见 data/rocksdb_proxy/storage_router.h)。
+    # 目标名以 vcpkg 安装输出为准 (RocksDB::rocksdb / rocksdb); CI 若改名此处同步。
+    find_package(RocksDB CONFIG QUIET)
+    if(RocksDB_FOUND)
+        target_sources(cami_data PRIVATE rocksdb_proxy/rocksdb_backing_store.cpp)
+        target_link_libraries(cami_data PUBLIC RocksDB::rocksdb)
+        message(STATUS "[data] RocksDB 落库后端已启用 (RocksDB)")
+    else()
+        find_package(rocksdb CONFIG QUIET)
+        if(rocksdb_FOUND)
+            target_sources(cami_data PRIVATE rocksdb_proxy/rocksdb_backing_store.cpp)
+            target_link_libraries(cami_data PUBLIC rocksdb)
+            message(STATUS "[data] RocksDB 落库后端已启用 (rocksdb)")
+        else()
+            message(STATUS "[data] RocksDB 未安装, 跳过 RocksDB 后端")
+        endif()
     endif()
 
     # gRPC Data Service (需要 protoc 代码生成, 见 data_service/CMakeLists.txt)
@@ -77,4 +101,10 @@ if(CAMI_BUILD_TESTS)
     add_executable(cami_sync_demo sync/sync_demo.cpp)
     target_link_libraries(cami_sync_demo PRIVATE cami_data)
     add_test(NAME sync_demo COMMAND cami_sync_demo)
+
+    # 阶段 A W4: 自主存储治理器 (影子部署/熔断/自主晋升) — 纯 STL, OFF 可编译。
+    # 用 InMemoryStore 仿真双端 + ControllableStore 验证, 不依赖 RocksDB。
+    add_executable(cami_storage_router_test ${CMAKE_SOURCE_DIR}/tests/unit/storage_router_test.cpp)
+    target_link_libraries(cami_storage_router_test PRIVATE cami_data GTest::gtest GTest::gtest_main)
+    add_test(NAME storage_router_test COMMAND cami_storage_router_test)
 endif()

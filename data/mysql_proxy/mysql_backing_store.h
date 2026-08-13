@@ -17,7 +17,8 @@
 
 #include "data/redis_proxy/cache_proxy.h"   // BackingStore
 
-struct st_mysql;   // 前置声明, 避免暴露 <mysql.h> 给包含方
+struct st_mysql;          // 前置声明, 避免暴露 <mysql.h> 给包含方
+struct st_mysql_stmt;     // MYSQL_STMT 的底层结构 (同上, 预编译语句缓存用)
 
 namespace cami {
 namespace data {
@@ -54,6 +55,17 @@ private:
     void configure_opts();
     // 探活; 断线则重连一次; 返回 false = 连接不可用
     bool ensure_conn();
+    // [2026-08-12 优化] statement 预编译缓存: prepare 一次, execute 复用
+    // (批量落库 5 万 key 从 5 万次 prepare+网络往返降到 1 次 prepare)。
+    // 缓存与连接绑定: 重连后旧 stmt 失效, ensure_conn 会先 CloseStmts。
+    struct st_mysql_stmt* GetStmt(struct st_mysql_stmt*& cache, const char* sql);
+    void CloseStmts();
+
+    struct st_mysql_stmt* upsert_stmt_ = nullptr;  // Store: INSERT ... ON DUPLICATE KEY UPDATE
+    struct st_mysql_stmt* delete_stmt_ = nullptr;  // Delete / Store 空值路径: DELETE WHERE player_id=?
+    struct st_mysql_stmt* cas_upd_stmt_ = nullptr; // CasStore: UPDATE ... WHERE player_id=? AND version=?
+    struct st_mysql_stmt* cas_sel_stmt_ = nullptr; // CasStore 存在性: SELECT 1 WHERE player_id=?
+    struct st_mysql_stmt* cas_ins_stmt_ = nullptr; // CasStore 新行: INSERT (player_id, payload, version)
 };
 
 }  // namespace mysql_proxy

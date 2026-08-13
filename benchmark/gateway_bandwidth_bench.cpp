@@ -48,11 +48,10 @@ int main() {
     const double total_bytes = static_cast<double>(encoded.size());
     const double enc_mbps = (total_bytes / (1024.0 * 1024.0)) / enc_sec;
 
-    // ---------- 2) 解码吞吐（整段流一次性切帧，稳态 CPU 成本）----------
+    // ---------- 2) 解码吞吐（整段流一次性切帧，稳态 CPU 成本；零拷贝帧视图）----------
     std::size_t decoded_frames = 0;
-    const std::function<void(std::vector<std::uint8_t> &&)> on_frame =
-        [&](std::vector<std::uint8_t>&& fr) {
-            (void)fr;
+    const cami::gateway::codec::FrameDecoder::FrameCallback on_frame =
+        [&](const std::uint8_t* /*p*/, std::size_t /*len*/) {
             ++decoded_frames;
         };
     cami::gateway::codec::FrameDecoder decoder;

@@ -43,3 +43,8 @@ target_link_libraries(cami_gateway PUBLIC cami_gateway_redis)
 # 不修改 connection.cpp / connection_manager.cpp 逻辑，仅经既有 set_on_accept 挂钩接入。
 add_subdirectory(integration)
 target_link_libraries(cami_gateway PUBLIC cami_gateway_integration)
+
+# 传输抽象 + 连接迁移治理器（独立 INTERFACE target，见 gateway/transport/CMakeLists.txt）。
+# QUIC 候选后端为 MODULES 门控（msquic 缺失时仅保留 ITransport 抽象 + 治理器，OFF 可编译）。
+add_subdirectory(transport)
+target_link_libraries(cami_gateway PUBLIC cami_gateway_transport)

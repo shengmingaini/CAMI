@@ -27,13 +27,15 @@ void Connection::start() {
     // [PROTOTYPE] 握手 hook：真实环境由 codec/security 模块填充（架构 §4.1）。
     // 原型阶段直接置 Established，仅验证生命周期链路。
     transition_to(ConnectionState::kEstablished);
-    start_idle_timer();
-    begin_read();  // [集成] 进入 Established 即开始异步读取，原始字节经 on_data 上抛。
+    arm_idle_timer();  // 注册一次空闲超时等待（后续 mark_activity 仅刷新截止时间）
+    begin_read();      // [集成] 进入 Established 即开始异步读取，原始字节经 decoder 分帧上抛。
 }
 
 void Connection::mark_activity() {
     if (state_.load(std::memory_order_acquire) == ConnectionState::kEstablished) {
-        start_idle_timer();
+        // 定时器复用：仅刷新截止时间。旧 wait 会被取消，其 aborted 回调内自动重新挂起
+        // （见 on_idle_timeout）——每消息省一次 async_wait 注册。
+        idle_timer_.expires_after(std::chrono::milliseconds(idle_timeout_ms_));
     }
 }
 
@@ -65,8 +67,7 @@ void Connection::transition_to(ConnectionState to) {
     if (to == ConnectionState::kClosed && on_closed_) on_closed_();
 }
 
-void Connection::start_idle_timer() {
-    // 注意：现代 Boost.Asio 的 expires_after 仅接受 duration 单参数（无 error_code 重载）。
+void Connection::arm_idle_timer() {
     idle_timer_.expires_after(std::chrono::milliseconds(idle_timeout_ms_));
     auto self = shared_from_this();
     idle_timer_.async_wait(
@@ -74,7 +75,14 @@ void Connection::start_idle_timer() {
 }
 
 void Connection::on_idle_timeout(const boost::system::error_code& ec) {
-    if (ec == boost::asio::error::operation_aborted) return;  // 被 mark_activity/cancel 取消，忽略
+    if (ec == boost::asio::error::operation_aborted) {
+        // 被 mark_activity/expires_after 刷新取消：若连接仍 Established 则重新挂起，
+        // 以新截止时间继续探测；否则（已关闭）不再注册。
+        if (state_.load(std::memory_order_acquire) == ConnectionState::kEstablished) {
+            arm_idle_timer();
+        }
+        return;
+    }
     // 空闲超时 → 失活 → 关闭
     transition_to(ConnectionState::kClosing);
     transition_to(ConnectionState::kClosed);
@@ -92,7 +100,19 @@ void Connection::begin_read() {
                 // operation_aborted（close 取消）/ EOF / 其他错误：停止读取，不重入循环。
                 return;
             }
-            if (self->on_data_) {
+            if (self->on_frame_) {
+                // 帧级路径：内嵌 decoder 定界，帧视图零拷贝交付；失同步则关闭连接。
+                const codec::DecodeResult r = self->decoder_.consume(
+                    self->read_buf_.data(), n,
+                    [self](const std::uint8_t* p, std::size_t sz) {
+                        if (self->on_frame_) self->on_frame_(p, sz);
+                    });
+                if (r == codec::DecodeResult::kOversized) {
+                    self->close_via_executor();  // 流失同步：停止读取，交由 close 终止。
+                    return;
+                }
+            } else if (self->on_data_) {
+                // 兼容路径：原始字节直接上抛（原型/自检）。
                 self->on_data_(self->read_buf_.data(), n);
             }
             // 继续投递下一次读取（单连接单线程亲和，无并发读竞态）。

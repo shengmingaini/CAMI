@@ -1,6 +1,7 @@
 #pragma once
 
 #include "gateway/connection/connection_fsm.h"
+#include "gateway/codec/frame_decoder.h"  // 帧解码器（每连接一个，线程亲和零锁）
 
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/asio/steady_timer.hpp>
@@ -19,15 +20,24 @@ namespace cami {
 namespace gateway {
 namespace connection {
 
-// 单条客户端连接 [PROTOTYPE]
+// 单条客户端连接 [PROTOTYPE→优化]
 // 拥有 socket（RAII），生命周期绑定所属 io_context 线程（亲和性，不跨线程）。
-// 职责边界（架构 §4.1）：仅"连接维持 + 生命周期状态机 + 空闲超时探测"；
-// 消息编解码/加解密归 codec/security 模块，本模块不碰字节流。
+// 职责边界（架构 §4.1）：仅"连接维持 + 生命周期状态机 + 空闲超时探测 + 帧定界"；
+// 帧内的业务编解码/加解密归 codec/security 模块（decoder 为 codec 类，连接仅持有并调用）。
+//
+// [2026-08-12 性能优化]
+//   - 内嵌 FrameDecoder：每连接一个解码器，on_frame 帧级回调（零拷贝视图），
+//     消除集成层"全局 decoders map + 全局锁"（见 gateway-performance-review.md）。
+//   - 定时器复用：async_wait 仅注册一次，mark_activity 只 expires_after 刷新
+//     （被刷新取消的 aborted 回调内部自动重新挂起）——每消息省 1 次定时器操作。
 class Connection : public std::enable_shared_from_this<Connection> {
 public:
     using Socket = boost::asio::ip::tcp::socket;
+    // 帧级回调：payload 为解码器内部缓冲视图（生命周期限于回调内），
+    // 需要异步持有/跨线程处理的消息必须由调用方显式拷贝。
+    using FrameCallback = codec::FrameDecoder::FrameCallback;
 
-    // 空闲超时阈值：超过该时长无任何活动（由 codec 调 mark_activity 刷新）即判失活断开。
+    // 空闲超时阈值：超过该时长无任何活动（由数据到达刷新）即判失活断开。
     static constexpr std::uint32_t kDefaultIdleTimeoutMs = 30'000;
 
     explicit Connection(Socket socket,
@@ -43,11 +53,15 @@ public:
     // 主动关闭：非终态 → Closing → Closed（幂等，已 Closed 直接返回）。
     void close();
 
-    // codec 模块每成功解码一条消息调用，刷新空闲计时（防误杀长连接）。
+    // 刷新空闲计时（防误杀长连接）。数据到达时由内部读循环自动调用；
+    // 业务侧（如解析出心跳消息）也可显式调用。
     void mark_activity();
 
-    // [PROTOTYPE→集成] 收到对端字节时回调（原始字节，未做帧定界；由 codec 模块负责定界）。
-    // 供压测/真实网关把 socket 读到的数据喂给 FrameDecoder。可空。
+    // [集成] 帧级回调（推荐）：收到完整帧时调用（payload 视图零拷贝）。
+    // 设置后，原始字节自动经内嵌 FrameDecoder 定界，不再透传 on_data_。
+    void set_on_frame(FrameCallback cb) { on_frame_ = std::move(cb); }
+
+    // [兼容] 原始字节回调：仅当未设置 on_frame 时生效（原型/自检路径）。
     void set_on_data(std::function<void(const std::uint8_t*, std::size_t)> cb) {
         on_data_ = std::move(cb);
     }
@@ -74,13 +88,14 @@ public:
 
 private:
     void transition_to(ConnectionState to);
-    void start_idle_timer();
+    void arm_idle_timer();      // 注册空闲超时等待（仅 start 时与 aborted 重挂时调用）
     void on_idle_timeout(const boost::system::error_code& ec);
-    // 启动异步读取循环：async_read_some → on_data 回调 → 重新投递（aborted/EOF 即停，不重入）。
+    // 启动异步读取循环：async_read_some → 内嵌 decoder 分帧 → on_frame / on_data → 重新投递。
     void begin_read();
 
     Socket socket_;
     boost::asio::steady_timer idle_timer_;
+    codec::FrameDecoder decoder_;              // 每连接一个解码器（线程亲和，零锁）
     std::array<std::uint8_t, 4096> read_buf_{};  // 固定读缓冲，避免运行时分配
     std::atomic<ConnectionState> state_{ConnectionState::kIdle};
     std::uint32_t idle_timeout_ms_;
@@ -88,7 +103,8 @@ private:
     static std::atomic<std::uint64_t> next_id_;
     std::function<void(ConnectionState, ConnectionState)> on_state_change_;
     std::function<void()> on_closed_;
-    std::function<void(const std::uint8_t*, std::size_t)> on_data_;
+    std::function<void(const std::uint8_t*, std::size_t)> on_data_;  // 原始字节（兼容）
+    FrameCallback on_frame_;                                         // 帧级回调（推荐）
 };
 
 }  // namespace connection

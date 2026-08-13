@@ -1,13 +1,16 @@
-// 网关压测服务端 [PROTOTYPE]
+// 网关压测服务端 [PROTOTYPE→优化]
 // 真实 socket：用我们的 ConnectionManager（SO_REUSEPORT 多 acceptor 监听）接受并持有连接；
-// 每条连接 on_data → FrameDecoder 切帧 → 刷新 HeartbeatManager；独立线程周期 tick 踢线。
-// 统计：live 连接数、解码帧数、接收字节、踢线数。不含业务逻辑/持久化（符合接入层红线）。
+// 每条连接内嵌 FrameDecoder（on_frame 帧级回调，零拷贝、零全局锁）；空闲超时由连接自身
+// idle_timer 判定（构造时注入心跳宽限）；HeartbeatManager 仅作 live 统计（注册/注销）。
+// 统计：live 连接数、解码帧数、接收字节（帧级累计）、关闭数。不含业务逻辑/持久化。
+//
+// [2026-08-12 优化] 移除全局 decoders map + dec_mtx 与每帧 hb.mark_activity：
+// 消息热路径零锁（帧解码器随连接、心跳随连接、统计随帧）。见 gateway-performance-review.md。
 //
 // 用法：gateway_stress_server [--host 0.0.0.0] [--port 7910] [--threads 4]
 //                             [--hb-timeout 15000] [--duration 30000]
 #include "stress_common.h"
 
-#include "gateway/codec/frame_decoder.h"
 #include "gateway/connection/connection_manager.h"
 #include "gateway/heartbeat/heartbeat_manager.h"
 
@@ -17,9 +20,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <iostream>
-#include <mutex>
 #include <thread>
-#include <unordered_map>
 
 namespace cg = cami::gateway;
 using std::chrono::steady_clock;
@@ -44,51 +45,36 @@ int main(int argc, char** argv) {
         else if (a == "--duration" && i + 1 < argc) duration = milliseconds(std::atoi(argv[++i]));
     }
 
+    // 连接自身空闲超时 = 心跳宽限（空闲即踢线，零全局锁）。
+    cg::connection::ConnectionManager mgr(static_cast<std::size_t>(threads),
+                                          cg::stress::kDefaultListenBacklog,
+                                          static_cast<std::uint32_t>(hb_timeout.count()));
+    // HeartbeatManager 仅作 live 统计（注册/注销，频率低，锁可接受）。
     cg::heartbeat::HeartbeatConfig hbcfg;
-    hbcfg.heartbeat_timeout = hb_timeout;
-    hbcfg.idle_recycle_timeout = cg::stress::kIdleRecycleTimeout;
-    hbcfg.scan_interval = cg::stress::kScanInterval;
     cg::heartbeat::HeartbeatManager hb(hbcfg);
 
-    // 每连接一个 FrameDecoder（codec 模块）；on_data 线程与对应连接同线程，无锁竞争内部。
-    std::mutex dec_mtx;
-    std::unordered_map<std::uint64_t, cg::codec::FrameDecoder> decoders;
     std::atomic<std::uint64_t> frames_decoded{0};
     std::atomic<std::uint64_t> bytes_recv{0};
-    std::atomic<std::uint64_t> kicks{0};
-
-    cg::connection::ConnectionManager mgr(static_cast<std::size_t>(threads),
-                                          cg::stress::kDefaultListenBacklog);
+    std::atomic<std::uint64_t> closed{0};
 
     mgr.set_on_accept([&](std::shared_ptr<cg::connection::Connection> c) {
         const std::uint64_t id = c->id();
-        // on_data 闭包捕获裸 this（非 shared_ptr，避免 Connection→on_data_→shared_ptr 引用环）；
-        // 读取发生在连接自身生命周期内，this 必然有效。
-        c->set_on_data([raw = c.get(), &dec_mtx, &decoders, &hb, id, &frames_decoded,
-                        &bytes_recv](const std::uint8_t* d, std::size_t n) {
+        // 帧级回调：解码器随连接（线程亲和），零锁；帧视图零拷贝。
+        // 闭包捕获裸 this（非 shared_ptr，避免引用环）；读取发生在连接生命周期内，this 必然有效。
+        c->set_on_frame([raw = c.get(), &frames_decoded, &bytes_recv](
+                            const std::uint8_t* /*p*/, std::size_t n) {
+            frames_decoded.fetch_add(1, std::memory_order_relaxed);
             bytes_recv.fetch_add(n, std::memory_order_relaxed);
-            std::lock_guard<std::mutex> lk(dec_mtx);
-            cg::codec::FrameDecoder& dec = decoders[id];
-            cg::codec::DecodeResult r = dec.consume(d, n, [&](std::vector<std::uint8_t>&&) {
-                hb.mark_activity(id, steady_clock::now());
-                frames_decoded.fetch_add(1, std::memory_order_relaxed);
-            });
-            if (r == cg::codec::DecodeResult::kOversized) {
-                raw->close_via_executor();  // 失同步：强制关闭（连接无法自恢复）
-            } else {
-                raw->mark_activity();  // 原始字节到达即视为活动，刷新本连接空闲计时
-            }
+            (void)raw;
         });
-        // 注册进心跳管理器；踢线闭包捕获 shared_ptr，close 经所属 executor 安全执行。
+        // live 统计注册（踢线由连接自身 idle_timer 完成，无集中 tick）。
         auto sp = c;
-        hb.register_connection(id, steady_clock::now(),
-                               [sp](cg::heartbeat::TimeoutReason) { sp->close_via_executor(); });
+        hb.register_connection(id, steady_clock::now(), nullptr);
+        sp->set_on_closed([&hb, id]() { hb.unregister(id); });
     });
 
-    mgr.set_on_connection_closed([&](cg::connection::Connection& c) {
-        hb.unregister(c.id());
-        std::lock_guard<std::mutex> lk(dec_mtx);
-        decoders.erase(c.id());
+    mgr.set_on_connection_closed([&](cg::connection::Connection&) {
+        closed.fetch_add(1, std::memory_order_relaxed);
     });
 
     std::signal(SIGINT, on_signal);
@@ -103,15 +89,6 @@ int main(int argc, char** argv) {
                 host.c_str(), port, threads, static_cast<long long>(hb_timeout.count()),
                 static_cast<long long>(duration.count()));
 
-    // 独立线程周期 tick 心跳（hb 自带互斥；kick 闭包经 executor 安全 close，无需 io_context）。
-    std::thread ticker([&]() {
-        while (!g_stop.load(std::memory_order_relaxed)) {
-            std::this_thread::sleep_for(cg::stress::kScanInterval);
-            auto timed = hb.tick(steady_clock::now());
-            kicks.fetch_add(timed.size(), std::memory_order_relaxed);
-        }
-    });
-
     const auto start = steady_clock::now();
     while (!g_stop.load(std::memory_order_relaxed) &&
            (steady_clock::now() - start) < duration) {
@@ -119,20 +96,19 @@ int main(int argc, char** argv) {
         std::this_thread::sleep_for(milliseconds(1000));
         if ((steady_clock::now() - start) < milliseconds(5000)) continue;  // 前 5s 不出统计
         const auto live = hb.live_count();
-        std::printf("[stress-server] t=%lldms live=%zu frames=%llu bytes=%llu kicks=%llu\n",
+        std::printf("[stress-server] t=%lldms live=%zu frames=%llu bytes=%llu closed=%llu\n",
                     static_cast<long long>(std::chrono::duration_cast<milliseconds>(
                         steady_clock::now() - start).count()),
                     live, static_cast<unsigned long long>(frames_decoded.load()),
                     static_cast<unsigned long long>(bytes_recv.load()),
-                    static_cast<unsigned long long>(kicks.load()));
+                    static_cast<unsigned long long>(closed.load()));
     }
 
     g_stop.store(true);
-    ticker.join();
     mgr.stop();
-    std::printf("[stress-server] stopped. final live=%zu frames=%llu bytes=%llu kicks=%llu\n",
+    std::printf("[stress-server] stopped. final live=%zu frames=%llu bytes=%llu closed=%llu\n",
                 hb.live_count(), static_cast<unsigned long long>(frames_decoded.load()),
                 static_cast<unsigned long long>(bytes_recv.load()),
-                static_cast<unsigned long long>(kicks.load()));
+                static_cast<unsigned long long>(closed.load()));
     return 0;
 }

@@ -10,10 +10,22 @@ on:
   # 也开放手动触发, 便于不必等轻量 build 门禁、单独重跑该 job。
   workflow_dispatch:
 
+# === 资源防堆叠 (Week3/4 CI 卡顿根因之一) ===
+# 同一分支/PR 连续 push 时自动取消正在跑的旧 run, 只保留最新:
+# 1) 避免多个重型 job 并发抢 runner 导致排队等待;
+# 2) 避免多个 vcpkg 全量构建同时占用 GitHub 资源池。
+concurrency:
+  group: cami-ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     name: Build & Layered Skeleton Check
     runs-on: ubuntu-latest
+    env:
+      # ccache 缓存目录固定到 workspace, 不依赖 HOME 展开, 便于 actions/cache 恢复。
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_MAXSIZE: 1G
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -21,16 +33,28 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake g++ libboost-dev libboost-system-dev
+          sudo apt-get install -y cmake g++ libboost-dev libboost-system-dev ccache lld
+
+      - name: Cache ccache (跨 run 编译缓存)
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/.ccache
+          key: ${{ runner.os }}-ccache-off-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-ccache-off-
 
       - name: Configure (lightweight skeleton — no heavy deps)
         # CAMI_BUILD_MODULES=OFF：跳过 gRPC/Protobuf/Redis/Sol2/Lua 等重型依赖，
         # 仅编译五层骨架 + benchmark(TCP Echo, Boost asio) + 分层自检。
         # 重型依赖在各层实现阶段开启，保证 CI 在标准 runner 上快速绿灯。
-        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DCAMI_BUILD_MODULES=OFF
+        # -G Ninja + CMakeLists 内 job pools(compile<=2,link=1)：编译/链接并发封顶, 防 OOM。
+        # ccache：代码未变时编译直接命中缓存, 重跑从全量 ~5min 降到秒级。
+        # -fuse-ld=lld：链接更快、内存峰值更低 (ld.lld 由 lld 包提供)。
+        run: cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCAMI_BUILD_MODULES=OFF -DCMAKE_EXE_LINKER_FLAGS="-fuse-ld=lld"
 
       - name: Build
-        run: cmake --build build --config Release -j"$(nproc)"
+        # Ninja 自行调度并发 (受 job pools 限制), 无需 -j; ccache 命中时近乎零编译。
+        run: cmake --build build --config Release
 
       - name: Layered skeleton self-check (ctest)
         # 机器校验：五层已接入 monorepo 构建，目录↔分层↔target 一一对应。
@@ -84,20 +108,34 @@ jobs:
       # 防 OOM: ubuntu-latest runner 仅 16GB, 单 port(如 grpc)内部 ninja 并行仍可能多编译单元同时占内存。
       # 限顶层并发到 1: 单包内部 ninja 并行保留, 每个包峰值 ~2-3GB 安全; 首次全量 ~1.5h, bincache 命中后重跑几分钟。
       VCPKG_MAX_CONCURRENCY: 1
+      # ccache 缓存目录固定到 workspace (容器 HOME 不可靠), 跨 run 复用项目编译产物。
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_MAXSIZE: 2G
     steps:
       - name: Install system build dependencies (git + Boost via apt)
         # vcpkg 从源码构建重型依赖需要完整工具链（compiler/make/ninja/perl/pkg-config 等）。
+        # ccache/lld: 项目编译缓存 + 低内存链接器 (Week3/4 MODULES=ON OOM 的两道防线)。
         run: |
           apt-get update
           apt-get install -y --no-install-recommends \
             git ca-certificates cmake ninja-build pkg-config perl python3 \
             tar unzip curl zip autoconf automake libtool build-essential \
-            libboost-dev libboost-system-dev
+            libboost-dev libboost-system-dev ccache lld
 
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install vcpkg
+      - name: Cache vcpkg root (省每次 clone + bootstrap)
+        id: cache-vcpkg
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/vcpkg
+          key: ${{ runner.os }}-vcpkg-root-${{ hashFiles('vcpkg.json') }}
+          restore-keys: |
+            ${{ runner.os }}-vcpkg-root-
+
+      - name: Install vcpkg (skip if cached)
+        if: steps.cache-vcpkg.outputs.cache-hit != 'true'
         run: |
           git clone --depth 1 https://github.com/microsoft/vcpkg "$VCPKG_ROOT"
           "$VCPKG_ROOT/bootstrap-vcpkg.sh"
@@ -112,15 +150,29 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-vcpkg-modules-
 
+      - name: Cache ccache (跨 run 编译缓存)
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/.ccache
+          key: ${{ runner.os }}-ccache-on-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-ccache-on-
+
       - name: Build dependencies (vcpkg, manifest mode)
+        # vcpkg.json 已锁定 builtin-baseline, 依赖版本不再随 vcpkg 上游每日漂移,
+        # bincache key 稳定, 命中率显著提升 (之前 vcpkg 每日更新导致 ABI 变化重触发全量源码构建)。
         run: $VCPKG_ROOT/vcpkg install
 
       - name: Configure (MODULES=ON via vcpkg toolchain)
         # Boost 由 apt 提供（-DBOOST_ROOT=/usr），其余重型依赖由 vcpkg 工具链注入。
-        run: cmake -B build-mod -DCMAKE_BUILD_TYPE=Release -DCAMI_BUILD_MODULES=ON -DCAMI_BUILD_TESTS=ON -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" -DBOOST_ROOT=/usr
+        # -G Ninja + job pools(compile<=2,link=1): 链接串行, 峰值=单 target,
+        #   修复之前 Makefiles -j2 两个 gRPC 级 target 并行链接导致的 OOM。
+        # ccache + lld: 见 build job 注释。
+        run: cmake -B build-mod -G Ninja -DCMAKE_BUILD_TYPE=Release -DCAMI_BUILD_MODULES=ON -DCAMI_BUILD_TESTS=ON -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" -DBOOST_ROOT=/usr -DCMAKE_EXE_LINKER_FLAGS="-fuse-ld=lld"
 
       - name: Build
-        run: cmake --build build-mod --config Release -j2
+        # Ninja 受 job pools 限制自动调度; ccache 命中时增量修改只编改动文件。
+        run: cmake --build build-mod --config Release
 
       - name: Real-backend tests (ctest + live Redis Cluster)
         # CAMI_REDIS_CLUSTER_URI 驱动 redis_test.cpp 中 RedisClusterState 真实读写用例；未设置则跳过。

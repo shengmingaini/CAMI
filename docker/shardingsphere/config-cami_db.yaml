@@ -219,6 +219,14 @@ rules:
             shardingAlgorithmName: player_id_inline
         tableStrategy:
           none:
+      player_state:
+        actualDataNodes: ds_${0..7}.player_state
+        databaseStrategy:
+          standard:
+            shardingColumn: player_id
+            shardingAlgorithmName: player_id_inline
+        tableStrategy:
+          none:
       player_inventory:
         actualDataNodes: ds_${0..7}.player_inventory
         databaseStrategy:

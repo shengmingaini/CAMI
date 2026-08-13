@@ -54,7 +54,7 @@ target_include_directories(cami_data_service PUBLIC
 target_compile_features(cami_data_service PUBLIC cxx_std_17)
 target_link_libraries(cami_data_service PUBLIC
     cami_data
-    gRPC::gRPC++
+    gRPC::grpc++
     protobuf::libprotobuf
 )
 

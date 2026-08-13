@@ -36,7 +36,7 @@ bool codec_selfcheck() {
         FrameDecoder dec;
         std::vector<std::vector<std::uint8_t>> got;
         auto r = dec.consume(frame.data(), frame.size(),
-                             [&](std::vector<std::uint8_t>&& p) { got.push_back(std::move(p)); });
+                             [&](const std::uint8_t* p, std::size_t n) { got.emplace_back(p, p + n); });
         if (r != DecodeResult::kOk || got.size() != 1 || got[0] != payload) {
             std::fprintf(stderr, "[FAIL] 单帧往返失败\n"); ok = false;
         }
@@ -52,7 +52,7 @@ bool codec_selfcheck() {
         FrameDecoder dec;
         std::vector<std::vector<std::uint8_t>> got;
         auto r = dec.consume(glued.data(), glued.size(),
-                             [&](std::vector<std::uint8_t>&& p) { got.push_back(std::move(p)); });
+                             [&](const std::uint8_t* p, std::size_t n) { got.emplace_back(p, p + n); });
         if (r != DecodeResult::kOk || got.size() != 3 || got[0] != p1 || got[1] != p2 || got[2] != p3) {
             std::fprintf(stderr, "[FAIL] 粘包：应解出 3 帧且顺序正确\n"); ok = false;
         }
@@ -67,7 +67,7 @@ bool codec_selfcheck() {
         std::vector<std::uint8_t> out;
         for (std::size_t k = 0; k < frame.size(); ++k) {
             auto r = dec.consume(frame.data() + k, 1,
-                                 [&](std::vector<std::uint8_t>&& p) { ++count; out = std::move(p); });
+                                 [&](const std::uint8_t* p, std::size_t n) { ++count; out.assign(p, p + n); });
             if (r != DecodeResult::kOk) {
                 std::fprintf(stderr, "[FAIL] 半包：中途不应报错\n"); ok = false; break;
             }
@@ -86,7 +86,7 @@ bool codec_selfcheck() {
         auto bad = header_only(65536u + 1u);
         std::vector<std::vector<std::uint8_t>> got;
         auto r = dec.consume(bad.data(), bad.size(),
-                             [&](std::vector<std::uint8_t>&&) { got.push_back({}); });
+                             [&](const std::uint8_t*, std::size_t) { got.push_back({}); });
         if (r != DecodeResult::kOversized) {
             std::fprintf(stderr, "[FAIL] 超大包：应返回 kOversized\n"); ok = false;
         }
@@ -105,7 +105,7 @@ bool codec_selfcheck() {
         auto f = encode_frame(exact);
         std::vector<std::vector<std::uint8_t>> g1;
         auto r1 = dec.consume(f.data(), f.size(),
-                              [&](std::vector<std::uint8_t>&& p) { g1.push_back(std::move(p)); });
+                              [&](const std::uint8_t* p, std::size_t n) { g1.emplace_back(p, p + n); });
         if (r1 != DecodeResult::kOk || g1.size() != 1) {
             std::fprintf(stderr, "[FAIL] 边界：length==max 应通过\n"); ok = false;
         }
@@ -113,7 +113,7 @@ bool codec_selfcheck() {
         FrameDecoder dec2(kDefaultMaxFrameSize);
         auto over = header_only(kDefaultMaxFrameSize + 1u);
         auto r2 = dec2.consume(over.data(), over.size(),
-                               [](std::vector<std::uint8_t>&&) {});
+                               [](const std::uint8_t*, std::size_t) {});
         if (r2 != DecodeResult::kOversized) {
             std::fprintf(stderr, "[FAIL] 边界：length==max+1 应拒绝\n"); ok = false;
         }
@@ -125,7 +125,7 @@ bool codec_selfcheck() {
         auto f = encode_frame(std::vector<std::uint8_t>{});
         std::vector<std::vector<std::uint8_t>> g;
         auto r = dec.consume(f.data(), f.size(),
-                             [&](std::vector<std::uint8_t>&& p) { g.push_back(std::move(p)); });
+                             [&](const std::uint8_t* p, std::size_t n) { g.emplace_back(p, p + n); });
         if (r != DecodeResult::kOk || g.size() != 1 || g[0].size() != 0) {
             std::fprintf(stderr, "[FAIL] 零长 payload 应解出空帧\n"); ok = false;
         }
@@ -135,7 +135,7 @@ bool codec_selfcheck() {
     {
         FrameDecoder dec;
         std::vector<std::vector<std::uint8_t>> g;
-        auto r = dec.consume(nullptr, 0, [&](std::vector<std::uint8_t>&&) { g.push_back({}); });
+        auto r = dec.consume(nullptr, 0, [&](const std::uint8_t*, std::size_t) { g.push_back({}); });
         if (r != DecodeResult::kOk || !g.empty()) {
             std::fprintf(stderr, "[FAIL] 空输入应 kOk 且无帧\n"); ok = false;
         }

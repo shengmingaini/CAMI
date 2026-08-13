@@ -28,6 +28,7 @@ target_include_directories(cami_gateway_connection PUBLIC
 )
 
 target_link_libraries(cami_gateway_connection PUBLIC
+    cami_gateway_codec          # Connection 内嵌 FrameDecoder (2026-08-12 热路径优化)
     Boost::system
     Threads::Threads
     ${CAMI_WINSOCK_LIBS}

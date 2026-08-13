@@ -22,8 +22,11 @@ namespace connection {
 // 无状态水平扩展：多进程/多线程各自 bind 同端口，内核分发，无全局锁。
 class ConnectionManager {
 public:
-    // pool_size: io_context 线程数（建议 = CPU 核数）；listen_backlog: listen() 队列长度。
-    explicit ConnectionManager(std::size_t pool_size, int listen_backlog = 1024);
+    // pool_size: io_context 线程数（建议 = CPU 核数）；listen_backlog: listen() 队列长度；
+    // idle_timeout_ms: 新建连接的空闲超时（默认 30s，心跳场景传心跳宽限）。
+    explicit ConnectionManager(std::size_t pool_size, int listen_backlog = 1024,
+                               std::uint32_t idle_timeout_ms =
+                                   Connection::kDefaultIdleTimeoutMs);
 
     ConnectionManager(const ConnectionManager&) = delete;
     ConnectionManager& operator=(const ConnectionManager&) = delete;
@@ -51,6 +54,7 @@ private:
 
     IoContextPool pool_;
     int listen_backlog_;
+    std::uint32_t idle_timeout_ms_;
     std::vector<std::unique_ptr<boost::asio::ip::tcp::acceptor>> acceptors_;
     std::mutex active_mtx_;
     std::vector<std::shared_ptr<Connection>> active_;  // 冷路径（accept/close），可加锁

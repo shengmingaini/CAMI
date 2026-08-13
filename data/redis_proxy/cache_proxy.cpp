@@ -1,6 +1,8 @@
 // ============================================================================
-// data/redis_proxy/cache_proxy.cpp — CacheProxy 实现 (Week4 D3)
+// data/redis_proxy/cache_proxy.cpp — CacheProxy 实现 (Week4 D3 / 2026-08-12 优化)
 // [PRODUCTION] 缓存策略逻辑 (与具体后端无关, 可接 Redis/内存)
+// [2026-08-12] 热路径优化: stats 原子计数(无锁) / dirty 缓冲存值(免回读) /
+//              热点采样降频 / 读命中不搬 LRU (见 gateway 层同类审查)。
 // ============================================================================
 #include "data/redis_proxy/cache_proxy.h"
 
@@ -11,18 +13,14 @@ namespace data {
 namespace redis_proxy {
 
 std::optional<std::string> CacheProxy::Get(std::string_view key) {
-    // 1) 缓存命中
+    // 1) 缓存命中 (统计为原子无锁自增)
     if (auto v = backend_.Get(key)) {
-        std::lock_guard<std::mutex> lk(stats_mu_);
-        hits_ += 1;
+        hits_.fetch_add(1, std::memory_order_relaxed);
         if (enable_hot_) hot_.record(key);
         return v;
     }
     // 2) 缓存未命中 -> 回源 (Read-Through)
-    {
-        std::lock_guard<std::mutex> lk(stats_mu_);
-        misses_ += 1;
-    }
+    misses_.fetch_add(1, std::memory_order_relaxed);
     auto from_db = store_.Load(key);
     if (enable_hot_) hot_.record(key);
     if (!from_db) return std::nullopt;  // 数据不存在
@@ -41,9 +39,9 @@ void CacheProxy::Put(std::string_view key, std::string value, WritePolicy policy
         // 直写: 同步落 DB (强一致, 写放大但无丢失风险)
         store_.Store(key, value);
     } else {
-        // 写回: 标记 dirty, 由 FlushDirty / D4 sync 模块定时批量落库
+        // 写回: 脏缓冲存 {key, value} (FlushDirty 免回读缓存; 缓存驱逐不丢值)
         std::lock_guard<std::mutex> lk(dirty_mu_);
-        dirty_.emplace(std::string(key));
+        dirty_[std::string(key)] = std::move(value);
     }
 }
 
@@ -58,10 +56,10 @@ void CacheProxy::Delete(std::string_view key) {
 }
 
 std::size_t CacheProxy::FlushDirty() {
-    std::unordered_set<std::string> batch;
+    std::unordered_map<std::string, std::string> batch;
     {
         std::lock_guard<std::mutex> lk(dirty_mu_);
-        batch.swap(dirty_);
+        batch.swap(dirty_);  // 整体出队 (O(1))
     }
     if (batch.empty()) return 0;
 
@@ -69,29 +67,20 @@ std::size_t CacheProxy::FlushDirty() {
     if (async_flush_sink_) {
         std::vector<std::pair<std::string, std::string>> pairs;
         pairs.reserve(batch.size());
-        for (const auto& k : batch) {
-            auto v = backend_.Get(k);  // 取当前缓存值
-            if (v) {
-                pairs.emplace_back(k, std::move(*v));
-            } else {
-                // 缓存被驱逐/过期: WriteBack 单副本语义下 value 已丢, 重试永远取不到 ->
-                // 告警并放弃 (否则每次 FlushDirty 都重建该 key, dirty 无限累积死循环)。
-                std::cerr << "[CacheProxy] dirty key evicted before flush (value lost), drop: "
-                          << k << std::endl;
-            }
+        for (auto& kv : batch) {
+            pairs.emplace_back(kv.first, std::move(kv.second));  // 值来自脏缓冲, 免回读缓存
         }
         bool all_ok = async_flush_sink_(pairs);
-        if (!all_ok) {  // 部分/全部发布失败 -> 已取出 key 重新标记 dirty, 下次重试 (背压)
+        if (!all_ok) {  // 部分/全部发布失败 -> 重新入队重试 (背压); emplace 不覆盖更新的新值
             std::lock_guard<std::mutex> lk(dirty_mu_);
-            for (auto& kv : pairs) dirty_.insert(kv.first);
+            for (auto& kv : pairs) dirty_.emplace(kv.first, kv.second);
         }
         return pairs.size();
     }
 
     // 回退: 同步 STORE (OFF/demo 默认, 保证单测/仿真向后兼容)
-    for (auto& k : batch) {
-        auto v = backend_.Get(k);
-        if (v) store_.Store(k, *v);
+    for (auto& kv : batch) {
+        store_.Store(kv.first, kv.second);
     }
     return batch.size();
 }

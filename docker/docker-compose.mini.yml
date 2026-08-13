@@ -1,0 +1,99 @@
+# CAMI Dev-Mini Environment (Scale-to-Fit 起步档)
+#
+# 最小资源起步：≈1.5GB / 3 个中间件服务（业务进程在宿主机本地跑）。
+# 对比 docker-compose.yml（Dev-Std 全能力，30 容器 ≈12GB），本栈只为日常开发/联调。
+#
+# 用法：
+#   docker compose -f docker/docker-compose.mini.yml up -d
+#
+# 架构决策（见 docs/architecture/scale-to-fit.md）：
+#   - MySQL: 逻辑 8 分片固定（cami_shard_0..7 建在同一实例），物理实例渐进 1→8，
+#     扩容=起新实例+搬库+改 SS URL，分片算法 %8 与代码零改动。
+#   - Redis: 单实例起步（无 Cluster），CacheProxy 后端抽象已屏蔽差异；
+#     扩容时 RedisBackend 切 cluster mode（代码待办 P0）。
+#   - Kafka: 关闭。落库走同步回退路径（AsyncFlushSink 未注入时 FlushDirty 同步落库，
+#     见 data/redis_proxy 实现）；需要异步落库时切到 docker-compose.yml 或补开 Kafka。
+#   - 监控: 关闭。需要时单独起 prometheus/grafana（docker-compose.yml 提供）。
+
+version: "3.8"
+
+services:
+  # ================================================================
+  # MySQL — 1 实例承载 8 逻辑分片库 + 1 全局库
+  # ================================================================
+  mysql-mini:
+    image: mysql:8.0
+    container_name: cami-mysql-mini
+    environment:
+      - MYSQL_ROOT_PASSWORD=cami_dev_2026
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql-mini-data:/var/lib/mysql
+      # 建 8 分片库 + 全局库 + 循环执行 init-shard.sql 建表
+      - ./mysql/init-shard-mini.sh:/docker-entrypoint-initdb.d/01-init-mini.sh:ro
+      - ./mysql/init-shard.sql:/docker-entrypoint-initdb.d/init-shard.sql:ro
+      - ./mysql/init-global.sql:/docker-entrypoint-initdb.d/init-global.sql:ro
+    networks: [cami-mini-net]
+    command: >-
+      --default-authentication-plugin=mysql_native_password
+      --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+      --innodb-buffer-pool-size=32M --performance-schema=OFF --max-connections=100
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # ================================================================
+  # Redis — 单实例（无 Cluster）
+  # ================================================================
+  redis-mini:
+    image: redis:7-alpine
+    container_name: cami-redis-mini
+    command: >
+      redis-server
+      --port 6379
+      --appendonly yes
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-mini-data:/data
+    networks: [cami-mini-net]
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "6379", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # ================================================================
+  # ShardingSphere Proxy — 8 逻辑分片 → 单物理实例（无读写分离）
+  # ================================================================
+  shardingsphere-proxy-mini:
+    image: apache/shardingsphere-proxy:5.5.0
+    container_name: cami-ss-proxy-mini
+    depends_on:
+      - mysql-mini
+    ports:
+      - "3309:3307"
+    volumes:
+      - ./shardingsphere/server.yaml:/opt/shardingsphere-proxy/conf/server.yaml
+      - ./shardingsphere/config-cami_db.mini.yaml:/opt/shardingsphere-proxy/conf/config-cami_db.mini.yaml
+    networks: [cami-mini-net]
+    environment:
+      - JVM_OPTS=-Xmx256m -Xms256m
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin", "-h", "127.0.0.1", "-P", "3307", "-uroot", "-proot", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  mysql-mini-data:
+  redis-mini-data:
+
+networks:
+  cami-mini-net:
+    driver: bridge

@@ -32,8 +32,11 @@ void set_reuseport(boost::asio::ip::tcp::acceptor& acceptor) {
 
 }  // namespace
 
-ConnectionManager::ConnectionManager(std::size_t pool_size, int listen_backlog)
-    : pool_(pool_size), listen_backlog_(listen_backlog) {}
+ConnectionManager::ConnectionManager(std::size_t pool_size, int listen_backlog,
+                                     std::uint32_t idle_timeout_ms)
+    : pool_(pool_size),
+      listen_backlog_(listen_backlog),
+      idle_timeout_ms_(idle_timeout_ms) {}
 
 int ConnectionManager::start(const std::string& host, std::uint16_t port) {
     boost::asio::ip::tcp::endpoint ep(boost::asio::ip::make_address(host), port);
@@ -85,7 +88,7 @@ void ConnectionManager::do_accept(boost::asio::ip::tcp::acceptor& acceptor) {
                 // operation_aborted = 管理器 stop() 关闭 acceptor；其余错误仅跳过本条，不中断池。
                 return;
             }
-            auto conn = std::make_shared<Connection>(std::move(socket));
+            auto conn = std::make_shared<Connection>(std::move(socket), idle_timeout_ms_);
             // 上层集成挂钩：设置 on_data / 注册心跳等（在 start 前，确保读取启动前已接线）。
             if (on_accept_) on_accept_(conn);
             // 终态回调：先调上层清理（心跳注销/解码器清理），再从活动表移除，避免悬空/泄漏。

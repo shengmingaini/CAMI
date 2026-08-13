@@ -18,7 +18,7 @@ namespace sync {
 KafkaFlush::KafkaFlush(const std::string& brokers, const std::string& topic)
     : producer_(cppkafka::Configuration{{"metadata.broker.list", brokers}}),
       topic_(topic) {
-    producer_.set_payload_policy(cppkafka::PayloadPolicy::BLOCK_ON_FULL_QUEUE);
+    producer_.set_payload_policy(cppkafka::Producer::PayloadPolicy::BLOCK_ON_FULL_QUEUE);
 }
 
 bool KafkaFlush::Publish(const FlushMessage& msg) {
