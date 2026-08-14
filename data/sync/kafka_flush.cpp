@@ -27,7 +27,9 @@ bool KafkaFlush::Publish(const FlushMessage& msg) {
         builder.key(msg.key);
         builder.payload(msg.value);
         // 版本号编码进消息头, 供 consumer CAS 落库
-        builder.header("version", std::to_string(msg.version));
+        // (cppkafka Buffer 删除了右值 string 构造, 先存左值再传)
+        const std::string ver = std::to_string(msg.version);
+        builder.header(cppkafka::Header<cppkafka::Buffer>("version", ver));
         producer_.produce(builder);
         return true;
     } catch (const std::exception& e) {
@@ -78,9 +80,15 @@ void KafkaSinkWorker::Run() {
         FlushMessage fm;
         fm.key = msg.get_key();
         fm.value = msg.get_payload();
-        // 版本号从头中取回
-        auto vh = msg.get_header("version");
-        if (vh) fm.version = std::strtoull(vh->get_value().data(), nullptr, 10);
+        // 版本号从头中取回 (cppkafka 新版: get_header_list() 遍历, 无 get_header(name);
+        // get_data() 返回 const unsigned char*, 经 operator std::string() 转回)
+        for (const auto& h : msg.get_header_list()) {
+            if (h.get_name() == "version") {
+                const std::string ver = h.get_value();
+                fm.version = std::strtoull(ver.c_str(), nullptr, 10);
+                break;
+            }
+        }
 
         bool persisted = sink_ ? sink_(fm) : false;
         if (!persisted) {
@@ -89,8 +97,9 @@ void KafkaSinkWorker::Run() {
                 cppkafka::MessageBuilder b(dlq_topic_);
                 b.key(fm.key);
                 b.payload(fm.value);
-                b.header("version", std::to_string(fm.version));
-                b.header("reason", "sink_failed");
+                const std::string ver = std::to_string(fm.version);
+                b.header(cppkafka::Header<cppkafka::Buffer>("version", ver));
+                b.header(cppkafka::Header<cppkafka::Buffer>("reason", "sink_failed"));
                 dlq_producer_.produce(b);
                 dlq_producer_.flush();
                 persisted = true;  // 移交 DLQ 成功即视为已处理: 提交 offset, DLQ 独立重试, 主链路不卡
