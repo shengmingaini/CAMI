@@ -2,6 +2,10 @@
 // 仅在 CAMI_BUILD_MODULES=ON 编译 (vcpkg: redis-plus-plus)。OFF 构建本文件为空 TU。
 #include "data/redis_proxy/redis_backend.h"
 
+#include <iterator>                  // std::back_inserter
+#include <sw/redis++/queued_redis.h> // QueuedRedis 完整定义 (Pipeline = QueuedRedis<PipelineImpl>)
+#include <sw/redis++/pipeline.h>     // PipelineImpl 完整定义
+
 #ifdef CAMI_BUILD_MODULES
 
 namespace cami {
@@ -43,12 +47,14 @@ std::vector<std::optional<std::string>> RedisBackend::MGet(
     const std::vector<std::string>& keys) {
     if (keys.empty()) return {};
     // 一次 MGET 取多个 key (单次 RTT), 而非逐 key get (N 次 RTT)。
-    // redis-plus-plus: mget(InputIt, InputIt) -> std::vector<OptionalString>。
-    auto results = rc_->mget(keys.begin(), keys.end());
+    // redis-plus-plus 的 Optional<T> 是自定义类 (非 std::optional), 故 mget 输出到
+    // vector<sw::redis::OptionalString>, 再逐元素转 std::optional<std::string>。
+    std::vector<sw::redis::OptionalString> tmp;
+    rc_->mget(keys.begin(), keys.end(), std::back_inserter(tmp));
     std::vector<std::optional<std::string>> out;
-    out.reserve(results.size());
-    for (auto& v : results) {
-        if (v && !v->empty()) out.emplace_back(std::move(*v));
+    out.reserve(tmp.size());
+    for (auto& v : tmp) {
+        if (v) out.emplace_back(std::move(*v));
         else out.emplace_back(std::nullopt);
     }
     return out;
