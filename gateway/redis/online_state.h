@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
@@ -42,7 +43,6 @@ private:
 };
 
 #ifdef CAMI_BUILD_MODULES
-#include <memory>
 // 真实后端工厂：根据 Redis Cluster URI（如 "redis://host:7000"）构造集群后端。
 // 仅在 MODULES=ON 可用（依赖 redis-plus-plus）；轻量 CI / 原型用 InMemoryState。
 // 返回 nullptr 仅当 URI 为空（调用方应保证非空）。

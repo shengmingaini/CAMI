@@ -70,7 +70,9 @@ public:
         reg_.view<C...>().each(std::forward<F>(fn));
     }
 
-    std::size_t alive_count() const { return reg_.alive(); }
+    // Entt 3.14+ 移除 registry::alive(); 存活实体数 = entity storage 的 free_list()。
+    // storage<entt::entity>() 的 const 重载返回 const 指针, 故用 -> 解引用。
+    std::size_t alive_count() const { return reg_.storage<entt::entity>()->free_list(); }
 
     // 直接访问底层 registry (高级用法: group / storage / 信号)
     entt::registry& raw() { return reg_; }

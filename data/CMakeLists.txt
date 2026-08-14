@@ -66,7 +66,11 @@ if(CAMI_BUILD_MODULES)
     if(RocksDB_FOUND)
         target_sources(cami_data PRIVATE rocksdb_proxy/rocksdb_backing_store.cpp)
         target_link_libraries(cami_data PUBLIC RocksDB::rocksdb)
-        message(STATUS "[data] RocksDB 落库后端已启用 (RocksDB)")
+        # RocksDB 11.x 头文件要求 C++20 (operator==()=default / using enum), 而项目其余 TU 为 C++17。
+        # 仅此文件用 C++20 编译; 边界类型为标准库类型, 与 C++17 TU 链接 ABI 兼容。
+        set_source_files_properties(rocksdb_proxy/rocksdb_backing_store.cpp
+            PROPERTIES COMPILE_OPTIONS "-std=c++20")
+        message(STATUS "[data] RocksDB 落库后端已启用 (RocksDB, C++20)")
     else()
         find_package(rocksdb CONFIG QUIET)
         if(rocksdb_FOUND)

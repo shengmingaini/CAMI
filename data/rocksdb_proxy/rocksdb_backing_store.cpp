@@ -72,14 +72,14 @@ RocksDBBackingStore::RocksDBBackingStore(const std::string& path,
     cf_descs.emplace_back("events", rocksdb::ColumnFamilyOptions{});
 
     std::vector<rocksdb::ColumnFamilyHandle*> handles;
-    rocksdb::DB* db = nullptr;
+    std::unique_ptr<rocksdb::DB> db;
     rocksdb::Status s = rocksdb::DB::Open(db_opts, path, cf_descs, &handles, &db);
     if (!s.ok() || !db) {
         // 打开失败: 不抛构造期异常 (避免进程启动崩溃), 标记 unhealthy 由 Health 探针暴露。
         db_ = nullptr;
         return;
     }
-    db_ = db;
+    db_ = std::move(db);
     // handles 顺序与 cf_descs 一致: 0=default, 1=state, 2=meta, 3=events
     cf_default_ = handles.at(0);
     cf_state_  = handles.at(1);
@@ -95,7 +95,8 @@ RocksDBBackingStore::~RocksDBBackingStore() {
         delete cf_state_;
         delete cf_meta_;
         delete cf_events_;
-        delete db_;
+        // db_ 为 unique_ptr, 在作用域末尾自动析构 (须在所有 CF handle 释放之后,
+        // 满足 RocksDB 的释放顺序要求: CF handle -> DB)。
     }
 }
 

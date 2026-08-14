@@ -70,7 +70,7 @@ private:
     struct MetaShard { std::mutex mu; };
     std::array<MetaShard, kMetaShards> meta_shards_;
 
-    rocksdb::DB* db_ = nullptr;
+    std::unique_ptr<rocksdb::DB> db_;  // 拥有 DB (RocksDB 11.x 的 Open 返回 unique_ptr)
     rocksdb::ColumnFamilyHandle* cf_default_ = nullptr;  // 默认 CF (必须保存并析构, 否则 handle 泄漏)
     rocksdb::ColumnFamilyHandle* cf_state_ = nullptr;
     rocksdb::ColumnFamilyHandle* cf_meta_ = nullptr;

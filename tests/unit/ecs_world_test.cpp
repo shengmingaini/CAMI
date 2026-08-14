@@ -26,7 +26,7 @@ TEST(EcsWorldTest, SpawnPlayerAndIterate) {
 TEST(EcsWorldTest, SpawnNpcAndCombatView) {
     EcsWorld world;
     auto a = world.spawnNpc(/*homeCell=*/42, /*behavior=*/2, 5.f, 0.f, 5.f, /*maxHp=*/80);
-    auto b = world.spawnPlayer(2002, 9, 6.f, 0.f, 6.f, 0.f, 80, 50);
+    (void)world.spawnPlayer(2002, 9, 6.f, 0.f, 6.f, 0.f, 80, 50);  // 只取创建副作用 (计数 +1)
     EXPECT_EQ(world.alive_count(), 2u);
 
     // 战斗视图: 同时需要 Transform + Health (交集遍历)
