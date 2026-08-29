@@ -1,0 +1,72 @@
+include "common.fbs";
+
+// 事件种类（additive 扩展）
+// 总规范 §4.3：Event = "某件事情已经发生"，默认异步处理。
+enum EventKind : uint16 {
+  UNKNOWN = 0,
+  PLAYER_MOVED = 1,
+  SKILL_CAST = 2,
+  DAMAGE_APPLIED = 3,
+  QUEST_COMPLETED = 4,
+  ITEM_ADDED = 5,
+  PLAYER_ENTERED_SCENE = 6,
+  PLAYER_DISCONNECTED = 7
+}
+
+union EventBody {
+  PlayerMovedEvent,
+  SkillCastEvent,
+  DamageAppliedEvent,
+  QuestCompletedEvent,
+  ItemAddedEvent,
+  PlayerEnteredSceneEvent,
+  PlayerDisconnectedEvent
+}
+
+// Event 基
+table Event {
+  source_entity:uint64;  // 事件源实体
+  kind:EventKind;
+  body:EventBody;
+}
+
+// —— 示例事件载荷 ——
+table PlayerMovedEvent {
+  from_pos:Vec3;
+  to_pos:Vec3;
+  scene_id:uint32;
+}
+
+table SkillCastEvent {
+  skill_id:uint32;
+  caster:uint64;
+  target:uint64;
+}
+
+table DamageAppliedEvent {
+  attacker:uint64;
+  victim:uint64;
+  amount:int32;
+  is_critical:bool;
+}
+
+table QuestCompletedEvent {
+  player_id:uint64;
+  quest_id:uint32;
+}
+
+table ItemAddedEvent {
+  player_id:uint64;
+  item_id:uint32;
+  count:uint32;
+}
+
+table PlayerEnteredSceneEvent {
+  player_id:uint64;
+  scene_id:uint32;
+}
+
+table PlayerDisconnectedEvent {
+  player_id:uint64;
+  session_id:uint64;
+}

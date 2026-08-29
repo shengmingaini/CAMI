@@ -1,0 +1,61 @@
+include "common.fbs";
+
+// 命令种类（additive 扩展：新增命令只【追加】枚举值 + 联合成员，禁止改值 / 删值）
+// 总规范 §4.1：Command = "请执行一个操作"
+enum CommandKind : uint16 {
+  UNKNOWN = 0,
+  MOVE_PLAYER = 1,
+  CAST_SKILL = 2,
+  EQUIP_ITEM = 3,
+  BUY_ITEM = 4,
+  ACCEPT_QUEST = 5,
+  LEAVE_PARTY = 6
+}
+
+// 命令载荷联合（必须与 CommandKind 同步扩展）
+union CommandBody {
+  MovePlayerCmd,
+  CastSkillCmd,
+  EquipItemCmd,
+  BuyItemCmd,
+  AcceptQuestCmd,
+  LeavePartyCmd
+}
+
+// Command 基
+// 总规范 §4.1 要求 Command 含 RequestID / PlayerID / Source / Timestamp / Version。
+// 其中 RequestID / Source / Timestamp / Version 已由 Envelope 承载，
+// 此处只补领域字段 player_id；经济操作的 TransactionID / IdempotencyKey 也在 Envelope。
+table Command {
+  player_id:uint64;   // 发起玩家
+  kind:CommandKind;   // 命令种类
+  body:CommandBody;   // 具体载荷
+}
+
+// —— 示例命令载荷（canonical，供各任务实现参考）——
+table MovePlayerCmd {
+  target_pos:Vec3;
+  target_scene:uint32;
+}
+
+table CastSkillCmd {
+  skill_id:uint32;
+  target_entity:uint64;
+}
+
+table EquipItemCmd {
+  item_uid:uint64;
+  slot:uint16;
+}
+
+table BuyItemCmd {
+  shop_id:uint32;
+  item_id:uint32;
+  count:uint32;
+}
+
+table AcceptQuestCmd {
+  quest_id:uint32;
+}
+
+table LeavePartyCmd {}

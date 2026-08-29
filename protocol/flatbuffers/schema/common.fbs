@@ -1,0 +1,32 @@
+// common.fbs — 公共基础类型（引擎中立，冻结）
+// 所有跨服务消息共享的原子类型定义。修改需走 RFC + 版本号 bump。
+
+// 三维坐标（struct = 定长、零序列化开销，可作为字段直接内联）
+struct Vec3 {
+  x:float;
+  y:float;
+  z:float;
+}
+
+// 二维坐标
+struct Vec2 {
+  x:float;
+  y:float;
+}
+
+// 场景内实体引用
+table EntityRef {
+  entity_id:uint64;     // 实体唯一 ID
+  entity_type:uint16;   // 实体类型（Player / NPC / Monster / Item …）
+  scene_id:uint32;      // 所属场景
+}
+
+// —— 标识类型别名（语义化，实际均为定宽整数）——
+//   PlayerID   = uint64
+//   EntityID   = uint64
+//   SceneID    = uint32
+//   GameNodeID = uint32
+//   GatewayID  = uint32
+//   MessageID  = uint64
+//   RequestID  = uint64
+//   TraceID    = string（人类可读，便于日志关联）

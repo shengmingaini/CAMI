@@ -1,0 +1,48 @@
+include "common.fbs";
+
+// 查询种类（additive 扩展）
+// 总规范 §4.2：Query = "读取数据"，不允许产生副作用。
+enum QueryKind : uint16 {
+  UNKNOWN = 0,
+  GET_PLAYER = 1,
+  GET_INVENTORY = 2,
+  GET_SCENE_INFO = 3,
+  GET_GUILD = 4,
+  GET_AUCTION = 5
+}
+
+union QueryBody {
+  GetPlayerQuery,
+  GetInventoryQuery,
+  GetSceneInfoQuery,
+  GetGuildQuery,
+  GetAuctionQuery
+}
+
+// Query 基（只读，无副作用）
+table Query {
+  player_id:uint64;   // 发起玩家（鉴权上下文）
+  kind:QueryKind;
+  body:QueryBody;
+}
+
+// —— 示例查询载荷 ——
+table GetPlayerQuery {
+  target_player:uint64;
+}
+
+table GetInventoryQuery {
+  target_player:uint64;
+}
+
+table GetSceneInfoQuery {
+  scene_id:uint32;
+}
+
+table GetGuildQuery {
+  guild_id:uint64;
+}
+
+table GetAuctionQuery {
+  auction_id:uint64;
+}

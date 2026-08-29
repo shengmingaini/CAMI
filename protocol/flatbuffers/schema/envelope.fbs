@@ -1,0 +1,37 @@
+include "common.fbs";
+include "command.fbs";
+include "query.fbs";
+include "event.fbs";
+
+// 消息类型
+enum MessageType : byte {
+  UNKNOWN = 0,
+  Command = 1,
+  Query = 2,
+  Event = 3
+}
+
+// 顶层载荷联合（须在引用它的 table 之前声明）
+union MessageBody { Command, Query, Event }
+
+// 统一消息信封（项目总规范 §36）
+// 约束：任何模块不得定义第二套自己的消息头。
+// 所有 Command / Query / Event 必须打包进 Envelope 传输。
+table Envelope {
+  message_id:uint64;        // 消息实例唯一 ID（全局单调或 UUID 低 64 位）
+  message_type:MessageType; // Command / Query / Event
+  version:uint32;           // schema 版本号（见 ../VERSION，当前 1.0.0）
+  source:string;            // 生产方 service/module 标识（如 "gateway-1" / "gamenode-3"）
+  timestamp:int64;          // Unix 毫秒
+  trace_id:string;          // 分布式追踪 ID（OpenTelemetry TraceID）
+  request_id:uint64;        // 请求 / 响应关联键
+  payload:MessageBody;      // 联合载荷：Command | Query | Event
+
+  // —— 经济操作附加字段（总规范 §36 / §23）——
+  // 仅涉及经济行为的消息填写；非经济消息保持默认空串，向后兼容。
+  transaction_id:string;    // 默认 ""，经济流水号
+  idempotency_key:string;   // 默认 ""，幂等去重键（Purchase / Reward / Trade / MailClaim …）
+}
+
+root_type Envelope;
+file_identifier "MSG0";   // 4 字节文件标识，读端校验防误读

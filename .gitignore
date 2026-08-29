@@ -1,0 +1,50 @@
+# 构建产物
+build/
+out/
+build-*/
+bin/
+lib/
+
+# vcpkg
+vcpkg_installed/
+vcpkg/buildtrees/
+vcpkg/packages/
+vcpkg/downloads/
+
+# 编译中间文件
+*.o
+*.obj
+*.a
+*.lib
+*.so
+*.dylib
+*.dll
+*.exe
+*.pdb
+*.ilk
+
+# IDE / 编辑器
+.vs/
+.idea/
+.vscode/
+.cache/
+*.user
+
+# 日志 / 临时
+*.log
+*.tmp
+.DS_Store
+
+# 本地运行时数据（Redis/MariaDB 数据目录，不入库）
+*.rdb
+*.sock
+data/
+
+# 工具脚本本地覆盖（保留模板，忽略本地覆盖）
+scripts/verify/_local_override.sh
+
+# 残留设备名文件，无法安全删除，忽略之
+NUL
+
+# WorkBuddy 工具元数据，非游戏源码
+.workbuddy/

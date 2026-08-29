@@ -1,0 +1,33 @@
+name: build
+
+# 注意：本 workflow 仅做 configure + build + ctest，
+# 不作为「可信验收」依据。可信验收 = 本地（见 docs/ci-status.md）。
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ ubuntu-latest, windows-latest ]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup vcpkg (cached)
+        uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgGitCommitId: aae277acf4e7de287ddb5e208b5316614de6aad7
+
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DMMORPG_BUILD_TESTS=ON
+
+      - name: Build
+        run: cmake --build build --config Release -j
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
