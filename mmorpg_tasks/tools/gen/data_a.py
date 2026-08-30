@@ -832,8 +832,10 @@ std::unique_ptr<INetworkTransport> CreateTcpTransport(TcpConfig);   // 第一版
           "engine/net/benchmark/*", "tools/netbench/*", "engine/net/docs/INTERFACE.md",
           "engine/net/docs/PERFORMANCE.md"],
  ctest="Net", both_build=True,
- bench_bins=[("bin/net_bench", "--connections 10000 --duration 60")],
- metrics=[("bench/net_10k.txt", "per_conn_mem_kb", "le", "20")],
+ # §22 的 per-conn ≤20KB 针对「空闲连接」（recv_buf 延迟分配 0 字节），
+ # 验收必须跑 --idle；活跃基准（pps/mbps）由人工跑并写入 PERFORMANCE.md。
+ bench_bins=[("bin/net_bench", "--connections 10000 --duration 60 --idle")],
+ metrics=[("bench/net_10k_idle.txt", "per_conn_mem_kb", "le", "20")],
  artifacts=["engine/net/include/mmo/net/transport.h", "engine/net/docs/PERFORMANCE.md"],
 ),
 # ------------------------------------------------------------------ 009

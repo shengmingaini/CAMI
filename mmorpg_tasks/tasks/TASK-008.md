@@ -4,7 +4,7 @@ NAME: Network Transport（TCP 第一版）
 PHASE: Phase 2 · Gateway
 MODULE: engine/net
 OWNER: Codex / WorkBuddy Agent 实施；@技术总监 二次验收；本地 MinGW MSYS2 g++ + vcpkg 编译验证
-STATUS: PENDING
+STATUS: DONE
 DEPENDENCIES: TASK-004, TASK-005
 ---
 
@@ -20,7 +20,7 @@ DEPENDENCIES: TASK-004, TASK-005
 | PHASE | Phase 2 · Gateway |
 | MODULE | `engine/net` |
 | OWNER | Codex / WorkBuddy Agent 实施；@技术总监 二次验收；本地 MinGW MSYS2 g++ + vcpkg 编译验证 |
-| STATUS | **PENDING** |
+| STATUS | **DONE** |
 | DEPENDENCIES | `TASK-004`, `TASK-005` |
 
 ---
@@ -212,8 +212,8 @@ bash scripts/verify/task-008.sh
 2. 交付物存在性检查（2 项）
 3. CMake configure + 编译（Debug + Release 双构建）
 4. ctest 过滤执行：`-R Net`
-5. Benchmark 执行：`bin/net_bench --connections 10000 --duration 60`
-6. 性能阈值断言：`bench/net_10k.txt` 中 `per_conn_mem_kb` ≤ `20`
+5. Benchmark 执行：`bin/net_bench --connections 10000 --duration 60 --idle`
+6. 性能阈值断言：`bench/net_10k_idle.txt` 中 `per_conn_mem_kb` ≤ `20`
 
 脚本遵循 `set -euo pipefail`：任一步失败即非零退出，**不存在「警告通过」**。
 脚本只报告真实执行结果，禁止兜底伪造 PASS；指标缺失直接判失败，禁止用估算值代替。
