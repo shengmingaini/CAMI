@@ -1,6 +1,6 @@
-# engine/core · Core 基础设施（TASK-001 / TASK-002 / TASK-003）
+# engine/core · Core 基础设施（TASK-001 / TASK-002 / TASK-003 / TASK-004）
 
-本模块包含三套相互独立的基础设施：
+本模块包含四套相互独立的基础设施：
 
 - **TASK-001 · Core Error / Result** —— `mmo/core/error/*`
 - **TASK-002 · Core Logger / Trace** —— `mmo/core/log/*`
@@ -292,3 +292,92 @@ config/{app.json, tick.json, network.json}
 > 模块边界：下游只能包含 `engine/core/include/mmo/core/{time,uuid,config}/*`。
 > `src/` 下的 4 个内部头（`wall_clock_seam.h`、`entropy.h`、`json_parser.h`、
 > `config_snapshot.h`）禁止被下游 `#include`。
+
+---
+
+# 四、Core Memory / Thread / Scheduler（TASK-004）
+
+三件套解决「每 Tick 要往线程池投任务、要定时、要临时内存」的热路径诉求，
+且都遵守同一个铁律：**不引入隐藏的线程 / 不引入隐藏的堆分配 / 不因异常拖垮整服**。
+
+- **`mmo/core/thread/*`** —— `TaskFn`（32 字节内联、零堆分配的可调用包装，替代 `std::function`）、
+  `MpmcQueue`（Vyukov 风格无锁有界队列，满时返回 false 而非阻塞）、
+  `Thread`（四类固定角色 + 有界队列 + 优雅停止）。
+- **`mmo/core/sched/scheduler.h`** —— `Scheduler`（最小堆定时器，**被宿主线程驱动**，
+  自己不创建任何线程）。
+- **`mmo/core/memory/*`** —— `ObjectPool`（分块定长对象池，单线程拥有、无锁）、
+  `MemoryPool`（定长块 + 有界跨线程归还）、`Arena`（帧内 bump 分配）。
+
+## 快速上手
+
+```cpp
+#include "mmo/core/thread/task.h"
+#include "mmo/core/thread/thread.h"
+#include "mmo/core/sched/scheduler.h"
+#include "mmo/core/memory/object_pool.h"
+#include "mmo/core/memory/arena.h"
+
+using namespace mmo::core;
+
+// ---- 任务：提交零堆分配 ----
+Thread::Config cfg;
+cfg.role = ThreadRole::Worker;
+cfg.queue_capacity = 4096;
+auto thread = CHECK_OK(Thread::Create(cfg));           // 立即启动
+(void)thread->Post(TaskFn([entity_id = 42] { DoWork(entity_id); }));
+// 队列满时 Post 返回 ErrorCode::BUSY，不阻塞、不丢任务（调用方自行决定怎么背压）
+
+// ---- 定时器：宿主线程驱动，绝不自带线程 ----
+Scheduler sched;
+auto sync = CHECK_OK(sched.ScheduleEvery(DurationMs(50), TaskFn([] { TickBuffs(); }))); // 20Hz
+// 在 SimulationThread 的主循环里：
+const SteadyTime now = MonotonicClock::Point();
+const Result<std::size_t> fired = sched.Tick(now);      // 返回本轮触发数
+if (!fired.HasValue()) { /* now 倒流（误用墙钟）—— 记告警并退出 */ }
+
+// ---- 内存：Tick 帧内临时对象走 Arena ----
+Arena arena(64ULL * 1024 * 1024);                       // 首块 64MB
+void* tmp = arena.Push(256, 16);                        // 帧内分配，帧末整块 Reset()
+// 实体对象走 ObjectPool（单线程拥有）：
+ObjectPool<Player, 4096> players(1024);                 // prewarm 1024 个槽位
+Player* p = players.Acquire(player_id);                 // 零堆分配
+players.Release(p);                                      // 析构但内存留池
+```
+
+## 使用规范（踩坑点）
+
+1. **Scheduler 永远不要自己开线程。** 它只是一个 `Tick(now)` 函数对象，由宿主线程调用。
+   验收脚本对 `sched/` 目录做 `std::thread` 字面量扫描（连注释都不行）—— 别在那个目录写线程。
+2. **`Tick(now)` 的 `now` 必须来自单调时钟**（`MonotonicClock` / `TickClock`），
+   不要传 `WallClock` / 墙钟，否则时间一倒流 `Tick` 直接 `INVALID_ARGUMENT`。
+3. **周期定时器 `period <= 0` 会在入口被拦下**（返回 `INVALID_ARGUMENT`），
+   不要赌它能在 `Tick` 里被限幅——那会无限触发。
+4. **`ObjectPool` / `Arena` 是单线程拥有的，禁止跨线程共享。** 热路径无锁，
+   跨线程共用等于静默数据竞争。需要跨线程复用内存用 `MemoryPool`（自带跨线程归还队列）。
+5. **`Thread::Post` 队列满返回 `BUSY`，不是丢任务也不是阻塞。** 调用方必须处理背压
+   （丢弃 / 合并 / 换线程），不要写 `while (!Post(...).HasValue())` 自旋抢队列。
+6. **`PostBlocking` 禁止在 Tick 内调用**（§21 Forbidden）：它会阻塞宿主线程，
+   直接拖慢整服 Tick 频率。
+7. **`TaskFn` 捕获对象 ≤ 32 字节且构造/移动必须 noexcept。** 超了编译期 `static_assert`
+   直接报错；想传大状态就捕获指针或放进对象池。
+8. **`MemoryPool::Deallocate` 的野指针 / 双释放只记指标不崩溃**—— 但那说明上层逻辑有 bug，
+   别靠它「兜住」错误用法；修复根本原因是正道。
+
+## 目录结构
+
+```
+engine/core/
+├── include/mmo/core/
+│   ├── thread/{task.h, mpmc_queue.h, thread.h}
+│   ├── sched/scheduler.h
+│   └── memory/{object_pool.h, memory_pool.h, arena.h}
+├── src/
+│   ├── thread/thread.cpp
+│   ├── sched/scheduler.cpp
+│   └── memory/{memory_pool.cpp, arena.cpp}
+└── tests/thread_test.cpp   （§16 单测 / §17 集成 / §19 Failure）
+```
+
+> 模块边界：下游只能包含 `engine/core/include/mmo/core/{thread,sched,memory}/*`。
+> `src/thread/thread.cpp`、`src/sched/scheduler.cpp`、`src/memory/*.cpp` 是模块私有实现，
+> 禁止被下游 `#include`。

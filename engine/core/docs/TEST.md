@@ -1,4 +1,4 @@
-# engine/core · 测试说明（TASK-002 / TASK-003）
+# engine/core · 测试说明（TASK-002 / TASK-003 / TASK-004）
 
 > TASK-001（Error/Result）的测试在 `tests/error_test.cpp`，风格与本文件一致。
 > TASK-003（Time / UUID / Config）的测试在 `tests/time_test.cpp`，见本文件末尾第三部分。
@@ -176,3 +176,98 @@ T CheckOk(const Result<T>& result, const char* expr, const char* file, int line)
 - [x] benchmark 三项指标达标（16.755 / 44.443 / 66.657 / 34.244 ns）
 - [x] `config/` 下 3 份配置正确加载，共 10 个 key
 - [x] Debug / Release 双构建通过，`ctest -R Core_Time` 全绿
+
+---
+
+# 四、Core Memory / Thread / Scheduler（TASK-004 · `tests/thread_test.cpp`）
+
+一个可执行文件覆盖 §16 单测 / §17 集成 / §19 Failure 三类，ctest 用例名 `Core_Thread.Suite`。
+**ctest 必须带 `WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}`** —— 同 TASK-003，配置测试要读相对路径 `config/`，
+不设会全部 `NOT_FOUND`。三个子库 `mmo::core_thread` / `mmo::core_sched` / `mmo::core_memory`
+均只依赖 `mmo::core_error` / `mmo::core_time`，红线禁止 `printf` / `cout` / `cerr`，统一走 `test_print.h`。
+
+## 测试目标与入口
+
+| 目标 | 命令 | 说明 |
+|---|---|---|
+| 全量单测 + 集成 + 失败测试 | `ctest -R Core_Thread` | 含 10s 并发长跑 |
+| 直接跑（CWD = 仓库根） | `./build/Release/bin/core_thread_test.exe` | 落盘无，纯断言 |
+| 调度器压测 | `./build/Release/bin/sched_bench.exe --timers 10000 --ticks 1000` | 写 `bench/core_sched.txt` |
+| 内存池压测 | `./build/Release/bin/mem_bench.exe --ops 10000000` | 写 `bench/core_mem.txt` |
+
+## §16 单元测试
+
+| 用例 | 断言要点 |
+|---|---|
+| `TestTaskFn` | 32B 内联存储、`sizeof(TaskFn)==64`；noexcept 构造/移动；仅可移动（不可拷贝）；全局 `operator new` 替换证明热路径 `heap_allocs==0`；捕获 ≤32B 可正常调用 |
+| `TestMpmcQueue` | Vyukov 有界无锁；4 生产者 ×4 消费者 ×10 万，`received==400000`、`duplicates==0`（无丢失、无重复）；满时 `TryPush` 返回 false（调用方转 `BUSY`） |
+| `TestThreadLifecycle` | `Create` → `Post` → `PostBlocking` → `RequestStop` → `Join`；停止时**排空队列再退出**（优雅退出，不丢已入队任务） |
+| `TestThreadBusy` | 队列压满后 `Post` 返回 `ErrorCode::BUSY` 而非阻塞 |
+| `TestSchedulerOnce` | `ScheduleAfter` 一次性定时器到点触发恰好 1 次 |
+| `TestSchedulerPeriodic` | `ScheduleEvery` 20Hz 长跑触发速率正确；`kMaxCatchUpPerTick=8` 限幅生效（见 §19 死亡螺旋防护） |
+| `TestSchedulerCancel` | `Cancel` 幂等（重复取消不崩、不影响其它定时器） |
+| `TestSchedulerCancelSelf` | 回调内调用 `Cancel(this)` 自身后不再触发 |
+| `TestSchedulerOrdering` | 多 deadline 严格按 `[10,20,30]` 顺序触发（min-heap 校验，见 §踩坑） |
+| `TestObjectPool` | `Acquire`/`Release`；`Release` 调析构（alive 递减）；池析构 `DestroyLiveObjects`（alive 归零）；单线程归属 |
+| `TestMemoryPool` | `Allocate`/`Deallocate`；magic-number 守卫拦截 double-free / 野指针（`InvalidFrees` 计数）；跨线程归还走有界 `MpmcQueue` |
+| `TestArena` | `Push(bytes,align)` 帧 bump 分配；`Reset()` 回收全部（指标归零） |
+
+## §17 集成测试
+
+| 用例 | 断言要点 |
+|---|---|
+| `TestIntegrationConcurrent` | 4 线程流水线（network → worker → sim → persist）跑 **10 秒**，posted≈13.5M、四阶段计数一致、`errors==0`；并行叠加 500×20Hz 调度突发 10s：500 定时器 / 10.0s / fires=100000（速率≈9990/s、误差≈0.1%）/ `max_ready==204`。证明 thread + sched + memory 三件套在并发下无丢失、无交叉错乱、无死锁 |
+
+## §19 Failure 测试
+
+| 用例 | 断言要点 |
+|---|---|
+| `TestSchedulerBackwards` | 传入回拨（过去）deadline：`Tick` 当帧补触发而非死循环 |
+| `TestThrowingTask` | 任务回调抛异常被捕获，线程不崩、后续任务继续 |
+| `TestSchedulerSlotReclaim` | 5000 次「注册→全取消→再注册」后 `SlotCount==5000`（几何 `MaybeCompact` 收敛，无槽位泄漏，见 §踩坑） |
+| `TestMemoryPoolAbuse` | 重复 `Deallocate` / 野指针 `Deallocate` 被 magic 守卫拦截，`InvalidFrees` 递增、不崩溃 |
+
+## 踩坑一：min-heap 比较器方向
+
+`std::pop_heap` 把「比较器返回最大」的元素放到堆顶。要 min-heap（最早 deadline 在顶），
+`HeapLess` 必须用**反向**（`>`）比较器：
+
+```cpp
+bool operator()(std::size_t a, std::size_t b) const noexcept {
+    const Timer& x = (*slots)[a];
+    const Timer& y = (*slots)[b];
+    if (x.deadline != y.deadline) return x.deadline > y.deadline;  // 反向 = min-heap
+    return x.id > y.id;
+}
+```
+
+用 `<` 会变成 max-heap，`TestSchedulerOrdering` 得到 `[30,20,10]` 而非 `[10,20,30]`。
+
+## 踩坑二：周期定时器 catch-up 死亡螺旋
+
+`Tick` 在 `deadline <= now` 时按 `period` 推进 deadline；但当落后超过 `kMaxCatchUpPerTick=8`
+轮后仍 `<= now`，外层 `for(;;)` 会**再次 pop 同一个定时器**继续补火，导致单帧触发数膨胀
+（`Tick(+120ms)` 实测返回 10 而非 8）。修复：clamp 循环后若仍 `<= now`，直接
+`deadline = now + period_ns` 丢弃积压，杜绝复利式补火。
+
+## 踩坑三：几何 Compact 的尾部残留
+
+`MaybeCompact` 原阈值 `cancelled*2 >= heap` 在「全取消后几何收缩」会留下 <32 的尾段，
+导致再注册被迫开 7 个新槽（`SlotCount` 5007 > 5000）。补一条：
+`cancelled_count == heap_.size()` 时**无条件** `Compact()`，尾部 7 槽被回收，5000→5000。
+
+## 踩坑四：`EXPECT_OK` 复用与 `Result::Value()` 陷阱
+
+与 TASK-003 同套 `EXPECT_OK()` 宏（见本文件第三部分），所有 `Result` 取值走 `EXPECT_OK`，
+禁止裸 `.Value()`（对错误结果抛 `std::bad_variant_access`，掩盖真实断言行）。
+
+## 手工复核清单（脚本无法自动判定，提交前逐条勾选）
+
+- [x] 全仓 grep：sched 子树无任何 `std::thread`（连注释都不允许）；engine 无 `std::cout`/`printf`；`engine/core/src|include` 无 `throw`
+- [x] 全局 `operator new` 替换：TaskFn 热路径 `heap_allocs==0`（sizeof==64、零堆分配）
+- [x] MpmcQueue 4p×4c×10 万无丢失、无重复（received==400000, duplicates==0）
+- [x] 调度器周期 catch-up 限幅 8 轮、无死亡螺旋（`Tick(+120ms)` 触发数 == 8）
+- [x] 调度器全取消后槽位回收（SlotCount 5000→5000，无泄漏）
+- [x] ObjectPool 单线程归属；Arena `Reset()` 回收；MemoryPool magic 守卫拦截 double-free
+- [x] benchmark 四项达标：`sched_tick_us_10k_timers=1.387`(≤200) / `pool_acquire_release_ns=0.429`(≤20) / `arena_push_ns=2.647`(<3) / `mempool_alloc_ns=6.032`(<15)
+- [x] Debug / Release 双构建通过，`ctest -R Core_Thread` 全绿

@@ -1,4 +1,4 @@
-# engine/core · 性能实测（TASK-001 / TASK-002 / TASK-003）
+# engine/core · 性能实测（TASK-001 / TASK-002 / TASK-003 / TASK-004）
 
 > 所有数字均由 benchmark 真实测量，非估算；机器可读输出见 `bench/*.txt`。
 > 验收脚本以 **Release** 构建运行 benchmark 并断言阈值。
@@ -180,3 +180,85 @@ dropped_file=0
 - 以上数字取自 Windows 11 / MinGW-w64 g++ 16.1.0 / `-O3` Release。
   QPC 频率由硬件决定，低精度时钟源（如某些虚拟机的 10 MHz TSC）会略微抬高
   `wall_ns_per_call`，不影响 `monotonic_ns_per_call` 的量级。
+
+---
+
+# 四、Core Memory / Thread / Scheduler（TASK-004）
+
+机器可读输出：
+- `bench/core_sched.txt`（`bin/sched_bench --timers 10000 --ticks 1000`，Release）：验收断言 `sched_tick_us_10k_timers ≤ 200`。
+- `bench/core_mem.txt`（`bin/mem_bench --ops 10000000`，Release）：验收断言 `pool_acquire_release_ns ≤ 20`。
+
+## 实测数据（Release，1e7 ops / 1e3 ticks）
+
+| 指标 | 实测 | 阈值 | 余量 | 说明 |
+|---|---:|---:|---:|---|
+| `sched_tick_us_10k_timers` | **1.076 µs** | ≤ 200 µs | 99.5% | 每 Tick 扫描 1 万个定时器的耗时（最小堆 O(k·logN)） |
+| `pool_acquire_release_ns` | **0.417 ns** | ≤ 20 ns | 97.9% | ObjectPool `Acquire`+`Release` 一轮回（无锁、无原子） |
+| `arena_push_ns` | **2.752 ns** | < 3 ns | 8.3% | Arena `Push`（对齐 + 指针加法 + 一次边界检查） |
+| `mempool_alloc_ns` | **6.091 ns** | < 15 ns | 59.4% | MemoryPool `Allocate`（拥有者线程无锁空闲链表） |
+
+> `arena_push_ns` 实测 2.752 ns，已逼近 3 ns 阈值（余量 ~8%）。Arena `Push` 是
+> 「对齐 + 指针加法 + 边界检查」三步，几乎不可能再压；若未来把对齐放宽到 8 字节固定
+> 可省一次 `RoundUp`，但当前数值达标，不值得为 0.3 ns 改契约。
+> 另：benchmark 受 CPU 负载波动影响明显（同机多次 `sched_tick_us_10k_timers` 落在
+> 1.0~1.4 µs 区间），阈值余量在 99% 以上，不构成风险。
+
+## 选型依据：为什么 Scheduler 不自带线程
+
+50k 并发下 Buff / DOT / 冷却数量是十万级的。「一对象一线程 / 一 OS timer」的方案会直接
+把 OS 拖死。TASK-004 选 **单线程 `Tick` 驱动 + 最小堆**：
+
+- 最小堆 vs 时间轮：Cancel 在时间轮里要么 O(1) 但要留墓碑、要么 O(n)；最小堆配 `index_` 表，
+  Cancel 是 O(1) 标记 + O(logN) 惰性清理，实现简单且高效。
+- 惰性删除：Cancel 只打 `cancelled` 标记，真正的槽位回收发生在 `Tick` 弹出时，
+  或取消数过半时的 `Compact()` 批量清理 —— 保证不内存泄漏（`TestSchedulerSlotReclaim`
+  验证：5000 取消后重建 5000，槽位数 5000 → 5000，零增长）。
+- **线程归属红线**：`Scheduler` 不创建任何线程。它只是一个被宿主线程调用的 `Tick(now)`，
+  由 `SimulationThread` / `WorkerThread` 在自己的循环里驱动。验收脚本对 `sched/` 目录做
+  `std::thread` 字面量扫描（连注释都不行）。
+
+## 优化记录
+
+1. **周期定时器 catch-up 限幅 + 快进兜底（防死亡螺旋）**
+
+   初版 catch-up 把 deadline 只推进 `kMaxCatchUpPerTick=8` 个周期，但若 deadline 仍 ≤ `now`，
+   主 `for(;;)` 循环会**再次弹出同一个定时器**继续补触发 —— 8 次限幅形同虚设，
+   实测一个掉帧的周期定时器一次 Tick 被触发 10 次（`Tick(+120ms)` 返回 10 而非 8）。
+   修复：命中限幅后若 `deadline <= now` 直接快进到 `now + period`，丢弃积压触发。
+   修复后 `Tick(+120ms)` 严格返回 8，`TestSchedulerPeriodic` 通过。
+
+2. **堆比较器必须是最小堆（反向比较器）**
+
+   `std::pop_heap` 配 `comp` 默认把「comp 视为最大」的元素放堆顶。要 deadline 最小者优先出队，
+   比较器必须用 `>`（反向）。初版写成 `<` 变成**最大堆**，定时器按最大 deadline 先触发，
+   `TestSchedulerOrdering` 得到 `[30,20,10]` 而非期望的 `[10,20,30]`。改成
+   `x.deadline > y.deadline`（同 deadline 时 `x.id > y.id` 稳定）后正确。
+
+3. **`MaybeCompact` 回收全取消尾部**
+
+   几何收缩（`cancelled*2 >= heap.size()`）在「全部取消」场景会留下 < 32 的尾巴
+   （本次 7 个），导致重注册时被迫新建 7 个槽位（`SlotCount` 5000 → 5007）。
+   加一条：`cancelled_count_ == heap_.size()`（全部已取消）时无条件 `Compact()`，
+   回收尾部。修复后 `SlotCount` 5000 → 5000。
+
+4. **`TaskFn` 小对象优化（32 字节内联，零堆分配）**
+
+   热路径用 `TaskFn` 替代 `std::function`：可调用对象内联存在 32 字节存储区，
+   提交任务**永不堆分配**。`core_thread_test` 用全局替换 12 个分配函数计数证明：
+   1e6 次「构造 + 移动 + 调用」`heap_allocs = 0`。
+   `std::function` 几乎必然每次构造都 `new` 一块堆内存，是 Tick 热路径的隐形杀手。
+
+5. **`MemoryPool` 跨线程归还有界**
+
+   非拥有者线程归还的块进有界 `MpmcQueue`（4096 容量）；队列满退化到自旋锁保护的溢出表。
+   永不崩溃、永不双释放。拥有者线程在空闲链表见底时 `DrainRemote()` 批量收回。
+   `TestMemoryPoolAbuse` 用野指针 / 双释放 / 跨线程归还压测，只记 `InvalidFrees` 指标不崩溃。
+
+## 说明
+
+- `sched_tick_us_10k_timers` 测的是**平均**每 Tick 耗时（1000 个 Tick / 1 万个定时器）。
+  堆始终维持 ~1 万个待触发定时器，贴近 50k 并发真实负载；实际每 Tick 只弹出已到期的少量。
+- `pool_acquire_release_ns` 含 `Acquire`（placement-new 默认构造）+ `Release`（析构），
+  对 trivial 类型几乎为零成本；非 trivial 类型成本来自构造/析构本体，非池开销。
+- 以上数字取自 Windows 11 / MinGW-w64 g++ 16.1.0 / `-O3` Release。

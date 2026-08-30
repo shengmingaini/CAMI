@@ -1,4 +1,4 @@
-# engine/core · 公开接口契约（TASK-001 / TASK-002 / TASK-003）
+# engine/core · 公开接口契约（TASK-001 / TASK-002 / TASK-003 / TASK-004）
 
 > 本文件为 `STATUS: DONE` 后冻结的对外契约。下游依赖此接口；破坏性变更须走
 > `version` 字段 + 兼容性评估，禁止静默改签名导致下游编译失败。
@@ -353,3 +353,146 @@ public:
   `src/time/wall_clock_seam.h`、`src/uuid/entropy.h` 暴露给下游**：
   `ConfigManager` 头里只前向声明 `detail::ConfigSnapshot`，调用方无法改动它。
 - **禁止配置热更返回半替换快照**；**禁止重复 key 静默生效**。
+
+---
+
+# 四、Core Memory / Thread / Scheduler（TASK-004）
+
+## 头文件位置
+
+```
+engine/core/include/mmo/core/thread/task.h        # TaskFn（std::function 替代，零堆分配）
+engine/core/include/mmo/core/thread/mpmc_queue.h  # MpmcQueue（Vyukov 无锁有界队列）
+engine/core/include/mmo/core/thread/thread.h      # Thread（四类角色 + 有界队列 + 优雅停止）
+engine/core/include/mmo/core/sched/scheduler.h    # Scheduler（最小堆定时器，宿主线程驱动）
+engine/core/include/mmo/core/memory/object_pool.h # ObjectPool（分块定长对象池）
+engine/core/include/mmo/core/memory/memory_pool.h # MemoryPool（定长块 + 跨线程有界归还）
+engine/core/include/mmo/core/memory/arena.h       # Arena（帧内 bump 分配器）
+```
+
+内部实现（**禁止**被下游 `#include`）：`src/thread/thread.cpp`、`src/sched/scheduler.cpp`、
+`src/memory/{memory_pool.cpp, arena.cpp}`。
+
+## 公开接口（节选）
+
+```cpp
+// ---- 任务 ----
+class TaskFn final {                       // 32 字节内联，零堆分配
+public:
+    static constexpr std::size_t kInlineCapacity = 32;
+    TaskFn() noexcept = default;
+    template <typename F> TaskFn(F&& f) noexcept;   // 捕获必须 ≤32B、noexcept 构造/移动
+    void operator()() noexcept;             // 不清空自身（周期定时器靠重复调用）
+    bool Empty() const noexcept;
+};
+
+template <typename T>
+class MpmcQueue final {                     // Vyukov 无锁有界队列
+public:
+    explicit MpmcQueue(std::size_t capacity);   // 向上取整到 2 的幂
+    bool TryPush(T&&) noexcept;            // 满返回 false（不阻塞、不丢任务）
+    bool TryPop(T&) noexcept;              // 空返回 false
+    std::size_t Capacity() const noexcept;
+    std::size_t Size() const noexcept;     // 瞬时近似，仅指标用
+};
+
+// ---- 线程 ----
+enum class ThreadRole : std::uint8_t { Network, Simulation, Worker, Persistence };
+const char* ToString(ThreadRole) noexcept;
+
+class Thread final {
+public:
+    struct Config { ThreadRole role; std::string name; std::size_t queue_capacity{4096}; };
+    static Result<std::unique_ptr<Thread>> Create(Config, std::function<void()> on_start = {});
+    Result<void> Post(TaskFn task);          // 队列满 → ErrorCode::BUSY（不阻塞不丢）
+    Result<void> PostBlocking(TaskFn task);  // 阻塞重试，禁止在 Tick 内调用
+    void RequestStop() noexcept;             // 幂等；已提交任务仍跑完
+    void Join();
+    bool JoinFor(std::chrono::milliseconds);
+    ThreadRole Role() const noexcept;
+    std::size_t Pending() const noexcept;     // 队列深度（指标）
+    std::size_t Executed() const noexcept;    // 已执行数（指标）
+    bool StopRequested() const noexcept;
+};
+
+// ---- 定时器 ----
+class Scheduler final {
+public:
+    static constexpr TimerId kInvalidTimerId = 0;
+    static constexpr std::uint32_t kMaxCatchUpPerTick = 8;   // 单 Tick 周期补触发上限
+    Result<TimerId> ScheduleAfter(DurationMs delay, TaskFn);
+    Result<TimerId> ScheduleAt(SteadyTime when, TaskFn);
+    Result<TimerId> ScheduleEvery(DurationMs period, TaskFn);
+    Result<TimerId> ScheduleEveryAt(SteadyTime first, DurationMs period, TaskFn);
+    Result<void> Cancel(TimerId);            // 幂等
+    Result<std::size_t> Tick(SteadyTime now); // 宿主驱动；now 倒流 → INVALID_ARGUMENT
+    std::size_t ReadyCount() const noexcept;  // O(n) 滞后指标，禁放每帧热路径
+    std::size_t TimerCount() const noexcept;
+    std::size_t LastFired() const noexcept;
+    std::size_t FailedFires() const noexcept; // 回调异常累计
+    std::size_t SlotCount() const noexcept;
+};
+
+// ---- 内存 ----
+template <typename T, std::size_t Chunk = 4096>
+class ObjectPool final {                     // 单线程拥有；无锁无原子
+public:
+    explicit ObjectPool(std::size_t prewarm = 0);
+    T* Acquire();                            // 默认构造；池空自动扩容
+    template <typename... Args> T* Acquire(Args&&...);  // 带参构造
+    void Release(T* ptr) noexcept;           // 析构但内存留池
+    std::size_t Capacity()/InUse()/FreeCount()/ChunkCount() const noexcept;
+};
+
+class MemoryPool final {                     // 拥有者线程无锁；跨线程有界归还
+public:
+    explicit MemoryPool(std::size_t block_size, std::size_t blocks_per_chunk = 1024);
+    void* Allocate(std::size_t bytes);
+    void Deallocate(void* ptr, std::size_t bytes) noexcept;  // 野指针/双释放只记指标
+    std::size_t UsedBytes()/BlockSize()/FreeDepth()/RemoteReturns()/InvalidFrees()/OverflowCount() const noexcept;
+};
+
+class Arena final {                          // 单线程拥有；无锁无原子
+public:
+    explicit Arena(std::size_t bytes);
+    void* Push(std::size_t bytes, std::size_t align = 8);  // 不足返回 nullptr
+    void Reset() noexcept;                    // 整块回收，内存保留复用
+    std::size_t UsedBytes()/CapacityBytes()/BlockCount() const noexcept;
+};
+```
+
+## 线程归属红线（TASK-004 核心约束）
+
+- **Scheduler 不创建任何线程**：`engine/core/{src/sched,include/mmo/core/sched}` 下
+  任何文件（含注释）出现 `std::thread` 字面量即验收失败。定时器由宿主线程
+  （SimulationThread / WorkerThread）在自己的循环里调用 `Tick(now)` 驱动。
+- **Scheduler 非线程安全**：所有方法必须在同一个线程调用（§4 State Owner）。
+- **Thread 四类角色固定**：禁止私自新增第五类（`ThreadRole` 序列化稳定）。
+- **ObjectPool / Arena 单线程拥有**：禁止跨线程共享（热路径无锁，跨线程 = 数据竞争）。
+  跨线程复用内存用 `MemoryPool`（它自带跨线程归还队列）。
+
+## 语义约束
+
+- **周期定时器 `period <= 0` 直接拦下**（入口返回 `INVALID_ARGUMENT`），
+  否则 `Tick` 的 catch-up 会无限触发。
+- **`Tick(now)` 的 `now` 必须单调不减**：倒流 = 多半误用墙钟，当场 `INVALID_ARGUMENT`。
+- **周期定时器一次 Tick 最多补 `kMaxCatchUpPerTick=8` 次**；命中限幅后 deadline 快进到
+  `now` 之后丢弃积压，避免死亡螺旋。`TestSchedulerPeriodic` 验证 `Tick(+120ms)` 严格返回 8。
+- **`Cancel` 幂等**：取消不存在 / 已触发 / 已取消的 id 一律 `Ok`。
+- **惰性删除**：Cancel 只打 `cancelled` 标记，槽位回收在 `Tick` 弹出或 `Compact()` 时发生；
+  `cancelled_count_ == heap_.size()`（全取消）时整体回收，避免 `slots_` 无限增长。
+- **`TaskFn` 只可移动不可拷贝**：任务所有权唯一，避免意外多次执行。
+- **`MemoryPool::Deallocate` 对野指针 / 双释放只记 `InvalidFrees` 指标，不崩溃**
+  （魔数校验清零，重复释放被识别成野指针）。
+
+## 禁止
+
+- **禁止 Scheduler 创建 / 使用执行线程**（红线静态扫描强制）。
+- **禁止 `ObjectPool` / `Arena` 跨线程共享**。
+- **禁止 `Thread` 新增第五类角色**。
+- **禁止周期定时器 `period <= 0`**。
+- **禁止 `Tick` 的 `now` 倒流**（会触发 `INVALID_ARGUMENT`）。
+- **禁止 `__int128`**（`-Wpedantic`）；禁止 `engine/` 内 `std::cout` / `printf` /
+  `std::thread`（sched 目录）。
+- **禁止把 `src/thread/thread.cpp`、`src/sched/scheduler.cpp`、`src/memory/*.cpp`
+  暴露给下游**：它们只含实现，调用方只能依赖上面列出的公开头。

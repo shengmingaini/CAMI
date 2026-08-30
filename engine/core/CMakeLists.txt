@@ -116,6 +116,55 @@ target_compile_features(mmo_core_config PUBLIC cxx_std_20)
 target_link_libraries(mmo_core_config PUBLIC mmo::core_error)
 mmorpg_add_warnings(mmo_core_config)
 
+# ---- 库目标：TASK-004 Core Thread（TaskFn / MpmcQueue / Thread） ----
+# 依赖方向 thread -> error（Result/Error 表达 BUSY / INVALID_ARGUMENT），单向无环。
+# 注意：sched/ 与 memory/ 是本任务另外两个独立子库，见下方。
+add_library(mmo_core_thread STATIC
+    src/thread/thread.cpp
+)
+add_library(mmo::core_thread ALIAS mmo_core_thread)
+
+target_include_directories(mmo_core_thread PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:include>
+)
+target_compile_features(mmo_core_thread PUBLIC cxx_std_20)
+target_link_libraries(mmo_core_thread PUBLIC mmo::core_error)
+mmorpg_add_warnings(mmo_core_thread)
+
+# ---- 库目标：TASK-004 Core Scheduler（最小堆定时器，宿主驱动） ----
+# 依赖方向 sched -> error + time（TickClock 的 SteadyTime / MonotonicClock），单向无环。
+# 红线：本目录禁止出现 std::thread（Scheduler 不自带线程，验收脚本静态扫描）。
+add_library(mmo_core_sched STATIC
+    src/sched/scheduler.cpp
+)
+add_library(mmo::core_sched ALIAS mmo_core_sched)
+
+target_include_directories(mmo_core_sched PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:include>
+)
+target_compile_features(mmo_core_sched PUBLIC cxx_std_20)
+target_link_libraries(mmo_core_sched PUBLIC mmo::core_error mmo::core_time)
+mmorpg_add_warnings(mmo_core_sched)
+
+# ---- 库目标：TASK-004 Core Memory（ObjectPool / MemoryPool / Arena） ----
+# 三个设施都是「单线程拥有」（§4 State Owner），热路径无锁；
+# ObjectPool 是纯模板（header-only），只有 MemoryPool / Arena 有编译单元。
+add_library(mmo_core_memory STATIC
+    src/memory/memory_pool.cpp
+    src/memory/arena.cpp
+)
+add_library(mmo::core_memory ALIAS mmo_core_memory)
+
+target_include_directories(mmo_core_memory PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:include>
+)
+target_compile_features(mmo_core_memory PUBLIC cxx_std_20)
+target_link_libraries(mmo_core_memory PUBLIC mmo::core_error)
+mmorpg_add_warnings(mmo_core_memory)
+
 # ---- 单元测试（自包含 harness，不依赖 gtest；vcpkg 离线不可用时仍可验证） ----
 if(MMORPG_BUILD_TESTS)
     add_executable(core_error_test tests/error_test.cpp)
@@ -159,6 +208,18 @@ if(MMORPG_BUILD_TESTS)
     # ctest 默认在 build 目录下执行，不加这句 LoadDir("config") 一定找不到路径。
     add_test(NAME Core_Time.Suite COMMAND core_time_test
              WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
+    # TASK-004：Memory / Thread / Scheduler 单元 + 集成 + Failure 测试，统一以 Core_Thread 前缀注册
+    add_executable(core_thread_test tests/thread_test.cpp)
+    target_link_libraries(core_thread_test PRIVATE
+        mmo::core_memory mmo::core_thread mmo::core_sched
+        mmo::core_time mmo::core_error)
+    # 白盒访问本模块内部头（如需），不进 PUBLIC 接口
+    target_include_directories(core_thread_test PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    target_compile_options(core_thread_test PRIVATE -Wno-pedantic)
+    add_test(NAME Core_Thread.Suite COMMAND core_thread_test
+             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 endif()
 
 # ---- Benchmark（1e7 次，输出 bench/core_error.txt 的 key=value） ----
@@ -175,4 +236,13 @@ if(MMORPG_BUILD_BENCHMARKS)
     add_executable(time_bench tests/time_bench.cpp)
     target_link_libraries(time_bench PRIVATE mmo::core_time mmo::core_uuid mmo::core_config)
     target_compile_options(time_bench PRIVATE -Wno-pedantic)
+
+    # TASK-004：Scheduler 每 Tick 定时器扫描 + Memory 三件套吞吐
+    add_executable(sched_bench tests/sched_bench.cpp)
+    target_link_libraries(sched_bench PRIVATE mmo::core_sched mmo::core_time)
+    target_compile_options(sched_bench PRIVATE -Wno-pedantic)
+
+    add_executable(mem_bench tests/mem_bench.cpp)
+    target_link_libraries(mem_bench PRIVATE mmo::core_memory mmo::core_time)
+    target_compile_options(mem_bench PRIVATE -Wno-pedantic)
 endif()

@@ -1,4 +1,4 @@
-# engine/core · 依赖说明（TASK-001 / TASK-002 / TASK-003）
+# engine/core · 依赖说明（TASK-001 / TASK-002 / TASK-003 / TASK-004）
 
 > 五文档契约之一。本文件回答三个问题：**本模块依赖谁**、**谁依赖本模块**、
 > **哪些依赖是被禁止的**。
@@ -38,7 +38,10 @@ mmo_core_error            (TASK-001)
     ├── mmo_core_log      (TASK-002)   → error
     ├── mmo_core_time     (TASK-003)   → error
     ├── mmo_core_uuid     (TASK-003)   → error, time
-    └── mmo_core_config   (TASK-003)   → error
+    ├── mmo_core_config   (TASK-003)   → error
+    ├── mmo_core_thread   (TASK-004)   → error, time
+    ├── mmo_core_sched    (TASK-004)   → error, time
+    └── mmo_core_memory   (TASK-004)   → error
 ```
 
 | 目标 | 依赖 | CMake 链接 | 说明 |
@@ -48,12 +51,38 @@ mmo_core_error            (TASK-001)
 | `mmo_core_time` | `mmo::core_error` | PUBLIC | 时钟本身几乎不会失败，仅 `TimerSpec` 校验用 Error |
 | `mmo_core_uuid` | `mmo::core_error`, `mmo::core_time` | PUBLIC | V7 需要毫秒时间戳 |
 | `mmo_core_config` | `mmo::core_error` | PUBLIC | 解析/加载失败返回 Error |
+| `mmo_core_thread` | `mmo::core_error`, `mmo::core_time` | PUBLIC | `Thread` 用 `MpmcQueue` + `TaskFn`；`Post` 用到 `ErrorCode::BUSY` |
+| `mmo_core_sched` | `mmo::core_error`, `mmo::core_time` | PUBLIC | `Scheduler::Tick` 用 `MonotonicClock` 判时间倒流 |
+| `mmo_core_memory` | `mmo::core_error` | PUBLIC | `MemoryPool` 跨线程归还需 `MpmcQueue` |
 | `core_time_test` | time, uuid, config | PRIVATE | 测试可执行件，不被下游链接 |
+| `core_thread_test` | memory, thread, sched, time, error | PRIVATE | TASK-004 测试可执行件 |
 | `time_bench` | time, uuid, config | PRIVATE | benchmark 可执行件 |
+| `sched_bench` | sched, time | PRIVATE | TASK-004 scheduler benchmark |
+| `mem_bench` | memory, time | PRIVATE | TASK-004 memory benchmark |
 
 **注意**：`mmo_core_config` **不依赖** `mmo_core_time`。
 配置快照的版本号是 `std::atomic<std::uint64_t>` 自增，不需要读时钟，
 避免把时钟拖进配置的热路径。
+
+## 三之二、TASK-004 子模块依赖与线程归属（关键红线）
+
+```
+mmo_core_thread  ──┐  MpmcQueue + TaskFn（无锁任务队列与轻量可调用）
+mmo_core_memory   ─┤  ObjectPool / MemoryPool / Arena（单线程拥有的内存设施）
+mmo_core_sched    ─┘  Scheduler（最小堆定时器，宿主线程驱动）
+```
+
+- **`mmo_core_sched` 不依赖 `mmo_core_thread`**：Scheduler 自己**不创建、不拥有任何执行线程**。
+  它只是一个被宿主线程调用的 `Tick(now)` 函数对象。验收脚本对 `engine/core/src/sched`
+  与 `engine/core/include/mmo/core/sched` 做 `std::thread` 字面量静态扫描，
+  **连注释里都不能出现那个类型名**。定时器由 SimulationThread（驱动游戏逻辑定时器）或
+  WorkerThread（驱动后台定时器）在自己的循环里调用 `Tick` 驱动。
+- **`mmo_core_thread` 的 `Thread` 是执行体**：它创建线程、跑 `RunLoop` 消费 `MpmcQueue`。
+  四类角色（Network / Simulation / Worker / Persistence）固定，禁止私自新增第五类。
+- **内存三件套都是单线程拥有的**：`ObjectPool` / `Arena` 全程无锁无原子；
+  `MemoryPool` 拥有者线程走无锁空闲链表，其他线程归还走有界 `MpmcQueue`（冷路径）。
+  禁止把 `ObjectPool` 跨线程共享（会数据竞争）。
+- 三者之间无循环依赖：`thread` 不依赖 `sched`/`memory`，`sched`/`memory` 不依赖 `thread`。
 
 ## 四、被依赖方（谁会用到本模块）
 
@@ -83,6 +112,22 @@ mmo_core_error            (TASK-001)
 - **禁止 core 依赖日志模块。** core 的三件套（error / time / uuid / config）
   在失败时返回 `Error` 让调用方决定怎么记，不自己打日志 ——
   否则日志初始化前的早期失败会无路可走。
+
+## 五之二、TASK-004 新增的线程归属红线
+
+- **禁止 Scheduler 创建或使用执行线程。** `engine/core/{src/sched,include/mmo/core/sched}`
+  下任何文件（含注释）出现 `std::thread` 字面量即验收失败。定时器必须由宿主线程驱动。
+- **禁止 `ObjectPool` / `Arena` 跨线程共享。** 二者单线程拥有、热路径无锁，
+  跨线程共用会静默数据竞争。需要跨线程复用内存请用 `MemoryPool`（它有有界跨线程归还队列）。
+- **禁止 `Thread` 新增第五类角色。** `ThreadRole` 枚举值固定（Network/Simulation/Worker/
+  Persistence），序列化稳定；新增必须走架构评审。
+- **禁止 `Scheduler::Tick` 的 `now` 倒流。** 宿主必须传单调不减的时刻；
+  倒流（多半是误用墙钟）会被 `Tick` 当场以 `INVALID_ARGUMENT` 拒绝，而不是悄悄接受。
+- **禁止周期定时器 `period <= 0`。** 否则 `Tick` 的 catch-up 会无限触发，
+  入口即拦下返回 `INVALID_ARGUMENT`。
+- **禁止 `CatchUpSteps` / `kMaxCatchUpPerTick` 形同虚设**：周期定时器一次 Tick 内最多补
+  `kMaxCatchUpPerTick=8` 次，命中限幅后 deadline 快进到 `now` 之后丢弃积压 ——
+  否则「补触发 → 更慢 → 补更多」的死亡螺旋会拖垮整服。
 
 ## 六、接口兼容性
 
