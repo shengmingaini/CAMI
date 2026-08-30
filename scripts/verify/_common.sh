@@ -59,6 +59,25 @@ step()  { printf "%b==> %s%b\n" "$C_YEL" "$*" "$C_OFF"; }
 ok()    { printf "%b  [OK] %s%b\n" "$C_GRN" "$*" "$C_OFF"; }
 bad()   { printf "%b  [FAIL] %s%b\n" "$C_RED" "$*" "$C_OFF" >&2; }
 info()  { printf "%b  %s%b\n" "$C_DIM" "$*" "$C_OFF"; }
+# 兼容别名：早期生成的验收脚本（如 TASK-000）调用 log()，与 info() 同义。
+log()   { info "$@"; }
+
+# 兼容别名（早期脚本 API）：check_file <绝对路径> —— 单文件存在性，缺失即失败。
+check_file() {
+  local f="$1"
+  [ -e "$f" ] || die "交付物缺失：$f"
+  ok "交付物存在：$f"
+}
+
+# 兼容别名（早期脚本 API）：redline_scan <绝对路径目录> <正则> [说明]
+# 与 scan_forbidden 的区别：接受绝对路径、且第三个参数是「说明」而非额外正则。
+redline_scan() {
+  local dir="$1" pat="$2"
+  if grep -rnE "$pat" "$dir" --include='*.cpp' --include='*.h' --include='*.hpp' >/dev/null 2>&1; then
+    die "红线扫描命中：$dir 内出现 /$pat/（命中文件见上，禁止提交）"
+  fi
+  ok "红线扫描通过：$dir 无 /$pat/"
+}
 
 begin_task() {
   local id="$1"
