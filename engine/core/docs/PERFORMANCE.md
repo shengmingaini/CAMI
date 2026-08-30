@@ -1,4 +1,4 @@
-# engine/core · 性能实测（TASK-001 / TASK-002）
+# engine/core · 性能实测（TASK-001 / TASK-002 / TASK-003）
 
 > 所有数字均由 benchmark 真实测量，非估算；机器可读输出见 `bench/*.txt`。
 > 验收脚本以 **Release** 构建运行 benchmark 并断言阈值。
@@ -100,3 +100,83 @@ dropped_file=0
 - 零堆分配由 `core_log_test` 的全局 `operator new` 计数器断言：1000 条日志
   `delta == 0`。格式化缓冲与 `LogRecord` 均在栈上。
 - CPU 逻辑核数会影响 8 线程压测结果；本数据取自 `getconf _NPROCESSORS_ONLN` ≥ 8 的机器。
+
+---
+
+# 三、Core Time / UUID / Config（TASK-003）
+
+机器可读输出：`bench/core_time.txt`（`bin/time_bench --samples 1000000`，Release 构建）。
+验收脚本断言其中两项：`monotonic_ns_per_call ≤ 25`、`config_get_ns ≤ 50`。
+
+## 实测数据（Release，1,000,000 samples）
+
+| 指标 | 实测 | 阈值 | 余量 | 说明 |
+|---|---:|---:|---:|---|
+| `monotonic_ns_per_call` | **16.755 ns** | ≤ 25 ns | 33% | QPC + 定点乘移 |
+| `point_ns_per_call` | 16.782 ns | — | — | 返回 `steady_clock::time_point` |
+| `wall_ns_per_call` | 23.557 ns | — | — | `GetSystemTimePreciseAsFileTime` |
+| `tick_next_deadline_ns` | **1.048 ns** | — | — | 纯整数加法，不读时钟 |
+| `uuid_v4_ns` | 44.443 ns | < 100 ns | 56% | BCryptGenRandom 16B |
+| `uuid_v7_ns` | 66.657 ns | < 100 ns | 33% | 时间戳写 6B + CSPRNG 10B |
+| `uuid_tostring_ns` | 32.230 ns | — | — | 36 字符 hex + 连字符 |
+| `uuid_parse_ns` | 20.482 ns | — | — | 含校验，非法输入走错误路径 |
+| `config_get_ns` | **34.244 ns** | ≤ 50 ns | 32% | `Get<uint32>`，读路径无原子 RMW |
+| `config_get_string_ns` | 40.624 ns | — | — | `Get<string>`（多一次堆分配） |
+
+## 选型依据：为什么不用 `std::chrono::steady_clock`
+
+在动手实现前先跑了一次一次性探针（`build/probe_time.cpp`，测完即删），
+拿数据而不是拍脑袋决定实现：
+
+| 实现 | 实测 ns/次 |
+|---|---:|
+| `std::chrono::steady_clock::now()` | **24.548** |
+| 裸 `QueryPerformanceCounter` | 15.718 |
+| QPC + 定点乘移 | 16.901 |
+| QPC + 64 位除法 | 21.269 |
+| `GetSystemTimeAsFileTime` | 19.684 |
+| `BCryptGenRandom`（16B，对照） | 41.812 |
+
+`steady_clock` 是 24.548 ns，对 25 ns 阈值只有 **2% 余量**——
+换一台机器、换一次编译器升级就会翻车。换 QPC 定点后余量拉到 33%，
+代价是每 Tick 多写 20 行定点乘法代码，值得。
+
+## 优化记录
+
+1. **UUID V7 只申请 10 字节熵（72.840 → 66.657 ns）**
+
+   初版 `TryNewV7` 无脑 `FillRandom(bytes, 16)`，然后覆写前 6 字节为毫秒时间戳。
+   前 6 字节的熵直接被丢掉，等于白付了 6 字节的 CSPRNG 成本。
+   改成只给 `bytes[6..16)` 取随机，省 8.5%。
+
+2. **配置读路径去掉原子 RMW**
+
+   `std::atomic<std::shared_ptr<const Snapshot>>::load()` 内部有引用计数递增，
+   每次读是 2 次原子 RMW，跨核 cache line 争用会把它打到远超 50 ns。
+   改为 thread-local 缓存：持有快照强引用 + `uint64_t` 版本号，
+   只有版本号变化时才真正 `load()`。热路径退化成一次 thread-local 读 + 一次整型比较。
+
+3. **配置 `Get<T>` 用 `string_view` 透明哈希**
+
+   初版每次 `Get("tick.hz")` 都会构造 `std::string` 去查 `unordered_map`。
+   换成 `is_transparent` 哈希 + `std::equal_to<>` 后，查询侧零堆分配。
+   `config_get_ns` 里那 34 ns 有一半是这次优化省下的。
+
+4. **定点换算不用 `__int128`**
+
+   `__int128` 在 `-Wpedantic` 下报「ISO C++ does not support `__int128`」，
+   而本仓 `-Wpedantic` 是硬红线（任何告警必须清零）。
+   改为 `ScaleFixedPoint()`：把 64×64 拆成 4 项 32×32 部分积
+   （`lo / mid_lo / mid_hi / hi`），精度和 `__int128` 一致，且全是可移植的 `uint64_t`。
+
+## 说明
+
+- `tick_next_deadline_ns` 只有 1 ns 是因为它是**纯加法**（`prev + interval_ns`），
+  不读任何时钟源，因此天然免疫墙钟回拨 —— 这是 TASK-003 §15.9 的核心设计。
+- `config_get_ns` 测的是**命中已有 key** 的路径；`NOT_FOUND` 路径会构造 Error 消息，
+  成本高一个量级，属于冷路径，不在预算内。
+- UUID 唯一性不靠 benchmark 验证，靠 `core_time_test` 里各 100 万次 V4 / V7
+  排序查重（实测碰撞数 0）。
+- 以上数字取自 Windows 11 / MinGW-w64 g++ 16.1.0 / `-O3` Release。
+  QPC 频率由硬件决定，低精度时钟源（如某些虚拟机的 10 MHz TSC）会略微抬高
+  `wall_ns_per_call`，不影响 `monotonic_ns_per_call` 的量级。

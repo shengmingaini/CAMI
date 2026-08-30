@@ -49,6 +49,73 @@ target_compile_features(mmo_core_log PUBLIC cxx_std_20)
 target_link_libraries(mmo_core_log PUBLIC mmo::core_error)
 mmorpg_add_warnings(mmo_core_log)
 
+# ---- 库目标：TASK-003 Core Time（MonotonicClock / WallClock / TickClock） ----
+# 依赖方向 time -> error（Result/Error 表达校验失败），单向无环。
+# timer.h 只定义 ITimerQueue 接口、不实现调度（留给 TASK-004 Scheduler），无需编译单元。
+add_library(mmo_core_time STATIC
+    src/time/clock.cpp
+    src/time/wall_clock.cpp
+    src/time/tick_clock.cpp
+)
+add_library(mmo::core_time ALIAS mmo_core_time)
+
+target_include_directories(mmo_core_time PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:include>
+)
+# 内部头（墙钟注入测试缝）只对本库与同模块白盒测试可见，不进 PUBLIC 接口
+target_include_directories(mmo_core_time PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+target_compile_features(mmo_core_time PUBLIC cxx_std_20)
+target_link_libraries(mmo_core_time PUBLIC mmo::core_error)
+mmorpg_add_warnings(mmo_core_time)
+
+# ---- 库目标：TASK-003 Core UUID ----
+# 依赖方向 uuid -> time（V7 需要 WallClock::UnixMillis）+ uuid -> error，单向无环。
+# thread_local 熵缓冲，无全局锁、无共享随机引擎（任务书 §21）。
+add_library(mmo_core_uuid STATIC
+    src/uuid/uuid.cpp
+    src/uuid/entropy.cpp
+)
+add_library(mmo::core_uuid ALIAS mmo_core_uuid)
+
+target_include_directories(mmo_core_uuid PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:include>
+)
+# 内部头（熵源测试注入缝）只对本库与同模块白盒测试可见，不进 PUBLIC 接口
+target_include_directories(mmo_core_uuid PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+target_compile_features(mmo_core_uuid PUBLIC cxx_std_20)
+target_link_libraries(mmo_core_uuid PUBLIC mmo::core_error mmo::core_time)
+# Windows CNG：BCryptGenRandom 需要 bcrypt 导入库（MinGW 自带 libbcrypt.a）
+if(WIN32)
+    target_link_libraries(mmo_core_uuid PRIVATE bcrypt)
+endif()
+mmorpg_add_warnings(mmo_core_uuid)
+
+# ---- 库目标：TASK-003 Core Config（JSON 配置中心） ----
+# 依赖方向 config -> error，单向无环；不依赖 log（避免 core 内部不必要的耦合）。
+# 内部头（极简 JSON 解析器 / 不可变快照定义）只对本库与同模块白盒测试可见。
+add_library(mmo_core_config STATIC
+    src/config/json_parser.cpp
+    src/config/config_manager.cpp
+)
+add_library(mmo::core_config ALIAS mmo_core_config)
+
+target_include_directories(mmo_core_config PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:include>
+)
+target_include_directories(mmo_core_config PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+target_compile_features(mmo_core_config PUBLIC cxx_std_20)
+target_link_libraries(mmo_core_config PUBLIC mmo::core_error)
+mmorpg_add_warnings(mmo_core_config)
+
 # ---- 单元测试（自包含 harness，不依赖 gtest；vcpkg 离线不可用时仍可验证） ----
 if(MMORPG_BUILD_TESTS)
     add_executable(core_error_test tests/error_test.cpp)
@@ -77,6 +144,23 @@ if(MMORPG_BUILD_TESTS)
             -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/NegativeCompileCheck.cmake)
 endif()
 
+# ---- 单元测试：TASK-003 Core Time / UUID / Config ----
+# 一个可执行文件覆盖 §16 单元 / §17 集成 / §19 Failure，统一以 Core_Time 前缀注册，
+# 使验收脚本的 `ctest -R Core_Time` 能真正跑完全部 TASK-003 用例。
+if(MMORPG_BUILD_TESTS)
+    add_executable(core_time_test tests/time_test.cpp)
+    target_link_libraries(core_time_test PRIVATE mmo::core_time mmo::core_uuid mmo::core_config)
+    # 白盒访问本模块内部头（墙钟注入缝 / 熵源注入缝），不进 PUBLIC 接口
+    target_include_directories(core_time_test PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+    )
+    target_compile_options(core_time_test PRIVATE -Wno-pedantic)
+    # 工作目录必须是仓库根：测试要加载真实 config/ 目录（§20.6 要求至少 3 份配置可被加载）。
+    # ctest 默认在 build 目录下执行，不加这句 LoadDir("config") 一定找不到路径。
+    add_test(NAME Core_Time.Suite COMMAND core_time_test
+             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+endif()
+
 # ---- Benchmark（1e7 次，输出 bench/core_error.txt 的 key=value） ----
 if(MMORPG_BUILD_BENCHMARKS)
     add_executable(error_bench tests/error_bench.cpp)
@@ -86,4 +170,9 @@ if(MMORPG_BUILD_BENCHMARKS)
     # TASK-002：8 线程 × 10 万条压测，输出 bench/core_log.txt
     add_executable(log_bench tests/log_bench.cpp)
     target_link_libraries(log_bench PRIVATE mmo::core_log)
+
+    # TASK-003：单调时钟 / UUID / Config Get 压测，输出 bench/core_time.txt
+    add_executable(time_bench tests/time_bench.cpp)
+    target_link_libraries(time_bench PRIVATE mmo::core_time mmo::core_uuid mmo::core_config)
+    target_compile_options(time_bench PRIVATE -Wno-pedantic)
 endif()

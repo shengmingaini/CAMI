@@ -1,0 +1,7 @@
+{
+  "service": {
+    "name": "gamenode",
+    "log_level": "info",
+    "hot_reload": true
+  }
+}

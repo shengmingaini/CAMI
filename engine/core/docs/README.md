@@ -1,9 +1,10 @@
-# engine/core · Core 基础设施（TASK-001 / TASK-002）
+# engine/core · Core 基础设施（TASK-001 / TASK-002 / TASK-003）
 
-本模块包含两套相互独立的基础设施：
+本模块包含三套相互独立的基础设施：
 
 - **TASK-001 · Core Error / Result** —— `mmo/core/error/*`
 - **TASK-002 · Core Logger / Trace** —— `mmo/core/log/*`
+- **TASK-003 · Core Time / UUID / Config** —— `mmo/core/{time,uuid,config}/*`
 
 ---
 
@@ -202,3 +203,92 @@ python tools/logtrace/parse_trace.py 8a39f0000 --dir logs --fuzzy --json
 
 > 模块边界：下游只能包含 `engine/core/include/mmo/core/log/*`；`src/log/async_ring_buffer.h`
 > 与 `src/log/log_formatter.h` 是内部实现，禁止 `#include`。
+
+---
+
+# 三、Core Time / UUID / Config（TASK-003）
+
+三件看起来无关的东西被放在同一个任务里，是因为它们共享同一个约束：
+**都在每 Tick / 每次请求的热路径上被调用，且都不允许失败后悄悄降级**。
+时钟决定 Tick 的精度，UUID 决定实体身份的唯一性，配置决定运行时可调性。
+
+- **`mmo/core/time/*`** —— 单调时钟（QPC 定点）、墙钟、TickClock（纯整数递推）、`ITimerQueue` 接口
+- **`mmo/core/uuid/*`** —— RFC 9562 UUID V4（OS CSPRNG）与 V7（时间前缀，可按时间排序）
+- **`mmo/core/config/*`** —— 版本化不可变快照 + 原子整体替换 + 无锁读
+
+## 快速上手
+
+```cpp
+#include "mmo/core/time/clock.h"
+#include "mmo/core/time/tick_clock.h"
+#include "mmo/core/uuid/uuid.h"
+#include "mmo/core/config/config_manager.h"
+
+using namespace mmo::core;
+
+// ---- 配置：启动期加载一次 ----
+Result<void> loaded = ConfigManager::LoadDir("config");   // app.json / tick.json / network.json
+if (!loaded.HasValue()) { /* 启动失败，禁止带病运行 */ }
+
+Result<std::uint32_t> hz = ConfigManager::Get<std::uint32_t>("tick.hz");   // 20
+// 缺失 key → NOT_FOUND，消息里带 key 名；类型不匹配 → INVALID_ARGUMENT
+
+// ---- Tick：驱动主循环 ----
+TickClock clock(hz.HasValue() ? hz.Value() : TickClock::kDefaultHz);
+SteadyTime deadline = MonotonicClock::Point();
+while (running) {
+    const SteadyTime now = MonotonicClock::Point();
+    if (now < deadline) { SleepUntil(deadline); continue; }
+
+    const std::uint32_t steps = clock.CatchUpSteps(now, deadline);  // 最多补 3 个
+    for (std::uint32_t i = 0; i < steps; ++i) { world.Tick(); }
+    deadline = clock.NextTickDeadline(deadline);   // 纯递推，不读时钟 → 零漂移
+}
+
+// ---- UUID：实体身份 ----
+Uuid player_id = Uuid::NewV7();       // 可按创建时间排序，适合做数据库主键
+Uuid session_id = Uuid::NewV4();      // 纯随机，不泄漏时间信息
+std::string text = player_id.ToString();           // "018f...-....-7xxx-....-............"
+Result<Uuid> back = Uuid::Parse(text);             // 往返一致
+```
+
+## 使用规范（踩坑点）
+
+1. **Tick 一律用 `MonotonicClock` + `TickClock`，永不碰墙钟。**
+   `WallClock` 只用于落盘、展示、跨机时间对齐。墙钟会被 NTP 回拨、闰秒、
+   虚拟机挂起恢复影响；用它驱动 Tick 会让整服逻辑时间倒流。
+2. **`NextTickDeadline` 只在上一帧的 deadline 上加，不要每次读 `MonotonicClock::Now()`。**
+   后者会把「本帧超时的那几微秒」累积成漂移；前者跑 10000 Tick 误差实测 0 ns。
+3. **`CatchUpSteps` 一定要用，且不要改 `kMaxCatchUpSteps`。**
+   帧率跟不上时如果无限补 Tick，会进入「补 Tick → 更慢 → 补更多」的死亡螺旋。
+4. **配置热更失败是正常事件，不是崩溃理由。**
+   `Reload()` 失败时旧快照原样保留，服务继续跑；调用方应当记 Warn 而不是退出。
+5. **重复 key 会直接报 `INVALID_ARGUMENT`。**
+   不要写「两个 json 都定义 `tick.hz`，以为后加载的会覆盖」——这是被显式禁止的行为。
+6. **`Uuid::NewV4()` / `NewV7()` 失败返回 `Nil()` 而不是抛异常。**
+   需要区分「熵源挂了」的场景请用 `TryNewV4()` / `TryNewV7()` 拿 `Result`。
+   宁可拿 Nil UUID 让上层显式失败，也不要退化为 `rand()`。
+7. **配置读路径虽然无锁，但 `Get<std::string>` 有堆分配**（实测 40.6 ns vs 34.2 ns）。
+   每 Tick 都读的字符串配置，应在启动期读一次缓存到局部变量。
+8. **`ITimerQueue` 现在只有接口，没有实现。** TASK-004 的 Scheduler 会提供。
+   不要自己写一个「差不多」的定时器，等接口实现。
+
+## 目录结构
+
+```
+engine/core/
+├── include/mmo/core/
+│   ├── time/{clock.h, tick_clock.h, timer.h}
+│   ├── uuid/uuid.h
+│   └── config/config_manager.h
+├── src/
+│   ├── time/{clock.cpp, wall_clock.cpp, tick_clock.cpp, wall_clock_seam.h}
+│   ├── uuid/{uuid.cpp, entropy.h, entropy.cpp}
+│   └── config/{json_parser.h, json_parser.cpp, config_snapshot.h, config_manager.cpp}
+└── tests/{time_test.cpp, time_bench.cpp}
+config/{app.json, tick.json, network.json}
+```
+
+> 模块边界：下游只能包含 `engine/core/include/mmo/core/{time,uuid,config}/*`。
+> `src/` 下的 4 个内部头（`wall_clock_seam.h`、`entropy.h`、`json_parser.h`、
+> `config_snapshot.h`）禁止被下游 `#include`。

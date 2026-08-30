@@ -1,0 +1,6 @@
+{
+  "tick": {
+    "hz": 20,
+    "max_catch_up_steps": 3
+  }
+}

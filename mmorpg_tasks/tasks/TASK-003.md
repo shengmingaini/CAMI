@@ -4,7 +4,7 @@ NAME: Core Time / UUID / Config
 PHASE: Phase 0 · 工程基础
 MODULE: engine/core
 OWNER: Codex / WorkBuddy Agent 实施；@技术总监 二次验收；本地 MinGW MSYS2 g++ + vcpkg 编译验证
-STATUS: PENDING
+STATUS: DONE
 DEPENDENCIES: TASK-000
 ---
 
@@ -20,7 +20,7 @@ DEPENDENCIES: TASK-000
 | PHASE | Phase 0 · 工程基础 |
 | MODULE | `engine/core` |
 | OWNER | Codex / WorkBuddy Agent 实施；@技术总监 二次验收；本地 MinGW MSYS2 g++ + vcpkg 编译验证 |
-| STATUS | **PENDING** |
+| STATUS | **DONE** |
 | DEPENDENCIES | `TASK-000` |
 
 ---

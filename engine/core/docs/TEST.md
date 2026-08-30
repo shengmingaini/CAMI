@@ -1,7 +1,8 @@
-# engine/core · 测试说明（TASK-002 · Core Logger / Trace）
+# engine/core · 测试说明（TASK-002 / TASK-003）
 
 > TASK-001（Error/Result）的测试在 `tests/error_test.cpp`，风格与本文件一致。
-> 两者共用 `tests/test_print.h` 作为输出通道（红线禁止 `printf` / `cout` / `cerr`）。
+> TASK-003（Time / UUID / Config）的测试在 `tests/time_test.cpp`，见本文件末尾第三部分。
+> 三者共用 `tests/test_print.h` 作为输出通道（红线禁止 `printf` / `cout` / `cerr`）。
 
 ## 为什么不用 GoogleTest
 
@@ -84,3 +85,94 @@ vcpkg 在当前环境下**离线不可用**（GFW + baseline `aae277ac` 空依�
 - [ ] 环形队列满时 `dropped` 计数正确且业务线程不阻塞
 - [ ] 全仓 grep 无 `std::cout` / `printf` 直接输出
 - [ ] Debug / Release 双构建通过，`ctest -R Core_Log` 全绿
+
+---
+
+# 三、Core Time / UUID / Config（TASK-003 · `tests/time_test.cpp`）
+
+一个可执行文件覆盖 §16 单测 / §17 集成 / §19 Failure 三类，ctest 用例名 `Core_Time.Suite`。
+**ctest 必须带 `WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}`** —— 配置测试要读相对路径 `config/`，
+而 ctest 默认工作目录是 build 目录，不设会全部 `NOT_FOUND`。
+
+## §16 单元测试
+
+| 用例 | 断言要点 |
+|---|---|
+| `TestMonotonic` | 100 万次 `MonotonicClock::Now()`，**回退次数 == 0** |
+| `TestWallClock` | `UnixMillis()` 落在合理区间（2001-2100），`UnixNanos()` 与 millis 自洽 |
+| `TestTickClock` | 20 Hz → `TickIntervalNs() == 50'000'000`；`CatchUpSteps` 在超长间隔下被限幅到 3；间隔不足时返回 0 |
+| `TestUuidFormat` | V4 version=4 / variant=2；V7 version=7；`ToString` 长度 36、连字符位置正确；`Parse` 往返一致；非法输入 → `INVALID_ARGUMENT` |
+| `TestUuidUniqueness` | 各生成 **100 万**个 V4 / V7，排序后查重，**碰撞数 == 0** |
+| `TestUuidV7Ordering` | 同一毫秒内 / 跨毫秒生成的 V7 序列，`TimestampMillis()` 单调不减；V7 可按字符串排序 |
+| `TestConfigBasics` | `LoadDir("config")` 后 `Size() == 10`；`Get<uint32>("tick.hz") == 20`；`Get<string>("service.name") == "gamenode"`；缺失 key → `NOT_FOUND` 且消息含 key 名；类型不匹配 → `INVALID_ARGUMENT`；`Version()` 单调递增 |
+
+## §17 集成测试
+
+| 用例 | 断言要点 |
+|---|---|
+| `TestFakeTickLoop` | 20 Hz 驱动假 Tick 循环跑 **10 秒**，实测 Tick 数 `199`（要求 200 ± 2），**累计漂移 0 ns** |
+| `TestConfigHotReloadConcurrency` | 4 个读线程持续 `Get<uint32>("probe.hz")`，写线程在 20 / 30 之间来回热更；读满 100 万次后停止，读到的值**只能是 20 或 30**，异常值 **0**（实测 1,057,587 次读） |
+
+## §19 Failure 测试
+
+| 用例 | 断言要点 |
+|---|---|
+| `TestWallClockRollback` | 用 `time_internal::SetInjectedWallClockNanos` 注入 −5 秒回拨、再注入 +60 秒跳变；期间 200 次 Tick 的 deadline 序列**仍严格单调递增**（证明 Tick 不依赖墙钟） |
+| `TestUuidEntropyFailure` | 用 `uuid_internal::SetTestFillRandom` 注入失败的熵源；`TryNewV4/V7` → `INTERNAL_ERROR`，`NewV4/V7` → `Nil()`，**绝不产出弱随机 UUID** |
+| `TestConfigFailure` | ① 非法 JSON → `INVALID_ARGUMENT` 且旧快照不变；② 文件不存在 → `NOT_FOUND`；③ 目录不存在 → `NOT_FOUND`；④ 重复 key → `INVALID_ARGUMENT`；⑤ 热更时目录被删 → `Reload()` 报错且旧快照继续可用 |
+
+## 为什么需要墙钟注入缝
+
+§15.9 要求「证明墙钟回拨时 TickClock 不受影响」，但**测试进程无法真的改系统时间**
+（改了会污染整台机器，且需要管理员权限）。所以在 `src/time/wall_clock_seam.h` 里留了一个
+**内部注入缝** `SetInjectedWallClockNanos()`：非 0 时覆盖 `WallClock::UnixNanos()`。
+
+它是 `src/` 下的内部头，下游 `#include` 不到，因此不存在「生产代码误调用」的风险；
+生产路径上那个原子变量恒为 0，只多一次 relaxed load。
+
+## 踩坑：`Result::Value()` 会抛异常
+
+自研 `Result<T>` 的 `Value()` 内部是 `std::get`，对**错误结果**调用会抛
+`std::bad_variant_access`。测试里一旦有 `ConfigManager::Get<T>(...).Value()` 的裸调用，
+失败时你只能看到：
+
+```
+terminate called after throwing an instance of 'std::bad_variant_access'
+```
+
+——**完全不知道是哪一行断言挂了**。第一次跑验收脚本时就被这个坑了，
+真正的失败原因（`LoadDir("config")` 因 ctest 工作目录不对而 `NOT_FOUND`）
+被这层崩溃完全掩盖。
+
+所以测试里统一用 `EXPECT_OK()` 宏包一层：
+
+```cpp
+template <typename T>
+T CheckOk(const Result<T>& result, const char* expr, const char* file, int line) {
+    if (!result.HasValue()) {
+        ::mmo::core::test::ErrorFmt("FAIL @ %s:%d : %s -> %s\n", file, line, expr,
+                                    std::string(result.Err().Message()).c_str());
+        ++g_failures;
+        return T{};
+    }
+    return result.Value();
+}
+#define EXPECT_OK(expr) CheckOk((expr), #expr, __FILE__, __LINE__)
+```
+
+失败时打印 `FAIL @ time_test.cpp:519 : ConfigManager::Get<uint32>("tick.hz") -> key not found: tick.hz`。
+**所有 `Result` 取值一律走 `EXPECT_OK`，禁止裸 `.Value()`。**
+
+> 注意：`Result` 的 `using` 声明必须在 `CheckOk` 之前。C++ 对非依赖名的查找发生在
+> 模板定义点，把 `using mmo::core::Result;` 放在后面的话，GCC 会报
+> 「no matching function for call to CheckOk」这种完全指不到病根的错误。
+
+## 手工复核清单（脚本无法自动判定，提交前逐条勾选）
+
+- [x] 全仓 grep：Tick 相关路径不存在 `WallClock` / `std::chrono::system_clock`
+- [x] TickClock 跑 10000 次，累计误差 **0 ns**（阈值 < 10 ms）
+- [x] UUID 各 100 万次 V4 / V7 无碰撞，V7 可按时间排序
+- [x] 配置热更期间 4 线程并发读，105 万次读无异常
+- [x] benchmark 三项指标达标（16.755 / 44.443 / 66.657 / 34.244 ns）
+- [x] `config/` 下 3 份配置正确加载，共 10 个 key
+- [x] Debug / Release 双构建通过，`ctest -R Core_Time` 全绿

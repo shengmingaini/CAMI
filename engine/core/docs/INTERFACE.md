@@ -1,10 +1,11 @@
-# engine/core · 公开接口契约（TASK-001 / TASK-002）
+# engine/core · 公开接口契约（TASK-001 / TASK-002 / TASK-003）
 
 > 本文件为 `STATUS: DONE` 后冻结的对外契约。下游依赖此接口；破坏性变更须走
 > `version` 字段 + 兼容性评估，禁止静默改签名导致下游编译失败。
 >
 > - **TASK-001** · Core Error / Result 系统 —— `mmo/core/error/*`
 > - **TASK-002** · Core Logger / Trace —— `mmo/core/log/*`
+> - **TASK-003** · Core Time / UUID / Config —— `mmo/core/{time,uuid,config}/*`
 
 ---
 
@@ -219,3 +220,136 @@ class Logger {                                   // 静态门面，禁止实例�
 - 禁止先拼字符串再判断日志级别（必须先 `ShouldLog`）。
 - 禁止日志内容包含明文口令、令牌、完整身份证 / 银行卡等敏感数据。
 - 禁止日志队列满时阻塞业务线程。
+
+# 三、Core Time / UUID / Config（TASK-003）
+
+## 头文件位置
+
+```
+engine/core/include/mmo/core/time/clock.h         # MonotonicClock / WallClock
+engine/core/include/mmo/core/time/tick_clock.h    # TickClock（纯整数递推）
+engine/core/include/mmo/core/time/timer.h         # ITimerQueue 抽象接口（TASK-004 实现）
+engine/core/include/mmo/core/uuid/uuid.h          # Uuid（V4 / V7）
+engine/core/include/mmo/core/config/config_manager.h  # ConfigManager（静态 API）
+```
+
+内部实现（**禁止**被下游 `#include`）：
+
+```
+engine/core/src/time/wall_clock_seam.h   # 测试注入缝：SetInjectedWallClockNanos
+engine/core/src/uuid/entropy.h           # OS 熵源封装
+engine/core/src/config/json_parser.h     # 极简递归下降 JSON 解析器
+engine/core/src/config/config_snapshot.h # 不可变配置快照
+```
+
+## 公开接口
+
+```cpp
+// ---- 时钟 ----
+using SteadyNs   = std::int64_t;                       // 单调纳秒
+using SteadyTime = std::chrono::steady_clock::time_point;
+using DurationMs = std::chrono::duration<std::int64_t, std::milli>;
+
+class MonotonicClock final {
+public:
+    static SteadyNs   Now()     noexcept;              // QPC，实测 16.8 ns/次
+    static SteadyTime Point()   noexcept;              // 实测 16.8 ns/次
+    static SteadyNs   Elapsed(SteadyTime from) noexcept;
+};
+
+class WallClock final {                                // 墙钟：只用于落盘 / 展示 / 跨机对齐
+public:
+    static std::int64_t UnixNanos() noexcept;          // 可被测试注入覆盖
+    static std::int64_t UnixMillis() noexcept;
+};
+
+// ---- Tick ----
+class TickClock final {
+public:
+    static constexpr std::uint32_t kMaxCatchUpSteps = 3;   // 单帧最多补 3 个 Tick
+    static constexpr std::uint32_t kDefaultHz       = 20;  // 50ms / Tick
+
+    explicit TickClock(std::uint32_t hz) noexcept;         // hz == 0 兜底为 1
+    std::uint32_t Hz() const noexcept;
+    SteadyNs      TickIntervalNs() const noexcept;
+    DurationMs    TickInterval() const noexcept;
+
+    SteadyTime    NextTickDeadline(SteadyTime prev) const noexcept;  // 纯递推，不读时钟
+    std::uint32_t CatchUpSteps(SteadyTime now, SteadyTime prev) const noexcept;
+};
+
+// ---- UUID ----
+class Uuid final {
+public:
+    std::array<std::uint8_t, 16> bytes{};
+
+    static Uuid Nil() noexcept;
+    static Result<Uuid> TryNewV4() noexcept;   // OS CSPRNG
+    static Uuid         NewV4() noexcept;      // 失败返回 Nil，绝不降级为弱随机
+    static Result<Uuid> TryNewV7() noexcept;   // 48bit ms 前缀 + CSPRNG
+    static Uuid         NewV7() noexcept;
+
+    std::string          ToString() const;                 // 36 字符带连字符
+    static Result<Uuid>  Parse(std::string_view text);     // 格式/长度非法 → INVALID_ARGUMENT
+    int      Version() const noexcept;   // 4 或 7
+    int      Variant() const noexcept;   // RFC 9562 variant（2）
+    bool     IsNil() const noexcept;
+    std::int64_t TimestampMillis() const noexcept;  // 仅 V7 有意义
+};
+
+// ---- Config ----
+class ConfigManager final {
+public:
+    static Result<void> LoadFile(std::string_view path);
+    static Result<void> LoadDir(std::string_view dir);   // 按字典序合并 *.json
+    static Result<void> Reload();                         // 失败保留旧快照
+
+    template <typename T>
+    static Result<T> Get(std::string_view key) noexcept;  // 读路径无锁
+
+    static Result<void> Set(std::string_view key, std::string_view value);
+    static std::uint64_t Version() noexcept;              // 单调递增
+    static bool   Contains(std::string_view key) noexcept;
+    static std::vector<std::string> Keys();
+    static std::size_t Size() noexcept;
+    static void ResetForTest();
+};
+```
+
+## 语义约束
+
+- **`TickClock` 是纯整数递推**：`NextTickDeadline(prev) = prev + interval_ns`。
+  它**不读任何时钟**，因此墙钟回拨、NTP 跳变、闰秒、虚拟机挂起恢复都对它无效。
+  实测跑 10000 个 Tick，累计误差 **0 ns**（理论 500 s vs 实测 500 s）。
+- **`MonotonicClock` 用 QPC + 定点乘移**，不用 `std::chrono::steady_clock`。
+  实测：`steady_clock::now()` 24.5 ns/次（阈值 25 ns，只剩 2% 余量）、
+  裸 QPC 15.7 ns、QPC + 定点 16.9 ns。选 QPC 定点是为了把余量从 2% 拉到 33%。
+  定点换算用 4 项 64 位部分积实现，**不用 `__int128`**（会触发 `-Wpedantic`）。
+- **配置读路径零原子 RMW**：热路径用 thread-local 缓存持有快照 `shared_ptr` 强引用
+  + 一个 `uint64_t` 版本号比对；直接 `atomic<shared_ptr>::load` 每次要 2 次原子 RMW，
+  实测 34 ns 的预算扛不住。写路径（Load/Reload/Set）才走互斥锁，是冷路径。
+- **快照整体替换**：`Reload()` 先完整构建新快照，成功才原子换指针。
+  任何一步失败（文件损坏 / 目录消失 / 重复 key）都返回 Error，**旧快照原样保留**，
+  不存在半替换状态。4 读线程并发压测 105 万次读，异常值 **0**。
+- **重复 key 是错误**：同一批加载里同一 key 出现两次 → `INVALID_ARGUMENT`
+  （绝不允许「后写的悄悄覆盖先写的」）。
+- **UUID 熵源失败不降级**：`FillRandom` 失败时 `TryNew*` 返回 `INTERNAL_ERROR`，
+  `New*` 返回 `Uuid::Nil()`，**绝不用 `rand()` / 时间戳凑数**。
+- **V7 只申请 10 字节熵**：前 6 字节是毫秒时间戳，会被覆写，
+  只给 `bytes[6..16)` 取随机，把 `uuid_v7_ns` 从 72.8 ns 降到 67.0 ns。
+- **`ITimerQueue` 本任务只定义接口不实现**，TASK-004 Scheduler 负责实现。
+  接口纯抽象，测试里用 `NullTimerQueue` 证明其可实现。
+
+## 禁止
+
+- **禁止用墙钟驱动 Tick**：Tick 相关路径不得出现 `WallClock` 或
+  `std::chrono::system_clock`（`engine/core/src/time` 与
+  `engine/core/include/mmo/core/time` 已被验收脚本红线扫描覆盖）。
+- **禁止在 `NextTickDeadline` 里读时钟**：必须是纯递推，否则漂移会累积。
+- **禁止 `CatchUpSteps` 超过 `kMaxCatchUpSteps`**：帧率一旦跟不上必须限幅，
+  否则「补 Tick → 更慢 → 补更多 Tick」形成死亡螺旋。
+- **禁止 `__int128`**（`-Wpedantic`）；禁止在 `engine/` 内出现 `std::cout` / `printf`。
+- **禁止把 `src/config/config_snapshot.h`、`src/config/json_parser.h`、
+  `src/time/wall_clock_seam.h`、`src/uuid/entropy.h` 暴露给下游**：
+  `ConfigManager` 头里只前向声明 `detail::ConfigSnapshot`，调用方无法改动它。
+- **禁止配置热更返回半替换快照**；**禁止重复 key 静默生效**。

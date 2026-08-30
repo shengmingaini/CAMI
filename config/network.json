@@ -1,0 +1,11 @@
+{
+  "network": {
+    "gateway_host": "127.0.0.1",
+    "gateway_port": 9000,
+    "listen_backlog": 512,
+    "protocols": [
+      "tcp",
+      "quic"
+    ]
+  }
+}
