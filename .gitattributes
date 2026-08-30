@@ -1,4 +1,6 @@
 # 统一换行符为 LF，避免 Windows / MSYS2 混用导致脚本与补丁错位
+.gitattributes text eol=lf
+.gitignore     text eol=lf
 *.sh   text eol=lf
 *.md   text eol=lf
 *.cpp  text eol=lf
@@ -6,6 +8,9 @@
 *.hpp  text eol=lf
 *.cmake text eol=lf
 CMakeLists.txt text eol=lf
+# Python 工具脚本同样必须 LF：CRLF 会让 shebang 行变成 `python3\r`，
+# 在 WSL / Linux 检出后 `#!/usr/bin/env python3` 直接失效。
+*.py   text eol=lf
 *.json text eol=lf
 *.yml  text eol=lf
 *.yaml text eol=lf
