@@ -1,8 +1,9 @@
-# engine/core · 测试说明（TASK-002 / TASK-003 / TASK-004）
+# engine/core · 测试说明（TASK-002 / TASK-003 / TASK-004 / TASK-007）
 
 > TASK-001（Error/Result）的测试在 `tests/error_test.cpp`，风格与本文件一致。
 > TASK-003（Time / UUID / Config）的测试在 `tests/time_test.cpp`，见本文件末尾第三部分。
-> 三者共用 `tests/test_print.h` 作为输出通道（红线禁止 `printf` / `cout` / `cerr`）。
+> TASK-007（Command / Query / Event Bus）的测试在 `tests/bus_test.cpp` + `demo_pipeline.cpp`，见本文件末尾第五部分。
+> 全部测试共用 `tests/test_print.h` 作为输出通道（红线禁止 `printf` / `cout` / `cerr`）。
 
 ## 为什么不用 GoogleTest
 
@@ -271,3 +272,98 @@ bool operator()(std::size_t a, std::size_t b) const noexcept {
 - [x] ObjectPool 单线程归属；Arena `Reset()` 回收；MemoryPool magic 守卫拦截 double-free
 - [x] benchmark 四项达标：`sched_tick_us_10k_timers=1.387`(≤200) / `pool_acquire_release_ns=0.429`(≤20) / `arena_push_ns=2.647`(<3) / `mempool_alloc_ns=6.032`(<15)
 - [x] Debug / Release 双构建通过，`ctest -R Core_Thread` 全绿
+
+---
+
+# 五、Core Command / Query / Event Bus（TASK-007 · `tests/bus_test.cpp` + `demo_pipeline.cpp`）
+
+两个可执行文件覆盖三类验证，ctest 用例名 `Core_Bus.Suite`（14 个用例）与 `Core_Bus.Demo`（演示链路）。
+`Core_Bus.Suite` 覆盖 §16 单测 / §17 集成 / §19 Failure；`Core_Bus.Demo` 是 §15.8 的
+完整链路演示（Command → Handler → Event → 2 订阅者）。共享夹具在 `tests/bus_fixtures.h`：
+`MovePlayerCommand`（5 审计字段齐全）、`GetPositionQuery`、`PlayerMovedEvent`（32B 内联）、
+`EconomyEvent`（`kCritical=true`）、`BigEvent`（>32B 堆路径）。
+
+## 测试目标与入口
+
+| 目标 | 命令 | 说明 |
+|---|---|---|
+| 全量单测 + 集成 + 失败测试 | `ctest -R Core_Bus` | Suite + Demo 共 2 项 |
+| 直接跑（CWD = 仓库根） | `./build/Release/bin/core_bus_test.exe` | 纯断言，无落盘 |
+| 演示链路 | `./build/Release/bin/core_bus_demo.exe` | 打印 Command/Event/Query 链路结果 |
+| 压测 | `./build/Release/bin/bus_bench.exe --iterations 1000000` | 写 `bench/core_bus.txt` |
+
+## §16 单元测试
+
+| 用例 | 断言要点 |
+|---|---|
+| `TestCommandRegisterDispatch` | 注册 `MovePlayerCommand` 后 `Dispatch` 返回 `Ok` 且 handler 收到正确 payload 与 context；`RegisteredCount()==1`；结果值正确 |
+| `TestCommandDuplicateRegisterNotOverwrite` | 同一 Command 类型二次注册返回错误（`INVALID_ARGUMENT`），`RegisteredCount()` 不变，**第一次的 handler 仍生效**（无静默覆盖） |
+| `TestCommandNotFound` | 未注册的命令 `Dispatch` → `NOT_FOUND` |
+| `TestCommandHandlerThrows` | handler 抛异常 → `Dispatch` 返回 `INTERNAL_ERROR`（不崩溃、不逃逸）；再派发一个正常命令仍成功（总线状态未坏） |
+| `TestQueryAskAndErrorPropagation` | 注册 `GetPositionQuery` 后 `Ask` 返回正确位置；未注册查询 → `NOT_FOUND`；query handler 抛异常 → `INTERNAL_ERROR` |
+| `TestQueryNoSideEffect` | handler 内对 `SideEffectProbe::Write()`（Ask 区间内）→ `Violations()==1`（违规被抓）；Ask 之外 `Write()` 只累加 `Writes()`、不违规 |
+| `TestEventMulticastOrder` | 2 个订阅者按**注册顺序**收到同一事件（first 先于 second）；payload 一致 |
+| `TestEventUnsubscribeIdempotent` | `Unsubscribe(id)` 后该订阅者不再收到；重复退订同一 id / 非法 id 返回 `Ok`（幂等不崩） |
+| `TestBigEventHeapPath` | `BigEvent`（>32B）走堆路径：订阅、发布、Drain 后 payload 完整一致（inline / heap 两路径行为一致） |
+| `TestCrossThreadTracePropagation` | 4 个 worker 线程各发布事件（带各自 trace_id），Drain 后每个订阅回调断言 trace_id 与发布线程一致（跨线程透传无错乱） |
+
+## §17 集成测试
+
+| 用例 | 断言要点 |
+|---|---|
+| `TestEventDrainBudgetAndRemaining` | 压入 N 个事件，`Drain(max_events=小, budget=小)` 在预算/条数内停，返回值 = 剩余队列深度；继续 Drain 能清空；`QueueDepth()` 归零 |
+| `TestEventBackpressure` | 队列容量故意压小：非关键事件塞满 → 返回 `Ok` 且 `DroppedCount` 递增（丢弃+计数）；`EconomyEvent`（关键）塞满 → 返回 `BUSY` 且 `DroppedCount` **不变**（关键事件绝不丢） |
+| `TestMixedLoadNoDeadlock` | 4 线程 × 各 2 万事件混合发布 + 2 订阅者 + 主线程持续 Drain + 同时注册/退订新订阅者，跑完无死锁、无崩溃、总量一致 |
+
+## §19 Failure 测试
+
+| 用例 | 断言要点 |
+|---|---|
+| `TestEventSubscriberExceptionIsolation` | 第一个订阅者抛异常 → `SubscriberErrors` 计数 +1，**第二个订阅者照常收到**（坏订阅者不拖垮总线） |
+
+## §15.8 演示链路（`Core_Bus.Demo`）
+
+1. 注册 `MovePlayerCommand` handler：更新 `SceneState` 并 `Publish(PlayerMovedEvent)`；
+2. `Dispatch` 命令 → 断言返回 `Ok`；
+3. `Drain` 分发事件 → 2 个订阅者（AOI 通知 + 统计）**按注册顺序**收到，payload 与
+   `request_id` 串联一致（Command → Event 同一 request）；
+4. `Ask(GetPositionQuery)` → 位置正确且 `SideEffectProbe.Violations()==0`（Query 无副作用）；
+5. 100 个 `EconomyEvent` 关键事件 → 全部派发、`DroppedCount()==0`（关键事件零丢失）。
+
+## 踩坑记录（真实排障，写测试时才发现的）
+
+1. **进程级静态 `EventTypeInfo` 缓存实例级槽位下标 → `Core_Bus.Suite` SIGSEGV**
+
+   初版 `EventTypeInfo` 里带 `std::atomic<uint32_t> slot`（订阅槽下标缓存）。
+   第一个 EventBus 实例全绿；第二个实例订阅同一事件类型时读到旧下标，`slots_[slot]`
+   越界段错误（gdb：`EventBus::Subscribe<PlayerMovedEvent>` ← `TestEventUnsubscribeIdempotent`）。
+   修复：下标移入实例级 `slot_index_` 表。**教训：进程级静态对象不得缓存实例级状态。**
+
+2. **GCC 嵌套 struct 的 NSDMI 不能作默认实参**
+
+   `EventBus` 嵌套 `Options` 带默认成员初始化时，GCC 报
+   「default member initializer for 'queue_capacity' required before the end of its
+   enclosing class」。用最小复现（`opt_probe2/3.cpp`）定位后，把 `Options` 提到
+   命名空间级。**教训：嵌套类 NSDMI 属 complete-class context，外层类未结束前不可用。**
+
+3. **throw-only lambda 在 `-O3` 下可能掉出函数尾（潜在 UB）**
+
+   只含 `throw` 的 lambda 若返回 `Result<T>`，`-O3` 不保证补隐式 return。
+   每个 throw 后补不可达的 `return Result<T>::Ok(T{})` 消除告警面。
+
+4. **零丢弃断言要求测试容量足够大**
+
+   `TestMixedLoadNoDeadlock` 初版 `queue_capacity=1<<16`（65536），4×20000=80000 事件
+   必然溢出，「zero dropped」断言是**竞态运气**。改成 `1u << 17` 后语义才成立。
+   写零丢弃断言前先算容量：事件总量必须 < 队列容量。
+
+## 手工复核清单（脚本无法自动判定，提交前逐条勾选）
+
+- [ ] Demo 链路跑通：Command → Handler → Event → 2 个 Subscriber（`Core_Bus.Demo`）
+- [ ] Query 无副作用：`SideEffectProbe` 可捕获只读区间内的写入（`TestQueryNoSideEffect` 断言 `Violations()==1`）
+- [ ] 重复注册同一 Command 返回错误，未静默覆盖（`TestCommandDuplicateRegisterNotOverwrite` 断言仍执行第一个 handler）
+- [ ] 队列满时非关键事件丢弃计数、关键事件返回 `BUSY`（`TestEventBackpressure` 断言 `DroppedCount` 不变）
+- [ ] 一个订阅者抛异常不影响其他订阅者（`SubscriberErrors` 计数 + 后续照常收到）
+- [ ] EventBus 不创建线程，Drain 由宿主驱动且带时间预算（验收脚本已 grep 验证 `src/bus` 无 `std::thread`）
+- [ ] benchmark 四项指标写入 `docs/PERFORMANCE.md`（24.854 / 7.620 / 11.034 / 0.000 / 48.00MB）
+- [ ] Debug / Release 双构建通过，`ctest -R Core_Bus` 全绿

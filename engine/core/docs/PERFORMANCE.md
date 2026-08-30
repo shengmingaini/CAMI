@@ -1,4 +1,4 @@
-# engine/core · 性能实测（TASK-001 / TASK-002 / TASK-003 / TASK-004）
+# engine/core · 性能实测（TASK-001 / TASK-002 / TASK-003 / TASK-004 / TASK-007）
 
 > 所有数字均由 benchmark 真实测量，非估算；机器可读输出见 `bench/*.txt`。
 > 验收脚本以 **Release** 构建运行 benchmark 并断言阈值。
@@ -261,4 +261,81 @@ dropped_file=0
   堆始终维持 ~1 万个待触发定时器，贴近 50k 并发真实负载；实际每 Tick 只弹出已到期的少量。
 - `pool_acquire_release_ns` 含 `Acquire`（placement-new 默认构造）+ `Release`（析构），
   对 trivial 类型几乎为零成本；非 trivial 类型成本来自构造/析构本体，非池开销。
+- 以上数字取自 Windows 11 / MinGW-w64 g++ 16.1.0 / `-O3` Release。
+
+---
+
+# 五、Core Command / Query / Event Bus（TASK-007）
+
+机器可读输出：`bench/core_bus.txt`（`bin/bus_bench --iterations 1000000`，Release 构建）。
+验收脚本断言其中三项：`cmd_dispatch_ns ≤ 150`、`event_drain_ns_per_event ≤ 80`、
+`alloc_per_cmd = 0`；§22 另要求 `event_publish_ns < 100`、1e6 容量队列 < 64MB。
+
+## 实测数据（Release，1,000,000 次）
+
+| 指标 | 实测 | 阈值 | 余量 | 说明 |
+|---|---:|---:|---:|---|
+| `cmd_dispatch_ns` | **24.854** | ≤ 150 ns | 83% | CommandBus `Dispatch`（COW 快照无锁读 + 类型擦除调用） |
+| `event_publish_ns` | **7.620** | < 100 ns | 92% | EventBus `Publish`（入队 + 关键性判断，零堆分配） |
+| `event_drain_ns_per_event` | **11.034** | ≤ 80 ns | 86% | `Drain` 平均每个事件（派发 + 时间预算检查） |
+| `alloc_per_cmd` | **0.000** | = 0 | — | 1e6 次 Dispatch 的 `operator new` 计数 |
+| `queue_mb_1e6` | **48.00** | < 64 MB | 25% | 1,048,576 槽 × 48B 槽位的队列内存占用 |
+
+> 同机多次运行 `cmd_dispatch_ns` 落在 24~30 ns、`event_drain_ns_per_event` 落在 10~12 ns
+> 区间（受 CPU 负载波动影响），相对阈值余量在 80% 以上，不构成风险。
+
+## 设计要点：为什么能到个位数纳秒
+
+1. **读路径完全无锁（COW 快照 + `atomic<shared_ptr>`）**
+   CommandBus / QueryBus 的注册表是 `std::shared_ptr<const HandlerMap>`，`Dispatch` /
+   `Ask` 只做一次原子 load 拿快照再查表 —— 没有互斥锁、没有引用计数写竞争。
+   注册（冷路径）才写：拷一份新表原子换指针，已 in-flight 的调用继续用旧表。
+
+2. **Event 队列复用 TASK-004 的 `MpmcQueue`（Vyukov 有界无锁）**
+   `Publish` 只做「类型擦除入队」，不做任何分配（≤32B 事件走 32B 内联负载）；
+   失败路径才触碰 `dropped_` 计数器（relaxed 原子）。
+
+3. **40 字节槽位喂饱内存预算**
+   `EventSlot` = 8B `EventTypeInfo*` + 32B 内联 union（`static_assert(sizeof == 40)`）。
+   1e6 槽 = 40MB 数据 + 8MB 索引 ≈ 48MB，低于 64MB 预算。>32B 事件走堆回退，
+   堆路径的分配由调用方事件构造承担，`Publish` 本身捕获异常转 `INTERNAL_ERROR`。
+
+4. **Drain 的预算检查摊薄时钟开销**
+   若每个事件都查一次 `MonotonicClock::Now()`（~17ns），100 个事件就吃掉 1.7µs。
+   改为每 64 个事件查一次（前 8 个强制查，保证超短预算也生效），实测单个事件
+   摊薄成本 ~11ns，且 `TestDrainBudget` 验证 2ms 预算语义严格成立。
+
+## 优化记录（真实踩坑，不是拍脑袋）
+
+1. **`EventTypeInfo` 缓存实例级槽位下标 → 跨实例 SIGSEGV（已修复）**
+
+   初版在进程级静态 `EventTypeInfo` 里缓存 `atomic<uint32_t> slot`（订阅槽下标）。
+   单实例测试全绿；第二个 `EventBus` 实例订阅同一事件类型时，读到的是**第一个实例**
+   的旧下标，`slots_[slot]` 越界 → `Core_Bus.Suite` 段错误。
+   修复：把下标移进 `EventBus` 实例自己的 `slot_index_`（`unordered_map<const EventTypeInfo*, uint32_t>`），
+   配 `EnsureSlotLocked` / `FindSlotLocked` 只在持锁时访问。教训：**进程级静态对象
+   不得缓存实例级状态**，哪怕只有一个原子字段。
+
+2. **GCC 拒绝嵌套 struct 的 NSDMI 作默认实参**
+
+   `explicit EventBus(Options options = {})` 里 `Options` 是嵌套 struct 且带默认成员
+   初始化（`queue_capacity{1u<<16}`）时，GCC 报「default member initializer required
+   before the end of its enclosing class」——嵌套类的 NSDMI 属于 complete-class context。
+   修复：把 `Options` 提到命名空间级 `struct EventBusOptions`，类内 `using Options = EventBusOptions`
+   保持调用方写法不变。
+
+3. **throw-only lambda 在 `-O3` 下可能掉出函数尾**
+
+   单测里「handler 必然抛异常」的 lambda 只有 `throw` 语句，`-O3` 下编译器不保证
+   补隐式 return，存在 UB 风险。给每个 throw 后补 `return Result<T>::Ok(T{})` 不可达
+   代码，消除 `-Wreturn-type` 告警面。
+
+## 说明
+
+- `cmd_dispatch_ns` 测的是**已注册**命令的完整派发（查表 + 类型擦除 + 调用 handler
+  桩）。`NOT_FOUND` 路径（构造 `Error` 消息）是冷路径，成本高一个量级，不在预算内。
+- `event_drain_ns_per_event` 含订阅者回调本身（demo 桩函数体为空），更贴近真实
+  派发成本；带业务逻辑的回调成本在回调体内，不在总线。
+- `alloc_per_cmd = 0` 由 `bus_bench` 的全局 `operator new` 计数断言（1e6 次 Dispatch
+  `delta == 0`）；`Publish` 内联路径同理零分配（`bus_test` 的堆路径用例另覆盖 >32B 事件）。
 - 以上数字取自 Windows 11 / MinGW-w64 g++ 16.1.0 / `-O3` Release。

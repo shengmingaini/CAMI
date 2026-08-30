@@ -1,4 +1,4 @@
-# engine/core · 依赖说明（TASK-001 / TASK-002 / TASK-003 / TASK-004）
+# engine/core · 依赖说明（TASK-001 / TASK-002 / TASK-003 / TASK-004 / TASK-007）
 
 > 五文档契约之一。本文件回答三个问题：**本模块依赖谁**、**谁依赖本模块**、
 > **哪些依赖是被禁止的**。
@@ -41,7 +41,8 @@ mmo_core_error            (TASK-001)
     ├── mmo_core_config   (TASK-003)   → error
     ├── mmo_core_thread   (TASK-004)   → error, time
     ├── mmo_core_sched    (TASK-004)   → error, time
-    └── mmo_core_memory   (TASK-004)   → error
+    ├── mmo_core_memory   (TASK-004)   → error
+    └── mmo_core_bus      (TASK-007)   → error, log, thread, time
 ```
 
 | 目标 | 依赖 | CMake 链接 | 说明 |
@@ -54,11 +55,15 @@ mmo_core_error            (TASK-001)
 | `mmo_core_thread` | `mmo::core_error`, `mmo::core_time` | PUBLIC | `Thread` 用 `MpmcQueue` + `TaskFn`；`Post` 用到 `ErrorCode::BUSY` |
 | `mmo_core_sched` | `mmo::core_error`, `mmo::core_time` | PUBLIC | `Scheduler::Tick` 用 `MonotonicClock` 判时间倒流 |
 | `mmo_core_memory` | `mmo::core_error` | PUBLIC | `MemoryPool` 跨线程归还需 `MpmcQueue` |
+| `mmo_core_bus` | `mmo::core_error`, `mmo::core_log`, `mmo::core_thread`, `mmo::core_time` | PUBLIC | Command/Query 失败返回 `Error`；Context 复用 `log` 的 ID 类型；Event 队列用 `thread` 的 `MpmcQueue`；Drain 用 `time` 的单调时钟做时间预算 |
 | `core_time_test` | time, uuid, config | PRIVATE | 测试可执行件，不被下游链接 |
 | `core_thread_test` | memory, thread, sched, time, error | PRIVATE | TASK-004 测试可执行件 |
+| `core_bus_test` | bus, error, log, thread, time | PRIVATE | TASK-007 单测/集成/Failure 可执行件 |
+| `core_bus_demo` | bus, error, log, thread, time | PRIVATE | TASK-007 演示链路可执行件（Command → Event → 2 订阅者） |
 | `time_bench` | time, uuid, config | PRIVATE | benchmark 可执行件 |
 | `sched_bench` | sched, time | PRIVATE | TASK-004 scheduler benchmark |
 | `mem_bench` | memory, time | PRIVATE | TASK-004 memory benchmark |
+| `bus_bench` | bus, error, log, thread, time | PRIVATE | TASK-007 benchmark（1e6 次，产出 bench/core_bus.txt） |
 
 **注意**：`mmo_core_config` **不依赖** `mmo_core_time`。
 配置快照的版本号是 `std::atomic<std::uint64_t>` 自增，不需要读时钟，
@@ -84,6 +89,26 @@ mmo_core_sched    ─┘  Scheduler（最小堆定时器，宿主线程驱动）
   禁止把 `ObjectPool` 跨线程共享（会数据竞争）。
 - 三者之间无循环依赖：`thread` 不依赖 `sched`/`memory`，`sched`/`memory` 不依赖 `thread`。
 
+## 三之三、TASK-007 总线依赖与线程归属（关键红线）
+
+```
+mmo_core_bus  ──┬→ mmo_core_error   Command / Query / Event 的失败语义（Result / ErrorCode）
+                ├→ mmo_core_log     复用 TraceID / RequestID / PlayerID / SceneID（不新建 ID 体系）
+                ├→ mmo_core_thread  EventBus 队列复用 MpmcQueue（Vyukov 无锁有界队列）
+                └→ mmo_core_time    Drain 的时间预算用 MonotonicClock
+```
+
+- **`mmo_core_bus` 不依赖 `protocol` / RPC 模块**：Context 直接复用 TASK-002 的
+  `TraceID` / `RequestID`（与 TASK-005 Envelope 同源），总线因此保持「叶子依赖」，
+  Core 永不反向依赖上层。
+- **EventBus 不创建、不拥有任何执行线程**：`Publish` 只入队，`Drain` 由宿主线程
+  显式调用。验收脚本对 `engine/core/src/bus` 做 `std::thread` 字面量静态扫描。
+- **CommandBus / QueryBus 假设单线程（SimulationThread）使用**：注册期可写、
+  运行期只读，读路径无锁；跨线程调用需自行串行化。EventBus 的 `Publish` 是
+  线程安全的（MPMC 队列 + 订阅表 shared_mutex）。
+- **`event_slot.h` 是总线私有类型擦除实现**：`EventTypeInfo` 是进程级静态描述符，
+  槽位下标在 `EventBus` 实例内 —— 二者不得混放（已实测跨实例 SIGSEGV）。
+
 ## 四、被依赖方（谁会用到本模块）
 
 按 TASK-004 起的规划，预计的下游（本文档随任务推进更新）：
@@ -93,6 +118,7 @@ mmo_core_sched    ─┘  Scheduler（最小堆定时器，宿主线程驱动）
 | Scheduler / 定时器 | `MonotonicClock`、`TickClock`、`ITimerQueue` | TASK-004 |
 | 网络层 | `Uuid`（连接 / 会话 ID）、`ConfigManager`（监听地址） | TASK-005+ |
 | 实体 / 场景 | `Uuid`（玩家 / 实体 ID，建议 V7） | TASK-007+ |
+| 逻辑层（玩法） | `CommandBus` / `QueryBus` / `EventBus`（跨模块调用骨架） | TASK-007+ |
 | 战斗 / 技能 | `TickClock`（技能 CD 按 Tick 计） | TASK-012+ |
 | 存档 / DB | `Uuid` V7 作主键、`WallClock`（落盘时间戳） | TASK-015+ |
 
@@ -128,6 +154,20 @@ mmo_core_sched    ─┘  Scheduler（最小堆定时器，宿主线程驱动）
 - **禁止 `CatchUpSteps` / `kMaxCatchUpPerTick` 形同虚设**：周期定时器一次 Tick 内最多补
   `kMaxCatchUpPerTick=8` 次，命中限幅后 deadline 快进到 `now` 之后丢弃积压 ——
   否则「补触发 → 更慢 → 补更多」的死亡螺旋会拖垮整服。
+
+## 五之三、TASK-007 新增的总线红线
+
+- **禁止 EventBus 创建或使用执行线程。** `engine/core/src/bus` 下任何文件（含注释）
+  出现 `std::thread` 字面量即验收失败；`Drain` 必须由宿主线程在 Tick 的 Event 阶段驱动。
+- **禁止 `mmo_core_bus` 依赖 `protocol` / `rpc` 模块。** 总线只服务进程内逻辑线程；
+  进程间一律走 TASK-005 Protocol + TASK-006 RPC。复用 TASK-002 ID 类型，
+  保持「Core 是依赖图叶子」的单向规则。
+- **禁止把 `engine/core/src/bus/*.cpp` 暴露给下游**：总线只暴露
+  `include/mmo/core/bus/*.h`，`event_slot.h` 的类型擦除实现仅供总线内部使用。
+- **禁止丢弃关键事件**（`TEvent::kCritical`）：队列满必须返回 `BUSY` 交还背压，
+  非关键事件丢弃计数是降级路径，不是关键事件的出路。
+- **禁止 Query 的 `Ask` 区间内产生任何写操作**（协作式约束，靠 `const` 入参 +
+  `SideEffectProbe` 抓违规）。
 
 ## 六、接口兼容性
 

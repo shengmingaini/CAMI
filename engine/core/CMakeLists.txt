@@ -165,6 +165,29 @@ target_compile_features(mmo_core_memory PUBLIC cxx_std_20)
 target_link_libraries(mmo_core_memory PUBLIC mmo::core_error)
 mmorpg_add_warnings(mmo_core_memory)
 
+# ---- 库目标：TASK-007 Core Bus（CommandBus / QueryBus / EventBus） ----
+# 依赖方向 bus -> error（Result/Error）+ log（TraceID/RequestID/PlayerID/SceneID）
+#              + thread（MpmcQueue，事件入队）+ time（MonotonicClock，Drain 时间预算），单向无环。
+# 红线：src/bus 内禁止出现 std::thread（EventBus 必须宿主 Drain，验收脚本静态扫描）。
+# 刻意**不**依赖 protocol：命令上下文的 trace/request id 复用 core 内既有 ID 语义，
+# 以保证 Core 不反向依赖上层模块（理由见 engine/core/docs/DEPENDENCY.md 第五章）。
+add_library(mmo_core_bus STATIC
+    src/bus/command.cpp
+    src/bus/command_bus.cpp
+    src/bus/query_bus.cpp
+    src/bus/event_bus.cpp
+)
+add_library(mmo::core_bus ALIAS mmo_core_bus)
+
+target_include_directories(mmo_core_bus PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:include>
+)
+target_compile_features(mmo_core_bus PUBLIC cxx_std_20)
+target_link_libraries(mmo_core_bus PUBLIC
+    mmo::core_error mmo::core_log mmo::core_thread mmo::core_time)
+mmorpg_add_warnings(mmo_core_bus)
+
 # ---- 单元测试（自包含 harness，不依赖 gtest；vcpkg 离线不可用时仍可验证） ----
 if(MMORPG_BUILD_TESTS)
     add_executable(core_error_test tests/error_test.cpp)
@@ -220,6 +243,21 @@ if(MMORPG_BUILD_TESTS)
     target_compile_options(core_thread_test PRIVATE -Wno-pedantic)
     add_test(NAME Core_Thread.Suite COMMAND core_thread_test
              WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
+    # TASK-007：Command / Query / Event Bus —— 单元（§16）+ 集成（§17）+ Failure（§19），
+    # 统一以 Core_Bus 前缀注册，使验收脚本的 `ctest -R Core_Bus` 能跑完全部用例。
+    add_executable(core_bus_test tests/bus_test.cpp)
+    target_link_libraries(core_bus_test PRIVATE mmo::core_bus)
+    target_compile_options(core_bus_test PRIVATE -Wno-pedantic)
+    add_test(NAME Core_Bus.Suite COMMAND core_bus_test
+             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
+    # TASK-007 §15.8 Demo 全链路：Command → Handler → Event → 2 × Subscriber
+    add_executable(core_bus_demo tests/demo_pipeline.cpp)
+    target_link_libraries(core_bus_demo PRIVATE mmo::core_bus)
+    target_compile_options(core_bus_demo PRIVATE -Wno-pedantic)
+    add_test(NAME Core_Bus.Demo COMMAND core_bus_demo
+             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 endif()
 
 # ---- Benchmark（1e7 次，输出 bench/core_error.txt 的 key=value） ----
@@ -245,4 +283,10 @@ if(MMORPG_BUILD_BENCHMARKS)
     add_executable(mem_bench tests/mem_bench.cpp)
     target_link_libraries(mem_bench PRIVATE mmo::core_memory mmo::core_time)
     target_compile_options(mem_bench PRIVATE -Wno-pedantic)
+
+    # TASK-007：1e6 次 Command Dispatch + 1e6 次 Event Publish/Drain，
+    # 输出 bench/core_bus.txt（供验收脚本 assert_metric 解析）。
+    add_executable(bus_bench tests/bus_bench.cpp)
+    target_link_libraries(bus_bench PRIVATE mmo::core_bus)
+    target_compile_options(bus_bench PRIVATE -Wno-pedantic)
 endif()

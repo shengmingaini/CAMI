@@ -1,4 +1,4 @@
-# engine/core · 公开接口契约（TASK-001 / TASK-002 / TASK-003 / TASK-004）
+# engine/core · 公开接口契约（TASK-001 / TASK-002 / TASK-003 / TASK-004 / TASK-007）
 
 > 本文件为 `STATUS: DONE` 后冻结的对外契约。下游依赖此接口；破坏性变更须走
 > `version` 字段 + 兼容性评估，禁止静默改签名导致下游编译失败。
@@ -6,6 +6,8 @@
 > - **TASK-001** · Core Error / Result 系统 —— `mmo/core/error/*`
 > - **TASK-002** · Core Logger / Trace —— `mmo/core/log/*`
 > - **TASK-003** · Core Time / UUID / Config —— `mmo/core/{time,uuid,config}/*`
+> - **TASK-004** · Core Memory / Thread / Scheduler —— `mmo/core/{thread,sched,memory}/*`
+> - **TASK-007** · Command / Query / Event Bus —— `mmo/core/bus/*`
 
 ---
 
@@ -496,3 +498,196 @@ public:
   `std::thread`（sched 目录）。
 - **禁止把 `src/thread/thread.cpp`、`src/sched/scheduler.cpp`、`src/memory/*.cpp`
   暴露给下游**：它们只含实现，调用方只能依赖上面列出的公开头。
+
+---
+
+# 五、Core Command / Query / Event Bus（TASK-007）
+
+## 头文件位置
+
+```
+engine/core/include/mmo/core/bus/command.h       # CommandSource / CommandContext / QueryContext / CommandLike / QueryLike
+engine/core/include/mmo/core/bus/command_bus.h   # ICommandHandler<TCommand> / CommandBus
+engine/core/include/mmo/core/bus/query_bus.h     # QueryBus / SideEffectProbe / detail::QueryReadOnlyActive / QueryReadOnlyDepth
+engine/core/include/mmo/core/bus/event_bus.h     # EventBusOptions / EventBus
+engine/core/include/mmo/core/bus/event_slot.h    # bus::detail::EventTypeInfo / EventSlot（总线内部使用）
+```
+
+下游只包含以上公开头；**禁止** `#include` `engine/core/src/bus/*.cpp`。
+`event_slot.h` 是总线私有的类型擦除实现，仅供 `event_bus.h` 内部使用，不建议下游直接依赖。
+
+## 公开接口
+
+```cpp
+namespace mmo::core {
+
+// ---- 来源与上下文（command.h）----
+enum class CommandSource : std::uint8_t { kInternal=0, kClient=1, kRpc=2, kConsole=3 };
+const char* ToString(CommandSource) noexcept;            // 未知值返回 "UNKNOWN"
+
+struct CommandContext {           // 只读入参，随调用链透传
+  TraceID trace_id{kInvalidTraceId};
+  RequestID request_id{kInvalidRequestId};
+  PlayerID player_id{kInvalidPlayerId};
+  SceneID scene_id{kInvalidSceneId};
+  CommandSource source{CommandSource::kInternal};
+};
+struct QueryContext {             // 与 CommandContext 对齐，但无 source（查询不参与审计）
+  TraceID trace_id{kInvalidTraceId};
+  RequestID request_id{kInvalidRequestId};
+  PlayerID player_id{kInvalidPlayerId};
+  SceneID scene_id{kInvalidSceneId};
+};
+
+// ---- 概念约束（编译期校验命令/查询形状）----
+template <typename C> concept CommandLike = requires(const C& c) {
+  typename C::Result;
+  { c.request_id } -> std::convertible_to<RequestID>;
+  { c.player_id } -> std::convertible_to<PlayerID>;
+  { c.source } -> std::convertible_to<CommandSource>;
+  { c.timestamp } -> std::convertible_to<std::int64_t>;
+  { c.version } -> std::convertible_to<std::uint32_t>;
+};
+template <typename Q> concept QueryLike = requires(const Q& q) {
+  typename Q::Result;
+  { q.request_id } -> std::convertible_to<RequestID>;
+};
+
+// ---- CommandBus（command_bus.h）----
+template <typename TCommand> class ICommandHandler {
+public:
+  virtual ~ICommandHandler() = default;
+  virtual Result<typename TCommand::Result> Handle(const TCommand&, const CommandContext&) = 0;
+};
+
+class CommandBus {
+public:
+  CommandBus();
+  ~CommandBus();
+  CommandBus(const CommandBus&) = delete;
+  CommandBus& operator=(const CommandBus&) = delete;
+
+  template <typename TCommand, typename H>           // H : ICommandHandler<TCommand>
+    requires CommandLike<TCommand> && std::derived_from<H, ICommandHandler<TCommand>>
+  [[nodiscard]] Result<void> Register(std::shared_ptr<H> handler);
+
+  template <typename TCommand, typename Fn>          // 轻量注册：lambda / 函数对象
+    requires CommandLike<TCommand> && std::invocable<Fn&, const TCommand&, const CommandContext&>
+  [[nodiscard]] Result<void> RegisterFn(Fn&& fn);
+
+  template <typename TCommand> requires CommandLike<TCommand>
+  [[nodiscard]] Result<typename TCommand::Result> Dispatch(const TCommand&, const CommandContext&);
+
+  std::size_t RegisteredCount() const noexcept;      // 已注册类型数
+  std::size_t InFlight() const noexcept;             // 在途 Dispatch 数
+};
+
+// ---- QueryBus（query_bus.h）----
+namespace detail {
+  bool QueryReadOnlyActive() noexcept;               // 当前线程是否在 Ask 区间内
+  std::size_t QueryReadOnlyDepth() noexcept;         // 嵌套深度
+}
+
+class SideEffectProbe {                              // 测试替身：捕获只读区间内的写入
+public:
+  void Write() noexcept;                             // Ask 内调用会同时累加 Violations
+  std::size_t Writes() const noexcept;
+  std::size_t Violations() const noexcept;           // 必须恒为 0
+  void Reset() noexcept;
+};
+
+class QueryBus {
+public:
+  QueryBus();
+  ~QueryBus();
+  QueryBus(const QueryBus&) = delete;
+  QueryBus& operator=(const QueryBus&) = delete;
+
+  template <typename TQuery, typename Fn>
+    requires QueryLike<TQuery> && std::invocable<Fn&, const TQuery&, const QueryContext&>
+  [[nodiscard]] Result<void> RegisterFn(Fn&& fn);
+
+  template <typename TQuery> requires QueryLike<TQuery>
+  [[nodiscard]] Result<typename TQuery::Result> Ask(const TQuery&, const QueryContext&);
+
+  std::size_t RegisteredCount() const noexcept;
+};
+
+// ---- EventBus（event_bus.h）----
+struct EventBusOptions {                             // 刻意定义在类外（GCC NSDMI 限制）
+  std::size_t queue_capacity{1u << 16};              // 队列容量，向上取整到 2 的幂
+  DurationMs default_budget{2};                      // 单次 Drain 时间预算（ms）
+  std::size_t default_max_events{4096};              // 单次 Drain 最大事件数
+};
+
+class EventBus {
+public:
+  using SubId = std::uint64_t;
+  using Options = EventBusOptions;
+
+  explicit EventBus(Options options = {});
+  ~EventBus();
+  EventBus(const EventBus&) = delete;
+  EventBus& operator=(const EventBus&) = delete;
+
+  template <typename TEvent>                         // 1 event : N subscriber，按注册顺序派发
+  [[nodiscard]] Result<SubId> Subscribe(std::function<void(const TEvent&)> fn);
+
+  Result<void> Unsubscribe(SubId id);                // 幂等：已退订/非法 ID 同样 Ok
+
+  template <typename TEvent>
+  [[nodiscard]] Result<void> Publish(const TEvent& event);  // 入队即返回；满时：非关键丢弃计数 / 关键 BUSY
+
+  template <typename TEvent>
+  [[nodiscard]] Result<void> PublishImmediate(const TEvent& event);  // 同线程立即派发，仅测试/收尾用
+
+  [[nodiscard]] Result<std::size_t> Drain(std::size_t max_events, DurationMs budget);
+  [[nodiscard]] Result<std::size_t> Drain();         // Ok 返回值 = 剩余未处理事件数
+
+  std::size_t QueueDepth() const noexcept;           // 队列当前深度
+  std::size_t Capacity() const noexcept;             // 队列容量
+  std::size_t DroppedCount() const noexcept;         // 非关键事件丢弃累计
+  std::size_t SubscriberErrors() const noexcept;     // 订阅者抛异常累计
+  std::size_t SubscriberCount() const noexcept;      // 当前订阅数
+};
+
+}  // namespace mmo::core
+```
+
+## 语义约束
+
+- **三总线语义**：Command 有副作用且可审计（必带 5 个审计字段：`request_id` /
+  `player_id` / `source` / `timestamp` / `version`）；Query 只读零副作用；Event 是
+  已发生的事实，异步派发。选型：调用方要结果 → Command（改状态）/ Query（只读）；
+  只通知不等待 → Event。
+- **注册表 COW 快照 + `atomic<shared_ptr>`**：Dispatch / Ask 读路径无锁；注册写
+  路径拷一份新表原子换指针，已有 in-flight 调用不受影响。
+- **重复注册返回错误**（`INVALID_ARGUMENT`）：禁止静默覆盖已有 Handler。
+- **Handler / 订阅者异常隔离**：Command / Query handler 抛异常 → `INTERNAL_ERROR`；
+  订阅者抛异常 → `SubscriberErrors` 计数，其余订阅者照常收到。
+- **Event 槽位 40 字节**：8B `EventTypeInfo*` + 32B 内联负载，>32B 事件走堆回退
+  （分配失败返回 `INTERNAL_ERROR`，异常不逃逸出 `Publish`）。
+- **关键事件**：`TEvent::kCritical == true`（或继承 `EventTraits`）时队列满返回
+  `BUSY`，绝不丢弃；非关键事件丢弃并累加 `DroppedCount`。
+- **Drain 双上限**：`max_events` 与 `budget`（默认 2ms / 4096），先到先停；
+  预算检查每 64 个事件做一次以摊薄时钟开销；`Ok` 的返回值为剩余队列深度。
+- **Query 只读区间**：`Ask` 通过 `thread_local` 深度计数置起只读区间（嵌套 Ask
+  合法，最外层才翻转载波）；`SideEffectProbe` 在区间内 `Write()` 会累加违规数。
+  该约束是协作式的——真正的硬保证靠 `const` 入参与 Code Review。
+- **跨线程可用性**：EventBus 的 Publish 线程安全（MPMC 队列 + shared_mutex 订阅表）；
+  CommandBus / QueryBus 假设在单一逻辑线程（SimulationThread）内同步调用，
+  跨线程调用需自行串行化。
+
+## 禁止
+
+- **禁止 EventBus 创建 / 使用任何线程**：`Drain` 必须由宿主线程驱动
+  （`engine/core/src/bus` 被验收脚本 `std::thread` 字面量扫描覆盖）。
+- **禁止 Query handler 产生任何副作用**（写状态、计数、日志写入等隐蔽写一律禁止）。
+- **禁止丢弃关键事件**（`kCritical`）：队列满时必须返回 `BUSY` 交由调用方背压。
+- **禁止重复注册 Command / Query**（返回错误，绝不覆盖）。
+- **禁止在 Tick 中间无限派发**：Drain 必须带时间预算 + 条数上限。
+- **禁止把跨进程通信包装成本地总线调用**：总线只服务进程内逻辑线程，
+  进程间一律走 TASK-005 Protocol + TASK-006 RPC。
+- **禁止 `engine/core` 反向依赖 `protocol` 模块**：Context 复用 TASK-002 的
+  `TraceID` / `RequestID`，保持依赖方向单向（Core 不依赖上层）。
+- **禁止 `engine/core/src/bus` 内部文件被下游 `#include`**。

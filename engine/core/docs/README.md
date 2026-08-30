@@ -1,10 +1,12 @@
-# engine/core · Core 基础设施（TASK-001 / TASK-002 / TASK-003 / TASK-004）
+# engine/core · Core 基础设施（TASK-001 / TASK-002 / TASK-003 / TASK-004 / TASK-007）
 
-本模块包含四套相互独立的基础设施：
+本模块包含五套相互独立的基础设施：
 
 - **TASK-001 · Core Error / Result** —— `mmo/core/error/*`
 - **TASK-002 · Core Logger / Trace** —— `mmo/core/log/*`
 - **TASK-003 · Core Time / UUID / Config** —— `mmo/core/{time,uuid,config}/*`
+- **TASK-004 · Core Memory / Thread / Scheduler** —— `mmo/core/{thread,sched,memory}/*`
+- **TASK-007 · Command / Query / Event Bus** —— `mmo/core/bus/*`
 
 ---
 
@@ -381,3 +383,126 @@ engine/core/
 > 模块边界：下游只能包含 `engine/core/include/mmo/core/{thread,sched,memory}/*`。
 > `src/thread/thread.cpp`、`src/sched/scheduler.cpp`、`src/memory/*.cpp` 是模块私有实现，
 > 禁止被下游 `#include`。
+
+---
+
+# 五、Core Command / Query / Event Bus（TASK-007）
+
+三条总线把「逻辑线程内部」的调用关系统一成三种**语义不同、可审计、可隔离**的交互：
+
+- **Command（命令）** —— 有副作用、要审计：改状态的动作，如 `MovePlayer`。同步执行，
+  成功/失败都返回 `Result`，调用方必须处理结果。
+- **Query（查询）** —— 只读、零副作用：取状态的动作，如 `GetPosition`。同步执行，
+  在 `Ask` 区间内禁止任何写操作（`SideEffectProbe` 可捕获违规）。
+- **Event（事件）** —— 事实、异步：已经发生的过去时，如 `PlayerMoved`。发布后进入
+  无锁队列，由宿主 `Drain` 分发，**EventBus 自己不创建任何线程**。
+
+选型决策树：**调用方需要结果 → Command（要改状态）/ Query（只读）；调用方不关心结果、
+只通知「已发生」→ Event。** 禁止把「跨进程通信」包装成本地总线调用（TASK-007 §21）。
+
+## 设计原则
+
+- **Command / Query 走 COW 快照 + `std::atomic<std::shared_ptr>`**：注册表是 `const`
+  共享指针，读路径（Dispatch / Ask）无锁；注册才写，写时拷贝换指针。
+- **Event 走 TASK-004 的 `MpmcQueue`（有界无锁环形队列）**：发布只入队，`Publish`
+  实测 **7.6 ns/次、零堆分配**。队列满时**非关键事件丢弃 + 计数，关键事件（`kCritical`）
+  返回 `BUSY` 绝不丢**（经济类事件必须关键）。
+- **事件槽位类型擦除固定 40 字节**：8B 类型信息指针 + 32B 内联负载（>32B 走堆回退），
+  1e6 容量的队列实测 **48 MB < 64 MB** 预算。
+- **Drain 由宿主驱动，带双上限**：`default_budget`（2ms 时间预算）+ `default_max_events`
+  （条数上限），返回剩余队列深度。绝不无限分发。
+- **异常隔离**：Command 处理器抛异常 → `INTERNAL_ERROR`；一个订阅者抛异常 → 记
+  `SubscriberErrors` 指标，**其余订阅者照常收到**。
+- **重复注册不静默覆盖**：同一 Command / Query 已注册再注册返回错误（`VERSION_CONFLICT`），
+  第一个 handler 仍生效。
+- **Query 只读由 `thread_local` 深度计数保证**：`Ask` 进入只读区间，`SideEffectProbe`
+  在区间内写会自增违规计数——测试里必须为 0。
+
+## 快速开始
+
+```cpp
+#include "mmo/core/bus/command_bus.h"
+#include "mmo/core/bus/query_bus.h"
+#include "mmo/core/bus/event_bus.h"
+
+using namespace mmo::core;
+
+// ---- Command：改状态的请求，同步拿结果 ----
+struct MovePlayer { using Result = Position; RequestID request_id{}; PlayerID player_id{};
+                    CommandSource source{CommandSource::kClient}; std::int64_t timestamp{0};
+                    std::uint32_t version{1}; Position target{}; };
+static_assert(CommandLike<MovePlayer>);
+
+CommandBus cmds;
+cmds.RegisterFn<MovePlayer>([](const MovePlayer& c, const CommandContext& ctx) -> Result<Position> {
+    world.Move(c.player_id, c.target);            // 有副作用的动作
+    return Result<Position>::Ok(c.target);
+});
+CommandContext ctx{ /* trace_id / player_id / scene_id / source */ };
+auto r = cmds.Dispatch<MovePlayer>(MovePlayer{/*...*/}, ctx);
+// r: 成功 Ok(Position) | 未注册 NOT_FOUND | handler 抛异常 INTERNAL_ERROR
+
+// ---- Query：只读查询，Ask 区间内禁止写 ----
+struct GetPosition { using Result = Position; /* ... 同 Command 字段 ... */ };
+QueryBus qs;
+qs.RegisterFn<GetPosition>([](const GetPosition& q, const QueryContext&) -> Result<Position> {
+    return Result<Position>::Ok(world.PositionOf(q.player_id));   // 只读
+});
+auto pos = qs.Ask<GetPosition>(GetPosition{/*...*/}, QueryContext{});
+
+// ---- Event：事实广播，发布即返回，宿主 Drain ----
+struct PlayerMoved { PlayerID player_id{}; Position from{}; Position to{}; };  // 32B，走内联槽
+struct EconomyTxn { /* ... */ static constexpr bool kCritical = true; };       // 关键事件
+
+EventBus events;                                   // 容量默认 65536，可配
+Result<SubId> aoi  = events.Subscribe<PlayerMoved>([](const PlayerMoved& e) { NotifyAoi(e); });
+Result<SubId> stat = events.Subscribe<PlayerMoved>([](const PlayerMoved& e) { RecordStat(e); });
+(void)events.Publish(PlayerMoved{pid, from, to});  // 失败语义：非关键丢弃 | 关键 BUSY
+// ...主循环里，宿主驱动：
+const Result<std::size_t> remaining = events.Drain();   // 预算内尽量分发，返回剩余深度
+```
+
+## 使用规范（踩坑点）
+
+1. **EventBus 永远不要自己开线程。** `Drain` 是宿主主循环的显式步骤，时间预算 +
+   条数双上限兜底。验收脚本对 `src/bus` 做 `std::thread` 字面量扫描——别在那边写线程。
+2. **Query handler 里禁止任何写操作。** 不只是「别改世界状态」，连计数、日志写入缓冲
+   这种隐藏写也要避开；`SideEffectProbe` 专门用来抓这类违规，测试断言必须为 0。
+3. **关键事件 `kCritical` 要少用。** 它不丢，所以队列满时发布方会收到 `BUSY` 背压；
+   只有经济类等「丢了就账不平」的事件才配关键，普通广播事件不配。
+4. **重复注册返回错误，不会覆盖。** 若确需换实现，先 `Unregister` 再注册；想「热更
+   行为」应该用 Command 的分发表驱动，而不是偷偷覆盖注册。
+5. **Drain 的预算与条数都要设。** 只设时间预算可能一次分发过多拖长帧；只设条数可能
+   在极端帧率下清不完队列。默认 2ms / 4096 条适合 20Hz 主循环。
+6. **`EventTypeInfo` 是进程级静态描述符，槽位下标是实例级的。** 前者缓存后者会造成
+   跨实例越界（实测 SIGSEGV）——下标必须存在 `EventBus` 实例自己的 `slot_index_` 表里。
+7. **事件类型定义在头文件里要带 `static constexpr bool kCritical`**（或继承
+   `EventTraits`），让 `Publish` 在编译期知道关键性，运行时零成本。
+8. **`CommandLike` / `QueryLike` 是硬约束。** 忘了 `Result` 成员类型或字段缺失，
+   `static_assert` 直接编译失败——这是特性不是麻烦，先补字段再谈功能。
+
+## 目录结构
+
+```
+engine/core/
+├── include/mmo/core/bus/
+│   ├── command.h        （CommandSource / CommandContext / QueryContext / CommandLike / QueryLike）
+│   ├── command_bus.h    （ICommandHandler / CommandBus）
+│   ├── query_bus.h      （QueryBus / SideEffectProbe / ReadOnlyScope）
+│   ├── event_bus.h      （EventBusOptions / EventBus）
+│   └── event_slot.h     （EventTypeInfo / EventSlot，40B 类型擦除槽）
+├── src/bus/
+│   ├── command.cpp
+│   ├── command_bus.cpp
+│   ├── query_bus.cpp
+│   └── event_bus.cpp
+└── tests/
+    ├── bus_fixtures.h   （MovePlayerCommand / GetPositionQuery / PlayerMovedEvent / EconomyEvent / BigEvent）
+    ├── bus_test.cpp     （14 个单测/集成/Failure 用例）
+    ├── demo_pipeline.cpp（Command → Handler → Event → 2 订阅者的完整链路演示）
+    └── bus_bench.cpp    （1e6 次基准，产出 bench/core_bus.txt）
+```
+
+> 模块边界：下游只能包含 `engine/core/include/mmo/core/bus/*`。
+> `src/bus/*.cpp` 与 `src/bus` 内部实现禁止被下游 `#include`；`event_slot.h` 是总线
+> 私有的类型擦除实现，仅供总线内部使用。
