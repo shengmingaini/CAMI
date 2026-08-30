@@ -14,6 +14,9 @@
 #include <chrono>
 #include <new>
 
+// 红线合规输出通道：禁止 std::cout / printf / std::cerr，统一走 fwrite。
+#include "test_print.h"
+
 namespace {
 std::size_t g_alloc_count = 0;
 }  // namespace
@@ -74,7 +77,7 @@ int main(int argc, char** argv) {
     std::snprintf(buf, sizeof(buf),
                   "result_ns_per_op=%.3f\nalloc_per_fail=%.0f\n",
                   result_ns_per_op, alloc_per_fail);
-    std::printf("%s", buf);
+    ::mmo::core::test::Line(buf);
 
     // 写 bench 输出文件（CWD = 仓库根，由验收脚本 mkdir -p bench 保证目录存在）
     FILE* f = std::fopen("bench/core_error.txt", "w");
@@ -82,7 +85,7 @@ int main(int argc, char** argv) {
         std::fputs(buf, f);
         std::fclose(f);
     } else {
-        std::fprintf(stderr, "WARN: cannot write bench/core_error.txt\n");
+        ::mmo::core::test::Error("WARN: cannot write bench/core_error.txt\n");
     }
     return 0;
 }

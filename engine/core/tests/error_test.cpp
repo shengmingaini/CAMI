@@ -13,6 +13,9 @@
 #include <cstdlib>
 #include <new>
 
+// 红线合规输出通道：禁止 std::cout / printf / std::cerr，统一走 fwrite。
+#include "test_print.h"
+
 // ---- 全局分配计数器：度量失败路径堆分配 ----
 namespace {
 std::size_t g_alloc_count = 0;
@@ -30,8 +33,8 @@ void operator delete(void* p, std::size_t) noexcept { std::free(p); }
 #define CHECK(cond)                                                        \
     do {                                                                   \
         if (!(cond)) {                                                    \
-            std::fprintf(stderr, "FAIL @ %s:%d : %s\n", __FILE__, __LINE__, \
-                         #cond);                                          \
+            ::mmo::core::test::ErrorFmt("FAIL @ %s:%d : %s\n", __FILE__,    \
+                                        __LINE__, #cond);                  \
             failures++;                                                    \
         }                                                                  \
     } while (0)
@@ -185,9 +188,9 @@ int main() {
     }
 
     if (failures == 0) {
-        std::printf("ALL CORE_ERROR TESTS PASSED\n");
+        ::mmo::core::test::Error("ALL CORE_ERROR TESTS PASSED\n");
         return 0;
     }
-    std::fprintf(stderr, "%d TEST(S) FAILED\n", failures);
+    ::mmo::core::test::ErrorFmt("%d TEST(S) FAILED\n", failures);
     return 1;
 }
