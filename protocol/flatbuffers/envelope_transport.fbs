@@ -1,0 +1,39 @@
+// envelope_transport.fbs — 传输层信封（FlatBuffers 路径专用）
+//
+// 定位（TASK-005）：
+//   schema/envelope.fbs（冻结）的 payload 是业务联合（typed union，Command|Query|Event），
+//   面向**业务载荷层**；本文件的 TransportEnvelope 是**传输层信封**的序列化载体，
+//   携带不透明 payload bytes（EnvelopeView.payload 的直接映射）。
+//
+// 契约：
+//   - 字段与 MessageEnvelope（proto）/ EnvelopeView（C++ 视图）一一对应，字段名一致；
+//   - file_identifier 与冻结 schema 相同（"MSG0"），同一消息头体系，version 同源（VERSION 1.0.0）；
+//   - 本文件为 additive 新增，未改动任何冻结 .fbs；
+//   - 演进规则见 protocol/docs/VERSIONING.md（只增字段、禁改类型、禁重排）。
+
+namespace mmo.protocol;
+
+enum TransportMessageType : byte {
+  Unknown = 0,
+  Command = 1,
+  Query = 2,
+  Event = 3,
+  Response = 4,
+  Heartbeat = 5
+}
+
+table TransportEnvelope {
+  message_id:uint64;              // 消息实例唯一 ID
+  message_type:TransportMessageType; // Command / Query / Event / Response / Heartbeat
+  version:uint32;                 // 协议版本（VERSION 同源）
+  source:string;                  // 生产方 service/module 标识
+  timestamp_ms:int64;             // 产生时刻（墙钟，仅审计）
+  trace_id:string;                // 分布式追踪 ID
+  request_id:uint64;              // 请求 / 响应关联键
+  payload:[ubyte];                // 不透明载荷字节（具体 C/Q/E 的序列化结果）
+  transaction_id:string;          // 经济流水号（非经济消息为 ""）
+  idempotency_key:string;         // 幂等去重键（非经济消息为 ""）
+}
+
+root_type TransportEnvelope;
+file_identifier "MSG0";

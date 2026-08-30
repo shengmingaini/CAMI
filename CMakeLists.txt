@@ -34,7 +34,7 @@ if(MMORPG_BUILD_TESTS)
 endif()
 
 # ---- 顶层子目录：存在 CMakeLists.txt 才纳入（空骨架阶段安全） ----
-set(MMORPG_SUBDIRS engine server game database scripting)
+set(MMORPG_SUBDIRS engine server game database scripting protocol)
 foreach(_sub IN LISTS MMORPG_SUBDIRS)
   if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${_sub}/CMakeLists.txt")
     add_subdirectory(${_sub})

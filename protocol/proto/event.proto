@@ -1,0 +1,66 @@
+syntax = "proto3";
+
+// Event = "某件事情已经发生"，默认异步处理（总规范 §4.3）
+package mmo.protocol;
+
+import "common.proto";
+
+
+enum EventKind {
+  EV_UNKNOWN = 0;
+  PLAYER_MOVED = 1;
+  SKILL_CAST = 2;
+  DAMAGE_APPLIED = 3;
+  QUEST_COMPLETED = 4;
+  ITEM_ADDED = 5;
+  PLAYER_ENTERED_SCENE = 6;
+  PLAYER_DISCONNECTED = 7;
+}
+
+message PlayerMovedEvent {
+  Vec3 from_pos = 1;
+  Vec3 to_pos = 2;
+  uint32 scene_id = 3;
+}
+message SkillCastEvent {
+  uint32 skill_id = 1;
+  uint64 caster = 2;
+  uint64 target = 3;
+}
+message DamageAppliedEvent {
+  uint64 attacker = 1;
+  uint64 victim = 2;
+  int32 amount = 3;
+  bool is_critical = 4;
+}
+message QuestCompletedEvent {
+  uint64 player_id = 1;
+  uint32 quest_id = 2;
+}
+message ItemAddedEvent {
+  uint64 player_id = 1;
+  uint32 item_id = 2;
+  uint32 count = 3;
+}
+message PlayerEnteredSceneEvent {
+  uint64 player_id = 1;
+  uint32 scene_id = 2;
+}
+message PlayerDisconnectedEvent {
+  uint64 player_id = 1;
+  uint64 session_id = 2;
+}
+
+message Event {
+  uint64 source_entity = 1; // 事件源实体
+  EventKind kind = 2;
+  oneof body {
+    PlayerMovedEvent player_moved = 10;
+    SkillCastEvent skill_cast = 11;
+    DamageAppliedEvent damage_applied = 12;
+    QuestCompletedEvent quest_completed = 13;
+    ItemAddedEvent item_added = 14;
+    PlayerEnteredSceneEvent player_entered_scene = 15;
+    PlayerDisconnectedEvent player_disconnected = 16;
+  }
+}

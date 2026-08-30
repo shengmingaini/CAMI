@@ -1,0 +1,24 @@
+// movement.fbs — 移动热路径帧（FlatBuffers，零拷贝高频编解码）
+// 字段顺序写入后禁止调整（FlatBuffers 兼容性要求：已发布字段 / 表 / 枚举值冻结）。
+// 与 protocol/flatbuffers/schema/common.fbs 共享 Vec3（include 用相对名，与 envelope.fbs 一致）。
+include "common.fbs";
+
+namespace mmo.protocol;
+
+// 单实体移动状态（帧内一帧快照）
+table MoveState {
+  entity_id:uint64;
+  pos:Vec3;          // 当前位置
+  rot_y:float;       // 朝向（弧度）
+  vel:Vec3;          // 速度向量
+  scene_id:uint32;
+  timestamp:int64;   // 帧时间戳（ms）
+}
+
+// 批量移动帧：一个 AOI 切片内所有实体的一帧
+table MoveBatch {
+  states:[MoveState];
+}
+
+root_type MoveBatch;
+file_identifier "MOV0";   // 4 字节文件标识，读端校验防误读

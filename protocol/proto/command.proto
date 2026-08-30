@@ -1,0 +1,52 @@
+syntax = "proto3";
+
+// Command = "请执行一个操作"（总规范 §4.1）
+package mmo.protocol;
+
+import "common.proto";
+
+enum CommandKind {
+  CMD_UNKNOWN = 0;
+  MOVE_PLAYER = 1;
+  CAST_SKILL = 2;
+  EQUIP_ITEM = 3;
+  BUY_ITEM = 4;
+  ACCEPT_QUEST = 5;
+  LEAVE_PARTY = 6;
+}
+
+// 示例命令载荷（canonical，供各任务实现参考；后续任务按 additive 规则追加）
+message MovePlayerCmd {
+  Vec3 target_pos = 1;
+  uint32 target_scene = 2;
+}
+message CastSkillCmd {
+  uint32 skill_id = 1;
+  uint64 target_entity = 2;
+}
+message EquipItemCmd {
+  uint64 item_uid = 1;
+  uint32 slot = 2;
+}
+message BuyItemCmd {
+  uint32 shop_id = 1;
+  uint32 item_id = 2;
+  uint32 count = 3;
+}
+message AcceptQuestCmd {
+  uint32 quest_id = 1;
+}
+message LeavePartyCmd {}
+
+message Command {
+  uint64 player_id = 1;     // 发起玩家（鉴权上下文）
+  CommandKind kind = 2;
+  oneof body {
+    MovePlayerCmd move_player = 10;
+    CastSkillCmd cast_skill = 11;
+    EquipItemCmd equip_item = 12;
+    BuyItemCmd buy_item = 13;
+    AcceptQuestCmd accept_quest = 14;
+    LeavePartyCmd leave_party = 15;
+  }
+}

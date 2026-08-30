@@ -1,0 +1,32 @@
+syntax = "proto3";
+
+// 统一消息信封（项目总规范 §36）
+// 约束：任何模块不得定义第二套消息头；所有 Command / Query / Event 必须打包进 Envelope 传输。
+//
+// 字段类型说明：FlatBuffers 侧 envelope.fbs 用 trace_id:string（人类可读便于日志关联）、
+// request_id:uint64、transaction_id:string。为保持两套 Codec 在 EnvelopeView 上的语义一致，
+// 本 Protobuf 侧 trace_id / transaction_id 也用 string，request_id / message_id 用定宽整数。
+package mmo.protocol;
+
+
+enum MessageType {
+  MT_UNKNOWN = 0;
+  MT_COMMAND = 1;
+  MT_QUERY = 2;
+  MT_EVENT = 3;
+  MT_RESPONSE = 4;
+  MT_HEARTBEAT = 5;
+}
+
+message MessageEnvelope {
+  fixed64 message_id = 1;   // 消息实例唯一 ID（全局单调或 UUID 低 64 位）
+  MessageType message_type = 2;
+  uint32 version = 3;       // schema 版本号（见 protocol/docs/VERSIONING.md，当前 1.0.0）
+  string source = 4;        // 生产方 service/module 标识（如 "gateway-1" / "gamenode-3"）
+  int64 timestamp_ms = 5;   // Unix 毫秒（仅用于审计）
+  string trace_id = 6;      // 分布式追踪 ID（人类可读）
+  fixed64 request_id = 7;   // 请求 / 响应关联键
+  bytes payload = 8;        // 具体 Command / Query / Event 的序列化结果
+  string transaction_id = 9; // 仅经济类消息：经济流水号
+  string idempotency_key = 10; // 仅经济类消息：幂等去重键
+}

@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+// 公共基础类型（与 protocol/flatbuffers/schema/common.fbs 语义对齐，引擎中立）
+// 注意：Protobuf 侧 trace_id / request_id / transaction_id 用定宽整数承载，
+// 与 FlatBuffers 侧字符串/定宽保持一致（详见 envelope.proto 注释）。
+package mmo.protocol;
+
+// 三维坐标
+message Vec3 {
+  float x = 1;
+  float y = 2;
+  float z = 3;
+}
+
+// 二维坐标
+message Vec2 {
+  float x = 1;
+  float y = 2;
+}
+
+// 场景内实体引用
+message EntityRef {
+  uint64 entity_id = 1;   // 实体唯一 ID
+  uint32 entity_type = 2; // 实体类型（Player / NPC / Monster / Item …）
+  uint32 scene_id = 3;    // 所属场景
+}

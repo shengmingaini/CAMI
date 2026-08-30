@@ -1,0 +1,38 @@
+// aoi.fbs — 兴趣管理（AOI）批量帧（FlatBuffers，零拷贝高频编解码）
+// 字段顺序写入后禁止调整。
+include "common.fbs";
+
+namespace mmo.protocol;
+
+// 实体进入视野
+table EntityEnter {
+  entity_id:uint64;
+  entity_type:uint16;
+  pos:Vec3;
+  scene_id:uint32;
+}
+
+// 实体离开视野
+table EntityLeave {
+  entity_id:uint64;
+  scene_id:uint32;
+}
+
+// 位置更新（AOI 内高频小帧）
+table PositionUpdate {
+  entity_id:uint64;
+  pos:Vec3;
+  rot_y:float;
+}
+
+// 一个 AOI 切片批次
+table AoiBatch {
+  enters:[EntityEnter];
+  leaves:[EntityLeave];
+  updates:[PositionUpdate];
+  scene_id:uint32;
+  timestamp:int64;
+}
+
+root_type AoiBatch;
+file_identifier "AOI0";

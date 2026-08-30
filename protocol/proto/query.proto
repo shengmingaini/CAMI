@@ -1,0 +1,42 @@
+syntax = "proto3";
+
+// Query = "读取数据"，不允许产生副作用（总规范 §4.2）
+package mmo.protocol;
+
+
+enum QueryKind {
+  Q_UNKNOWN = 0;
+  GET_PLAYER = 1;
+  GET_INVENTORY = 2;
+  GET_SCENE_INFO = 3;
+  GET_GUILD = 4;
+  GET_AUCTION = 5;
+}
+
+message GetPlayerQuery {
+  uint64 target_player = 1;
+}
+message GetInventoryQuery {
+  uint64 target_player = 1;
+}
+message GetSceneInfoQuery {
+  uint32 scene_id = 1;
+}
+message GetGuildQuery {
+  uint64 guild_id = 1;
+}
+message GetAuctionQuery {
+  uint64 auction_id = 1;
+}
+
+message Query {
+  uint64 player_id = 1;    // 发起玩家（鉴权上下文）
+  QueryKind kind = 2;
+  oneof body {
+    GetPlayerQuery get_player = 10;
+    GetInventoryQuery get_inventory = 11;
+    GetSceneInfoQuery get_scene_info = 12;
+    GetGuildQuery get_guild = 13;
+    GetAuctionQuery get_auction = 14;
+  }
+}

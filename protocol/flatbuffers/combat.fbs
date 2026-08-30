@@ -1,0 +1,40 @@
+// combat.fbs — 战斗事件帧（FlatBuffers，零拷贝高频编解码）
+// 字段顺序写入后禁止调整。
+include "common.fbs";
+
+namespace mmo.protocol;
+
+// 伤害事件
+table DamageEvent {
+  attacker:uint64;
+  victim:uint64;
+  amount:int32;
+  is_critical:bool;
+  skill_id:uint32;
+}
+
+// 治疗事件
+table HealEvent {
+  healer:uint64;
+  target:uint64;
+  amount:int32;
+}
+
+// 技能释放
+table SkillCast {
+  caster:uint64;
+  target:uint64;
+  skill_id:uint32;
+}
+
+// 一个战斗切片批次
+table CombatBatch {
+  damages:[DamageEvent];
+  heals:[HealEvent];
+  casts:[SkillCast];
+  scene_id:uint32;
+  timestamp:int64;
+}
+
+root_type CombatBatch;
+file_identifier "CMB0";
