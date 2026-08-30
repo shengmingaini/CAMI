@@ -1,0 +1,21 @@
+// health.proto — RPC 框架健康检查服务（TASK-006）
+//
+// 定位：进程存活 / 依赖就绪探测的最小契约。所有后续启 gRPC 服务端
+// 的模块（gateway / dbproxy / gameserver）统一暴露 HealthService，
+// 由 GrpcChannelPool 的空闲健康检查与运维探针复用。
+syntax = "proto3";
+
+package mmo.rpc.health;
+
+message HealthCheckRequest {
+  string service = 1;  // 空串 = 探测整个进程；非空 = 探测指定子服务
+}
+
+message HealthCheckResponse {
+  bool   serving   = 1;  // true = 可接受流量
+  string version   = 2;  // 进程构建版本（审计用，非协议契约）
+}
+
+service HealthService {
+  rpc Check(HealthCheckRequest) returns (HealthCheckResponse);
+}

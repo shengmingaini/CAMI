@@ -118,6 +118,55 @@ if(PB_CC)
     set_source_files_properties(${PB_CC} PROPERTIES COMPILE_OPTIONS "-w")
 endif()
 
+# ---- RPC 服务层生成（TASK-006） -------------------------------------------
+# service/*.proto 需要 grpc_cpp_plugin 生成 stub（EchoService / HealthService）。
+# 生成物独立成 mmo_rpc_service 静态库：只有 engine/rpc 链接它，
+# mmo_protocol 消费者不被动引入 gRPC 依赖。
+find_package(gRPC CONFIG QUIET)
+find_program(GRPC_CPP_PLUGIN NAMES grpc_cpp_plugin REQUIRED HINTS /mingw64/bin)
+
+set(SERVICE_PROTO_FILES service/echo.proto service/health.proto)
+set(SVC_CC "")
+set(SVC_HDRS "")
+foreach(p ${SERVICE_PROTO_FILES})
+    get_filename_component(n ${p} NAME_WE)
+    set(n_out service/${n})
+    list(APPEND SVC_HDRS ${PROTO_GEN_DIR}/${n_out}.pb.h ${PROTO_GEN_DIR}/${n_out}.grpc.pb.h)
+    list(APPEND SVC_CC   ${PROTO_GEN_DIR}/${n_out}.pb.cc ${PROTO_GEN_DIR}/${n_out}.grpc.pb.cc)
+    add_custom_command(
+        OUTPUT  ${PROTO_GEN_DIR}/${n_out}.pb.h ${PROTO_GEN_DIR}/${n_out}.pb.cc
+        COMMAND ${PROTOC_EXECUTABLE}
+                --proto_path=${PROTO_DIR}
+                --cpp_out=${PROTO_GEN_DIR}
+                ${PROTO_DIR}/${p}
+        DEPENDS ${PROTO_DIR}/${p}
+        COMMENT "protoc service/${n}.proto")
+    add_custom_command(
+        OUTPUT  ${PROTO_GEN_DIR}/${n_out}.grpc.pb.h ${PROTO_GEN_DIR}/${n_out}.grpc.pb.cc
+        COMMAND ${PROTOC_EXECUTABLE}
+                --proto_path=${PROTO_DIR}
+                --plugin=protoc-gen-grpc=${GRPC_CPP_PLUGIN}
+                --grpc_out=${PROTO_GEN_DIR}
+                ${PROTO_DIR}/${p}
+        DEPENDS ${PROTO_DIR}/${p} ${GRPC_CPP_PLUGIN}
+        COMMENT "grpc_cpp_plugin service/${n}.proto")
+endforeach()
+
+add_library(mmo_rpc_service STATIC ${SVC_CC} ${SVC_HDRS})
+add_library(mmo::rpc_service ALIAS mmo_rpc_service)
+target_include_directories(mmo_rpc_service SYSTEM PUBLIC ${PROTO_GEN_DIR})
+target_compile_features(mmo_rpc_service PUBLIC cxx_std_20)
+if(TARGET gRPC::grpc++)
+    target_link_libraries(mmo_rpc_service PUBLIC
+        mmo::core_error gRPC::grpc++ protobuf::libprotobuf)
+else()
+    target_link_libraries(mmo_rpc_service PUBLIC
+        mmo::core_error protobuf::libprotobuf)
+endif()
+if(SVC_CC)
+    set_source_files_properties(${SVC_CC} PROPERTIES COMPILE_OPTIONS "-w")
+endif()
+
 # ---- 单元 / 集成 / Failure 测试（§16 / §17 / §19） ------------------------
 if(MMORPG_BUILD_TESTS)
     add_executable(protocol_test tests/protocol_test.cpp)

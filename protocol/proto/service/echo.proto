@@ -1,0 +1,30 @@
+// echo.proto — RPC 框架验证用回声服务（TASK-006）
+//
+// 定位：仅供 engine/rpc 的超时 / 取消 / 重试 / 限流 / TraceID 透传测试与
+// benchmark 使用。业务服务（DataService / ControlService 等）由后续任务
+// 增量扩展，禁止把测试注入字段用于真实业务。
+syntax = "proto3";
+
+package mmo.rpc.testing;
+
+// 回声请求。内嵌测试注入字段，使服务端无需额外配置即可模拟：
+//   延迟（超时测试）/ 前缀失败（重试测试）/ 超限载荷（消息体上限测试）。
+message EchoRequest {
+  string           message            = 1;  // 回声载荷
+  int64            trace_hint         = 2;  // 请求序号（服务端按它做失败注入计数）
+  uint32           delay_ms           = 3;  // 服务端睡眠时长（>0 时模拟慢请求）
+  uint32           fail_unavailable   = 4;  // 前缀失败：同一 trace_hint 前 N 次返回 UNAVAILABLE
+  uint32           fail_deadline      = 5;  // 前缀失败：前 N 次返回 DEADLINE_EXCEEDED
+  uint32           payload_bytes      = 6;  // 服务端回包填充字节数（0=不填充）
+}
+
+message EchoResponse {
+  string message = 1;   // 原样返回 request.message
+  int64  server_recv_unix_ms = 2;  // 服务端接收时刻（墙钟，仅供审计）
+  string trace_id = 3;  // 服务端从 metadata 读到的 trace_id（透传验证）
+}
+
+// 回声服务：框架验证专用（非业务契约）
+service EchoService {
+  rpc Echo(EchoRequest) returns (EchoResponse);
+}
