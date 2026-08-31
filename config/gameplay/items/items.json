@@ -1,0 +1,212 @@
+[
+  {
+    "def_id": 1,
+    "name": "治疗药水",
+    "max_stack": 99,
+    "item_type": 0,
+    "required_level": 0,
+    "max_durability": 0,
+    "equip_slots": 0,
+    "attr_bonus": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  },
+  {
+    "def_id": 2,
+    "name": "法力药水",
+    "max_stack": 99,
+    "item_type": 0,
+    "required_level": 0,
+    "max_durability": 0,
+    "equip_slots": 0,
+    "attr_bonus": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  },
+  {
+    "def_id": 3,
+    "name": "解毒药剂",
+    "max_stack": 50,
+    "item_type": 0,
+    "required_level": 0,
+    "max_durability": 0,
+    "equip_slots": 0,
+    "attr_bonus": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  },
+  {
+    "def_id": 4,
+    "name": "回城卷轴",
+    "max_stack": 20,
+    "item_type": 0,
+    "required_level": 0,
+    "max_durability": 0,
+    "equip_slots": 0,
+    "attr_bonus": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  },
+  {
+    "def_id": 5,
+    "name": "黑面包",
+    "max_stack": 100,
+    "item_type": 0,
+    "required_level": 0,
+    "max_durability": 0,
+    "equip_slots": 0,
+    "attr_bonus": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  },
+  {
+    "def_id": 6,
+    "name": "烤鱼",
+    "max_stack": 100,
+    "item_type": 0,
+    "required_level": 0,
+    "max_durability": 0,
+    "equip_slots": 0,
+    "attr_bonus": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  },
+  {
+    "def_id": 7,
+    "name": "初级生命石",
+    "max_stack": 10,
+    "item_type": 0,
+    "required_level": 0,
+    "max_durability": 0,
+    "equip_slots": 0,
+    "attr_bonus": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  },
+  {
+    "def_id": 8,
+    "name": "力量药剂",
+    "max_stack": 10,
+    "item_type": 0,
+    "required_level": 0,
+    "max_durability": 0,
+    "equip_slots": 0,
+    "attr_bonus": [5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  },
+  {
+    "def_id": 9,
+    "name": "敏捷药剂",
+    "max_stack": 10,
+    "item_type": 0,
+    "required_level": 0,
+    "max_durability": 0,
+    "equip_slots": 0,
+    "attr_bonus": [0, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  },
+  {
+    "def_id": 10,
+    "name": "铁剑",
+    "max_stack": 1,
+    "item_type": 1,
+    "required_level": 1,
+    "max_durability": 100,
+    "equip_slots": 32,
+    "attr_bonus": [0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 0]
+  },
+  {
+    "def_id": 11,
+    "name": "木盾",
+    "max_stack": 1,
+    "item_type": 2,
+    "required_level": 1,
+    "max_durability": 80,
+    "equip_slots": 64,
+    "attr_bonus": [0, 0, 0, 0, 0, 0, 0, 15, 0, 0, 0]
+  },
+  {
+    "def_id": 12,
+    "name": "皮帽",
+    "max_stack": 1,
+    "item_type": 2,
+    "required_level": 2,
+    "max_durability": 60,
+    "equip_slots": 1,
+    "attr_bonus": [0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0]
+  },
+  {
+    "def_id": 13,
+    "name": "锁子甲",
+    "max_stack": 1,
+    "item_type": 2,
+    "required_level": 5,
+    "max_durability": 120,
+    "equip_slots": 2,
+    "attr_bonus": [0, 0, 0, 12, 0, 0, 0, 10, 0, 0, 0]
+  },
+  {
+    "def_id": 14,
+    "name": "皮手套",
+    "max_stack": 1,
+    "item_type": 2,
+    "required_level": 3,
+    "max_durability": 50,
+    "equip_slots": 4,
+    "attr_bonus": [0, 6, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  },
+  {
+    "def_id": 15,
+    "name": "铁护腿",
+    "max_stack": 1,
+    "item_type": 2,
+    "required_level": 4,
+    "max_durability": 70,
+    "equip_slots": 8,
+    "attr_bonus": [0, 0, 0, 9, 0, 0, 0, 0, 0, 0, 0]
+  },
+  {
+    "def_id": 16,
+    "name": "战靴",
+    "max_stack": 1,
+    "item_type": 2,
+    "required_level": 3,
+    "max_durability": 60,
+    "equip_slots": 16,
+    "attr_bonus": [0, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  },
+  {
+    "def_id": 17,
+    "name": "戒指·力量",
+    "max_stack": 1,
+    "item_type": 3,
+    "required_level": 10,
+    "max_durability": 0,
+    "equip_slots": 128,
+    "attr_bonus": [10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  },
+  {
+    "def_id": 18,
+    "name": "戒指·智力",
+    "max_stack": 1,
+    "item_type": 3,
+    "required_level": 10,
+    "max_durability": 0,
+    "equip_slots": 256,
+    "attr_bonus": [0, 0, 10, 0, 0, 0, 0, 0, 0, 0, 0]
+  },
+  {
+    "def_id": 19,
+    "name": "项链·生命",
+    "max_stack": 1,
+    "item_type": 3,
+    "required_level": 8,
+    "max_durability": 0,
+    "equip_slots": 512,
+    "attr_bonus": [0, 0, 0, 15, 0, 0, 0, 0, 0, 0, 0]
+  },
+  {
+    "def_id": 20,
+    "name": "双手巨斧",
+    "max_stack": 1,
+    "item_type": 1,
+    "required_level": 6,
+    "max_durability": 150,
+    "equip_slots": 96,
+    "attr_bonus": [8, 0, 0, 0, 0, 0, 35, 0, 0, 0, 0]
+  },
+  {
+    "def_id": 21,
+    "name": "训练长剑",
+    "max_stack": 1,
+    "item_type": 1,
+    "required_level": 1,
+    "max_durability": 100,
+    "equip_slots": 32,
+    "attr_bonus": [0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 0]
+  }
+]
