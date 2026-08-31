@@ -5,3 +5,4 @@
 #       禁止在 switch 硬编码穷举（§27.4）。后续任务（Scene / Movement 等）按子目录继续填充。
 
 add_subdirectory(entity)
+add_subdirectory(scene)
