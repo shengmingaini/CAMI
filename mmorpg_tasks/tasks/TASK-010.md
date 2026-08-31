@@ -4,7 +4,7 @@ NAME: Gateway Router
 PHASE: Phase 2 · Gateway
 MODULE: server/gateway
 OWNER: Codex / WorkBuddy Agent 实施；@技术总监 二次验收；本地 MinGW MSYS2 g++ + vcpkg 编译验证
-STATUS: PENDING
+STATUS: DONE
 DEPENDENCIES: TASK-007, TASK-009
 ---
 
@@ -20,7 +20,7 @@ DEPENDENCIES: TASK-007, TASK-009
 | PHASE | Phase 2 · Gateway |
 | MODULE | `server/gateway` |
 | OWNER | Codex / WorkBuddy Agent 实施；@技术总监 二次验收；本地 MinGW MSYS2 g++ + vcpkg 编译验证 |
-| STATUS | **PENDING** |
+| STATUS | **DONE** |
 | DEPENDENCIES | `TASK-007`, `TASK-009` |
 
 ---

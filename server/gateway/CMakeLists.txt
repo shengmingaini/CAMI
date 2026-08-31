@@ -47,3 +47,44 @@ if(MMORPG_BUILD_BENCHMARKS)
     set_target_properties(session_bench PROPERTIES RUNTIME_OUTPUT_DIRECTORY
         ${CMAKE_BINARY_DIR}/bin)
 endif()
+
+# ===========================================================================
+# TASK-010 · Gateway Router
+# ===========================================================================
+add_library(mmo_gateway_router STATIC
+    src/route/node_registry.cpp
+    src/route/route_cache.cpp
+    src/route/player_router.cpp
+    src/route/scene_router.cpp
+    src/route/gateway_router.cpp)
+add_library(mmo::gateway_router ALIAS mmo_gateway_router)
+target_include_directories(mmo_gateway_router PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:include>)
+target_compile_features(mmo_gateway_router PUBLIC cxx_std_20)
+target_link_libraries(mmo_gateway_router PUBLIC
+    mmo::core_error
+    mmo::core_time
+    mmo::core_bus
+    mmo::gateway_session)
+mmorpg_add_warnings(mmo_gateway_router)
+
+# ---- 测试（§16 单元 / §17 集成 / §19 Failure，统一 Gateway_Route 前缀）----
+if(MMORPG_BUILD_TESTS)
+    add_executable(gateway_route_test tests/route_test.cpp)
+    target_link_libraries(gateway_route_test PRIVATE mmo::gateway_router)
+    target_include_directories(gateway_route_test PRIVATE
+        ${CMAKE_SOURCE_DIR}/engine/core/tests)
+    add_test(NAME Gateway_Route.Suite COMMAND gateway_route_test
+             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+endif()
+
+# ---- Benchmark（§18，route_bench 输出 bench/gateway_route.txt）----
+if(MMORPG_BUILD_BENCHMARKS)
+    add_executable(route_bench tests/route_bench.cpp)
+    target_link_libraries(route_bench PRIVATE mmo::gateway_router)
+    target_include_directories(route_bench PRIVATE
+        ${CMAKE_SOURCE_DIR}/engine/core/tests)
+    set_target_properties(route_bench PROPERTIES RUNTIME_OUTPUT_DIRECTORY
+        ${CMAKE_BINARY_DIR}/bin)
+endif()
