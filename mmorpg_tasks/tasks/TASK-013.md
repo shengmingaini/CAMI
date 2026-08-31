@@ -4,7 +4,7 @@ NAME: Simulation Scheduler（20Hz 固定 Tick）
 PHASE: Phase 3 · GameNode Core
 MODULE: server/gamenode/scheduler
 OWNER: Codex / WorkBuddy Agent 实施；@技术总监 二次验收；本地 MinGW MSYS2 g++ + vcpkg 编译验证
-STATUS: PENDING
+STATUS: DONE
 DEPENDENCIES: TASK-003, TASK-004, TASK-012
 ---
 
@@ -20,7 +20,7 @@ DEPENDENCIES: TASK-003, TASK-004, TASK-012
 | PHASE | Phase 3 · GameNode Core |
 | MODULE | `server/gamenode/scheduler` |
 | OWNER | Codex / WorkBuddy Agent 实施；@技术总监 二次验收；本地 MinGW MSYS2 g++ + vcpkg 编译验证 |
-| STATUS | **PENDING** |
+| STATUS | **DONE** |
 | DEPENDENCIES | `TASK-003`, `TASK-004`, `TASK-012` |
 
 ---
