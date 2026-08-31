@@ -4,7 +4,7 @@ NAME: Entity System
 PHASE: Phase 3 · GameNode Core
 MODULE: server/gamenode/entity
 OWNER: Codex / WorkBuddy Agent 实施；@技术总监 二次验收；本地 MinGW MSYS2 g++ + vcpkg 编译验证
-STATUS: PENDING
+STATUS: DONE
 DEPENDENCIES: TASK-004, TASK-007
 ---
 
@@ -20,7 +20,7 @@ DEPENDENCIES: TASK-004, TASK-007
 | PHASE | Phase 3 · GameNode Core |
 | MODULE | `server/gamenode/entity` |
 | OWNER | Codex / WorkBuddy Agent 实施；@技术总监 二次验收；本地 MinGW MSYS2 g++ + vcpkg 编译验证 |
-| STATUS | **PENDING** |
+| STATUS | **DONE** |
 | DEPENDENCIES | `TASK-004`, `TASK-007` |
 
 ---

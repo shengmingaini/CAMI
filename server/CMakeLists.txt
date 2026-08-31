@@ -4,3 +4,4 @@
 # 后续任务按进程子树继续填充（GameNode / DataService / ControlService）。
 
 add_subdirectory(gateway)
+add_subdirectory(gamenode)
