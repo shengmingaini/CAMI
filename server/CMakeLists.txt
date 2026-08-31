@@ -1,0 +1,6 @@
+# server/CMakeLists.txt — 四进程服务端（Gateway / GameNode / DataService / ControlService）
+#
+# TASK-000 建立骨架（仅占位 README）；TASK-009 起落地 server/gateway（Session 管理）。
+# 后续任务按进程子树继续填充（GameNode / DataService / ControlService）。
+
+add_subdirectory(gateway)
