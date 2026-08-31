@@ -4,7 +4,7 @@ NAME: Player / Character
 PHASE: Phase 4 · 基础 MMORPG
 MODULE: server/gamenode/role
 OWNER: Codex / WorkBuddy Agent 实施；@技术总监 二次验收；本地 MinGW MSYS2 g++ + vcpkg 编译验证
-STATUS: PENDING
+STATUS: DONE
 DEPENDENCIES: TASK-011, TASK-012, TASK-015
 ---
 
@@ -20,7 +20,7 @@ DEPENDENCIES: TASK-011, TASK-012, TASK-015
 | PHASE | Phase 4 · 基础 MMORPG |
 | MODULE | `server/gamenode/role` |
 | OWNER | Codex / WorkBuddy Agent 实施；@技术总监 二次验收；本地 MinGW MSYS2 g++ + vcpkg 编译验证 |
-| STATUS | **PENDING** |
+| STATUS | **DONE** |
 | DEPENDENCIES | `TASK-011`, `TASK-012`, `TASK-015` |
 
 ---

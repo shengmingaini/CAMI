@@ -1,0 +1,7 @@
+{
+  "exp_curve": {
+    "base": 100.0,
+    "exponent": 1.5,
+    "max_level": 60
+  }
+}
