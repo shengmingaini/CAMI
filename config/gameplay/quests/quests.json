@@ -1,0 +1,22 @@
+[
+  {"id": 1001, "title": "清除野猪", "required_level": 1, "prerequisites": [],
+   "objectives": [{"type": "KillMonster", "target_id": 1001, "count": 3}],
+   "exp_reward": 120, "currency_reward": 50, "item_rewards": []},
+
+  {"id": 1002, "title": "收集皮革", "required_level": 2, "prerequisites": [1001],
+   "objectives": [{"type": "CollectItem", "target_id": 9001, "count": 5}],
+   "exp_reward": 200, "currency_reward": 80, "item_rewards": [9002]},
+
+  {"id": 1003, "title": "拜访铁匠", "required_level": 1, "prerequisites": [],
+   "objectives": [{"type": "TalkNpc", "target_id": 2002, "count": 1}],
+   "exp_reward": 60, "currency_reward": 20, "item_rewards": []},
+
+  {"id": 1004, "title": "探索迷雾森林", "required_level": 3, "prerequisites": [1003],
+   "objectives": [{"type": "ReachLocation", "target_id": 3001, "count": 1}],
+   "exp_reward": 150, "currency_reward": 40, "item_rewards": []},
+
+  {"id": 1005, "title": "试炼：狼群与补给", "required_level": 5, "prerequisites": [1001, 1003],
+   "objectives": [{"type": "KillMonster", "target_id": 1002, "count": 8},
+                  {"type": "CollectItem", "target_id": 9003, "count": 2}],
+   "exp_reward": 800, "currency_reward": 300, "item_rewards": [9001, 9002]}
+]
