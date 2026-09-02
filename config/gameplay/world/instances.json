@@ -1,0 +1,47 @@
+{
+  "instances": [
+    {
+      "def_id": 1001,
+      "type": "dungeon",
+      "name": "幽暗矿洞",
+      "max_players": 5,
+      "min_players": 1,
+      "time_limit_ms": 600000,
+      "scene_asset": "dungeon/mine",
+      "spawns": [
+        {"npc_def_id": 101, "type": "monster", "spawn_pos": [10, 0, 10, 0], "patrol_radius": 10, "aggro_radius": 15, "chase_leave_radius": 30, "respawn_seconds": 30, "max_hp": 100, "level": 1},
+        {"npc_def_id": 102, "type": "monster", "spawn_pos": [20, 0, 20, 0], "patrol_radius": 8, "aggro_radius": 12, "chase_leave_radius": 25, "respawn_seconds": 30, "max_hp": 120, "level": 2}
+      ]
+    },
+    {
+      "def_id": 1002,
+      "type": "arena",
+      "name": "竞技场",
+      "max_players": 10,
+      "min_players": 2,
+      "time_limit_ms": 0,
+      "scene_asset": "arena/pvp"
+    },
+    {
+      "def_id": 1003,
+      "type": "battleground",
+      "name": "奥特兰克山谷",
+      "max_players": 40,
+      "min_players": 10,
+      "time_limit_ms": 900000,
+      "scene_asset": "battleground/alterac"
+    },
+    {
+      "def_id": 1004,
+      "type": "dungeon",
+      "name": "超时试炼场",
+      "max_players": 5,
+      "min_players": 1,
+      "time_limit_ms": 100,
+      "scene_asset": "dungeon/timeout",
+      "spawns": [
+        {"npc_def_id": 201, "type": "monster", "spawn_pos": [0, 0, 0, 0]}
+      ]
+    }
+  ]
+}

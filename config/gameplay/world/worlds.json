@@ -1,0 +1,6 @@
+{
+  "worlds": [
+    {"id": 1, "name": "艾尔文森林", "scene_asset": "world/elwynn"},
+    {"id": 2, "name": "丹莫罗", "scene_asset": "world/dunmorogh"}
+  ]
+}
