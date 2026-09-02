@@ -1,0 +1,8 @@
+[
+  {"npc_def_id": 1001, "type": "Monster", "name": "野猪",      "spawn_pos": [0.0, 0.0, 0.0, 0.0], "patrol_radius": 12.0, "aggro_radius": 18.0, "chase_leave_radius": 35.0, "respawn_seconds": 30, "max_hp": 220, "level": 3},
+  {"npc_def_id": 1002, "type": "Monster", "name": "森林狼",    "spawn_pos": [0.0, 0.0, 0.0, 0.0], "patrol_radius": 15.0, "aggro_radius": 22.0, "chase_leave_radius": 42.0, "respawn_seconds": 25, "max_hp": 360, "level": 5},
+  {"npc_def_id": 1003, "type": "Monster", "name": "石头傀儡", "spawn_pos": [0.0, 0.0, 0.0, 0.0], "patrol_radius": 8.0,  "aggro_radius": 14.0, "chase_leave_radius": 28.0, "respawn_seconds": 45, "max_hp": 900, "level": 8},
+  {"npc_def_id": 1004, "type": "Monster", "name": "蝙蝠群",    "spawn_pos": [0.0, 0.0, 0.0, 0.0], "patrol_radius": 20.0, "aggro_radius": 20.0, "chase_leave_radius": 48.0, "respawn_seconds": 20, "max_hp": 150, "level": 4},
+  {"npc_def_id": 1005, "type": "Monster", "name": "腐尸",      "spawn_pos": [0.0, 0.0, 0.0, 0.0], "patrol_radius": 10.0, "aggro_radius": 16.0, "chase_leave_radius": 32.0, "respawn_seconds": 35, "max_hp": 280, "level": 6},
+  {"npc_def_id": 1006, "type": "Monster", "name": "精英守卫",  "spawn_pos": [0.0, 0.0, 0.0, 0.0], "patrol_radius": 6.0,  "aggro_radius": 24.0, "chase_leave_radius": 50.0, "respawn_seconds": 60, "max_hp": 1500, "level": 12}
+]

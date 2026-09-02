@@ -1,0 +1,5 @@
+[
+  {"npc_def_id": 2001, "type": "Npc", "name": "村庄向导",   "spawn_pos": [0.0, 0.0, 0.0, 0.0], "patrol_radius": 4.0,  "aggro_radius": 0.0,  "chase_leave_radius": 0.0,  "respawn_seconds": 0,  "max_hp": 100, "level": 1},
+  {"npc_def_id": 2002, "type": "Npc", "name": "铁匠",       "spawn_pos": [0.0, 0.0, 0.0, 0.0], "patrol_radius": 2.0,  "aggro_radius": 0.0,  "chase_leave_radius": 0.0,  "respawn_seconds": 0,  "max_hp": 100, "level": 1},
+  {"npc_def_id": 2003, "type": "Npc", "name": "巡逻卫兵",   "spawn_pos": [0.0, 0.0, 0.0, 0.0], "patrol_radius": 18.0, "aggro_radius": 0.0,  "chase_leave_radius": 0.0,  "respawn_seconds": 0,  "max_hp": 500, "level": 10}
+]
