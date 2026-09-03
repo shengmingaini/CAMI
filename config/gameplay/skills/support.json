@@ -1,0 +1,22 @@
+[
+  {
+    "id": 2001, "name": "HealingTouch", "target_type": "Self",
+    "cast_time": 0, "cooldown": 4.0, "mana_cost": 30,
+    "effects": [ {"type": "Heal", "base": 60, "coeff": 2.0} ]
+  },
+  {
+    "id": 2002, "name": "GroupMend", "target_type": "AoeCircle",
+    "cast_time": 0, "cooldown": 12.0, "radius": 12, "mana_cost": 60,
+    "effects": [ {"type": "Heal", "base": 40, "coeff": 1.5} ]
+  },
+  {
+    "id": 2003, "name": "ShieldSelf", "target_type": "Self",
+    "cast_time": 0, "cooldown": 20.0, "mana_cost": 40,
+    "effects": [ {"type": "ApplyBuff", "buff_id": 1, "duration_ms": 10000, "stacks": 1} ]
+  },
+  {
+    "id": 2004, "name": "Blessing", "target_type": "SingleTarget",
+    "cast_time": 0, "cooldown": 15.0, "range": 20, "mana_cost": 35,
+    "effects": [ {"type": "ApplyBuff", "buff_id": 2, "duration_ms": 15000, "stacks": 1} ]
+  }
+]

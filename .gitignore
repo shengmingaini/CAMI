@@ -49,3 +49,6 @@ NUL
 
 # WorkBuddy 工具元数据，非游戏源码
 .workbuddy/
+
+# 临时验证脚手架（一次性 .cpp/.o/.exe 探针，非游戏源码）
+.tmp_gate/

@@ -1,0 +1,25 @@
+[
+  {
+    "id": 3001, "name": "Firestorm", "target_type": "AoeCircle",
+    "cast_time": 1.5, "cooldown": 10.0, "radius": 15, "mana_cost": 50,
+    "effects": [ {"type": "Damage", "school": 1, "base": 25, "coeff": 1.0} ]
+  },
+  {
+    "id": 3002, "name": "FrostBolt", "target_type": "Projectile",
+    "cast_time": 0.5, "cooldown": 5.0, "range": 40, "mana_cost": 20,
+    "effects": [
+      {"type": "SpawnProjectile", "speed": 20, "radius": 2.5, "max_distance": 50},
+      {"type": "Damage", "school": 2, "base": 45, "coeff": 1.4}
+    ]
+  },
+  {
+    "id": 3003, "name": "WarCry", "target_type": "AoeCone",
+    "cast_time": 0, "cooldown": 18.0, "radius": 14, "cone_deg": 120,
+    "effects": [ {"type": "ApplyBuff", "buff_id": 3, "duration_ms": 8000, "stacks": 1} ]
+  },
+  {
+    "id": 3004, "name": "ManaBurn", "target_type": "SingleTarget",
+    "cast_time": 0, "cooldown": 7.0, "range": 25, "mana_cost": 0, "hp_cost": 0,
+    "effects": [ {"type": "Damage", "school": 0, "base": 10, "coeff": 0.5} ]
+  }
+]

@@ -1,0 +1,7 @@
+[
+  {"id": 1, "name": "Shield",    "duration_ms": 10000, "max_stacks": 1},
+  {"id": 2, "name": "Blessing",  "duration_ms": 15000, "max_stacks": 1},
+  {"id": 3, "name": "WarCry",    "duration_ms": 8000,  "max_stacks": 3},
+  {"id": 4, "name": "Poison",    "duration_ms": 12000, "max_stacks": 5},
+  {"id": 5, "name": "Slow",      "duration_ms": 6000,  "max_stacks": 1}
+]
