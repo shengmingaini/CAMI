@@ -120,3 +120,28 @@ alloc_per_damage=0
 - **延迟**：Windows `steady_clock` 分辨率 ≈ 100 ns，单次 `ApplyDamage` 无法直接采样；
   `compute_damage_ns` 用「每轮批量 `iterations` 次、rolls 预生成」取中位数；`apply_damage_ns` 走多轮累计取中位数。
 - **内存**：替换全局 `operator new/delete` 计数分配次数（`alloc_per_damage` 直接 = 计数 / 次数，恒为 0）。
+
+## TASK-023 · Buff / Debuff 性能（实测）
+
+### 场景
+
+`buff_bench --entities 1000 --buffs-per-entity 20 --ticks 12000`：1000 个角色各挂 20 个永久
+Buff（共 2 万实例），预热后跑 5 轮 `Tick` 全量结算，报告中位数「每轮 Buff 阶段耗时」。
+
+### 实测（MinGW g++ 16.1.0 / Release / vcpkg manifest，本机 2026-09-04）
+
+| 指标 | 值 | 阈值 | 结论 |
+|---|---|---|---|
+| `buff_phase_us_at_20k`（1000 角色全量 Tick 耗时，µs） | **27.5** | ≤ 400 | PASS |
+| `mem_bytes_per_buff`（`sizeof(BuffInstance)`，≤64B 热路径紧凑） | **56** | ≤ 64 | PASS |
+| `thread_count_delta`（Tick 不创建线程） | **0** | ≤ 0 | PASS |
+
+> Debug 构建同场景约 478 µs（仍 > 阈值 400），故验收以 **Release** 为准（`task-023.sh` 默认 `BUILD_TYPE=Release`）。
+> `BuffInstance` 含 `const BuffDef*` + 双 `SteadyTime` + 计数/层数字段，56B 留 8B 余量，未触发 64B 跨缓存行恶化。
+
+### 零分配 / 单线程保证
+
+- `Tick` 只遍历 `by_char_`（`unordered_map<CharId, vector<BuffInstance>>`），DOT/HOT 经
+  `DamageSystem::ApplyDamage/ApplyHeal` 结算（其本身零堆分配，见上节），**不 new 线程、不碰文件 IO**。
+- 属性重算走 `RecomputeFromBuff` → `from_buff` 数组写 + `AttributeSet::Recompute()`，全程栈上 `std::array`，零分配。
+- 统计计数器 `BuffStats` 标记为 `mutable`，在 `const` 重算路径中累加，不破坏逻辑 const。

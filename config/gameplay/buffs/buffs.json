@@ -1,7 +1,67 @@
-[
-  {"id": 1, "name": "Shield",    "duration_ms": 10000, "max_stacks": 1},
-  {"id": 2, "name": "Blessing",  "duration_ms": 15000, "max_stacks": 1},
-  {"id": 3, "name": "WarCry",    "duration_ms": 8000,  "max_stacks": 3},
-  {"id": 4, "name": "Poison",    "duration_ms": 12000, "max_stacks": 5},
-  {"id": 5, "name": "Slow",      "duration_ms": 6000,  "max_stacks": 1}
-]
+{
+  "buffs": [
+    {
+      "id": 1001,
+      "name": "Strength Aura",
+      "kind": 0,
+      "stack_rule": 1,
+      "max_stacks": 3,
+      "duration_ms": 30000,
+      "modifiers": { "Strength": 50, "Attack": 10 },
+      "multipliers": { "MaxHp": 0.1 },
+      "dispellable": 1
+    },
+    {
+      "id": 1002,
+      "name": "Weakness",
+      "kind": 1,
+      "stack_rule": 1,
+      "max_stacks": 5,
+      "duration_ms": 15000,
+      "modifiers": { "Attack": -20, "Defense": -15 },
+      "dispellable": 1
+    },
+    {
+      "id": 1003,
+      "name": "Stone Skin",
+      "kind": 3,
+      "stack_rule": 0,
+      "max_stacks": 1,
+      "duration_ms": 20000,
+      "shield": 500,
+      "dispellable": 1
+    },
+    {
+      "id": 1004,
+      "name": "Stun",
+      "kind": 2,
+      "stack_rule": 0,
+      "max_stacks": 1,
+      "duration_ms": 3000,
+      "control": 1,
+      "dispellable": 0
+    },
+    {
+      "id": 1005,
+      "name": "Poison",
+      "kind": 1,
+      "stack_rule": 2,
+      "max_stacks": 3,
+      "duration_ms": 12000,
+      "tick_interval_ms": 1000,
+      "tick": { "amount": 30, "school": 1, "can_crit": 0, "is_heal": 0 },
+      "dispellable": 1
+    },
+    {
+      "id": 1006,
+      "name": "Regeneration",
+      "kind": 0,
+      "stack_rule": 1,
+      "max_stacks": 1,
+      "duration_ms": 10000,
+      "tick_interval_ms": 1000,
+      "tick": { "amount": 50, "school": 0, "can_crit": 0, "is_heal": 1 },
+      "dispellable": 1
+    }
+  ]
+}

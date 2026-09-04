@@ -13,7 +13,9 @@ add_library(mmo_gamenode_combat STATIC
     src/skill/skill_registry.cpp
     src/skill/skill_system.cpp
     src/damage/damage_formula.cpp
-    src/damage/damage_system.cpp)
+    src/damage/damage_system.cpp
+    src/buff/buff_system.cpp
+    src/buff/buff_config.cpp)
 add_library(mmo::gamenode_combat ALIAS mmo_gamenode_combat)
 
 target_include_directories(mmo_gamenode_combat PUBLIC
@@ -60,6 +62,19 @@ if(MMORPG_BUILD_TESTS)
     target_compile_options(damage_test PRIVATE -Wno-pedantic)
     add_test(NAME Damage.Suite COMMAND damage_test
              WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
+    # ---- TASK-023 测试（§16 单元 / §17 集成 / §19 Failure / §21 配置化）----
+    # 验收脚本 run_ctest 'Buff'：ctest -R Buff 必须全部通过。
+    add_executable(buff_test tests/buff_test.cpp)
+    target_link_libraries(buff_test PRIVATE
+        mmo::gamenode_combat
+        mmo::gamenode_aoi
+        mmo::gamenode_movement)
+    target_include_directories(buff_test PRIVATE
+        ${CMAKE_SOURCE_DIR}/engine/core/tests)
+    target_compile_options(buff_test PRIVATE -Wno-pedantic)
+    add_test(NAME Buff.Suite COMMAND buff_test
+             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 endif()
 
 # ---- Benchmark（TASK-021 §18，skill_bench 输出 bench/skill.txt）----
@@ -91,5 +106,21 @@ if(MMORPG_BUILD_BENCHMARKS)
         ${CMAKE_SOURCE_DIR}/engine/core/tests)
     target_compile_options(damage_bench PRIVATE -Wno-pedantic)
     set_target_properties(damage_bench PROPERTIES RUNTIME_OUTPUT_DIRECTORY
+        ${CMAKE_BINARY_DIR}/bin)
+
+    # ---- TASK-023 Benchmark（§18，buff_bench 输出 bench/buff.txt）----
+    # 验收脚本：run_bench bin/buff_bench --entities 1000 --buffs-per-entity 20 --ticks 12000
+    #           assert_metric bench/buff.txt buff_phase_us_at_20k le 400
+    #           assert_metric bench/buff.txt mem_bytes_per_buff le 64
+    #           assert_metric bench/buff.txt thread_count_delta le 0
+    add_executable(buff_bench benchmark/buff_bench.cpp)
+    target_link_libraries(buff_bench PRIVATE
+        mmo::gamenode_combat
+        mmo::gamenode_aoi
+        mmo::gamenode_movement)
+    target_include_directories(buff_bench PRIVATE
+        ${CMAKE_SOURCE_DIR}/engine/core/tests)
+    target_compile_options(buff_bench PRIVATE -Wno-pedantic)
+    set_target_properties(buff_bench PROPERTIES RUNTIME_OUTPUT_DIRECTORY
         ${CMAKE_BINARY_DIR}/bin)
 endif()

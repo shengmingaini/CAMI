@@ -241,3 +241,94 @@ std::span<const DamageRecord> TakeSamples() noexcept;   // 取走未消费的采
 `EventBus::Drain()` 单次默认上限 `default_max_events = 4096`。
 集成测试（`test_integration_10000` 一次发布 10000+ 条事件）必须**循环 Drain 直到 `QueueDepth() == 0`**，
 否则事件计数会远小于实际发布数。
+
+## Buff / Debuff（TASK-023 · `combat::buff`）
+
+> 命名空间隔离：`mmo::game::combat::buff`（独立头 `buff/buff_def.h`）。**不复用** TASK-021 冻结的
+> `combat::BuffDef`/`combat::BuffRegistry`（`skill/buff_def.h`），以避免破坏其已冻结契约（§27.1）。
+
+### 公开 API
+
+```cpp
+class BuffRegistry {
+    Result<void> Add(BuffDef);                       // 注册（id 唯一，重复 → 失败）
+    Result<void> LoadFromConfig(string_view file);   // 从 JSON 加载（幂等：同路径跳过）
+    const BuffDef* Find(uint32_t id) const noexcept;
+    bool Contains(uint32_t id) const noexcept;
+    std::size_t Size() const noexcept;
+};
+
+class BuffSystem final : public combat::IShieldSource {
+    BuffSystem(const BuffRegistry&, role::RoleSystem&, combat::DamageSystem* = nullptr,
+               core::EventBus* = nullptr);
+    void BindEventBus(core::EventBus&);
+    void BindAvatar(EntityId, CharacterId);          // 供 IShieldSource 反查
+    void SetDamageSystem(combat::DamageSystem*);     // 周期 DOT/HOT 经其统一结算
+    // IShieldSource（§15.5）：护盾先于 HP
+    std::int64_t ShieldOf(EntityId) const noexcept override;
+    void ConsumeShield(EntityId, std::int64_t) noexcept override;
+
+    Result<uint32_t> Apply(CharacterId target, uint32_t buff_id, CharacterId source,
+                            TraceID, SteadyTime now);          // 返回最终层数
+    Result<void> Remove(CharacterId, uint32_t buff_id, RemoveReason, TraceID);
+    Result<void> Dispel(CharacterId, uint32_t buff_id, TraceID);  // 仅 dispellable 可驱散
+    void Tick(const SceneContext&);                   // 周期结算 + 到期清理（单线程，零分配）
+    void OnDeath(CharacterId, TraceID);               // 清所有 Buff、清零 from_buff
+
+    const std::vector<BuffInstance>* BuffsOf(CharacterId) const noexcept;
+    std::size_t ActiveBuffCount(CharacterId) const noexcept;
+    bool HasControlFlag(CharacterId, ControlFlag) const noexcept;  // TASK-024 查询
+    std::uint8_t ControlMask(CharacterId) const noexcept;
+    const BuffStats& Stats() const noexcept;
+    static constexpr std::size_t kMaxBuffsPerChar = 64;   // 槽位上限 → BUSY
+};
+```
+
+### 属性模型（先加后乘，Buff 只写 `from_buff` 层）
+
+1. `RecomputeFromBuff` 以**无 Buff 基准** `ref[i] = base[i] + equipment[i]` 起算；派生属性补上
+   `AttrFormula(主属性)` 项，得到「未含本 Buff 的最终值」。
+2. 合并所有激活 Buff 的贡献：`fb[i] += modifiers[i] + round(multipliers[i] * ref[i])`
+   （加法直接加，乘法引用**无 Buff 基准**而非 Final —— 即「先加后乘」）。
+3. `c->attrs.from_buff = fb; c->attrs.Recompute();` 由 `RoleSystem` 统一重算派生层。
+   Buff 绝不直写 `total_`，因此多 Buff 叠加与移除均可逆、可重算。
+
+### 配置 schema（`config/gameplay/buffs/buffs.json`）
+
+```jsonc
+{ "buffs": [ {
+    "id": 1001, "name": "Strength Aura", "kind": 0, "stack_rule": 1,
+    "max_stacks": 3, "duration_ms": 30000,
+    "modifiers": { "Strength": 50, "Attack": 10 },
+    "multipliers": { "MaxHp": 0.1 },            // 引用无 Buff 基准
+    "dispellable": true
+}, {
+    "id": 1003, "name": "Stone Skin", "kind": 3, "stack_rule": 0,
+    "max_stacks": 1, "duration_ms": 20000, "shield": 500
+}, {
+    "id": 1004, "name": "Stun", "kind": 2, "stack_rule": 0,
+    "max_stacks": 1, "duration_ms": 3000, "control": 1, "dispellable": false
+}, {
+    "id": 1005, "name": "Poison", "kind": 1, "stack_rule": 2,
+    "max_stacks": 3, "duration_ms": 12000, "tick_interval_ms": 1000,
+    "tick": { "amount": 30, "school": 1, "can_crit": false, "is_heal": false }
+} ] }
+```
+
+`ConfigManager` 把嵌套 JSON 扁平成点号键（`buffs[i].id` / `buffs[i].modifiers.Strength` …）。
+配置加载委托给 `ConfigManager::LoadFile`（文件 IO 已在 core 内部），`src/buff` 不出现 `ifstream`（§24）。
+
+### 事件（全部 ≤32B 走内联）
+
+| 事件 | 发布者 | 载荷 |
+|---|---|---|
+| `BuffApplied`（TASK-021 冻结，复用） | `Apply` | caster / target / buff_id / duration_ms / stacks |
+| `BuffRemoved`（18B） | `Remove` | target / buff_id / reason / stacks / trace |
+| `BuffExpired`（16B） | `Tick` 到期 | target / buff_id / trace |
+| `BuffDispelled`（16B） | `Dispel` | target / buff_id / trace |
+
+### 护盾接入（§15.5）
+
+`BuffSystem` 继承 `combat::IShieldSource`；`DamageSystem::SetShieldSource(&buffs)` 后，
+`ApplyDamage` 先扣护盾（`ShieldOf` → `ConsumeShield`）再扣 HP。`StackRule::None` 的护盾 Buff
+重施加只刷新时长、**不补满**已消耗的护盾（补满需先 `Remove` 再 `Apply`）。

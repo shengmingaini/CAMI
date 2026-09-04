@@ -87,6 +87,38 @@
 `damage_bench --iterations 1000000` 输出 `bench/damage.txt`，验收脚本断言
 `compute_damage_ns ≤ 50`、`alloc_per_damage ≤ 0`。详见 [PERFORMANCE.md](PERFORMANCE.md)。
 
+## TASK-023 · Buff / Debuff 测试（`tests/buff_test.cpp`，ctest `Buff.Suite`）
+
+9 个用例全绿（Debug / Release）：
+
+| # | 用例 | 覆盖 |
+|---|---|---|
+| 1 | `test_stacking_rules` | None（刷新时长）/ Refresh（层数封顶）/ Independent（独立实例，超上限顶最旧）；`ActiveBuffCount` 一致 |
+| 2 | `test_expiry` | Stun 3000ms，+2999ms 存活 / +2ms 到期；`BuffExpired` 事件 |
+| 3 | `test_periodic_dot_hot` | Poison DOT 30×5=150；Regen HOT 50×3=150（移除 Poison 后再测，避免叠加干扰） |
+| 4 | `test_apply_before_multiply` | MaxHp 10000 → 11000（×1.1 引用无 Buff 基准）；Strength+50 / Attack+10；`from_buff` 直接贡献校验；移除回归 |
+| 5 | `test_dispel` | 可驱散驱散成功；不可驱散（Stun）→ `INVALID_ARGUMENT`；`BuffDispelled` 事件 |
+| 6 | `test_slot_cap` | 70 个 None Buff 施加，槽位封顶 `kMaxBuffsPerChar=64` → `BUSY` |
+| 7 | `test_shield` | 护盾 500 吸收 TrueDamage 300 → `absorbed=300 / final=0 / HP 不变`，`ShieldOf` 递减 200 |
+| 8 | `test_config_load` | `LoadFromConfig` → `Size()==6`；未知 id → `NOT_FOUND`；字段校验 |
+| 9 | `test_hotpath_no_external_io` | 静态扫描 `src/buff` 无 `mysql/redis/grpc/kafka/ifstream/thread` 等禁用词（含注释） |
+
+### 关键约定（TASK-023 特有）
+
+- **测试前必须 `registry.LoadFromConfig(kBuffConfig)`**：`BuffRegistry` 不在 `BuffSystem` 构造时自动加载，
+  `Apply` 依赖注册表已填充，否则 `Find` 返回 `nullptr` → `NOT_FOUND`。`Harness` 构造体内统一加载。
+- **护盾需 `dmg.SetShieldSource(&buffs)`**：`test_shield` 中 `DamageSystem` 只有绑定 `BuffSystem` 为护盾源，
+  真实伤害才会先吃护盾。
+- **堆叠规则 None 的护盾重施加不补满**：验证补盾场景需先 `Remove` 再 `Apply`，得到满盾实例。
+- **派生属性用 `ForceAttr` 设基准**：直接写 `base[MaxHp]=X` 只是偏移；固定 Attack 等须用 `ForceAttr` 助手
+  （读 total → 求 diff → patch base → `Recompute`），否则断言对不上（MaxHp 钳 `[1,1e7]`）。
+
+## TASK-023 Benchmark（`benchmark/buff_bench.cpp`）
+
+`buff_bench --entities 1000 --buffs-per-entity 20 --ticks 12000` 输出 `bench/buff.txt`，
+验收脚本断言 `buff_phase_us_at_20k ≤ 400`、`mem_bytes_per_buff ≤ 64`、`thread_count_delta ≤ 0`。
+实测见 [PERFORMANCE.md](PERFORMANCE.md)。
+
 ## 失败用例（§19）
 
 - 目标实体不存在 / 已死亡 → `NOT_FOUND`，不结算、不改状态（见用例 6）。
