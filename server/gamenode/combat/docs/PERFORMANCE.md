@@ -64,3 +64,59 @@ core::DurationMs Remaining(EntityId caster, std::uint32_t skill_index, std::uint
   多轮累计取中位数。
 - **内存**：替换全局 `operator new/delete`，按 `_msize` 统计**净堆占用增量**
   （净值口径，避免临时分配虚高）。
+
+---
+
+# TASK-022 · DamageSystem · PERFORMANCE
+
+性能预算（TASK-022 §7 验收项 / §18 benchmark）：
+
+| 指标 | 含义 | 阈值 | 实测（验收脚本） |
+|---|---|---|---|
+| `compute_damage_ns` | 单次纯函数 `ComputeDamage` 平均耗时（rolls 预生成） | ≤ 50 ns | **4.57 ns** ✅ |
+| `alloc_per_damage` | 单次 `ApplyDamage` 热路径堆分配次数 | ≤ 0 | **0** ✅ |
+| `apply_damage_ns` | 单次 `ApplyDamage`（含查实体 / 扣血 / 发事件 / 统计 / 采样）平均耗时 | < 200 ns | **71.6 ns** ✅ |
+| `damage_per_1k_ns` | 每 1000 次伤害端到端耗时（集成口径） | < 200000 ns | **68900 ns** ✅ |
+
+实测取自 `bench/damage.txt`（`scripts/verify/task-022.sh` 内 `damage_bench --iterations 1000000`，Release 构建）：
+
+```
+compute_damage_ns=4.5651
+apply_damage_ns=71.6401
+damage_per_1k_ns=68900
+alloc_per_damage=0
+```
+
+> 验收脚本只自动断言 `compute_damage_ns ≤ 50` 与 `alloc_per_damage ≤ 0`（脚本内 `assert_metric`）；
+> `apply_damage_ns` / `damage_per_1k_ns` 为任务书 §7 的人工复核项，此处给出实测值备查。
+
+## 关键设计（保证阈值达标）
+
+### 1. 纯函数 `ComputeDamage` 与状态变更分离
+
+`ComputeDamage(req, atk, def, rolls)` 是**纯函数**：随机量 `rolls` 由调用方传入，函数不读写任何系统状态，
+可被缓存 / 预生成，单次只是「几次整数乘法 + 比较 + 分支」，**4.57 ns**（远优于阈值 50 ns）。
+`ApplyDamage` 负责把纯函数结果落到 `RoleSystem` 并发布事件，二者解耦让热路径可被精确计时。
+
+### 2. 热路径零堆分配（`alloc_per_damage = 0`）
+
+- 总线事件 `DamageEvent` / `HealEvent` / `EntityDied` 全部 ≤ 32B，走 `EventSlot::kInlinePayload` 内联路径，**不触发堆分配**。
+- 采样记录写入**预分配环形缓冲**（`std::vector<DamageRecord>`，容量 = `log_ring_capacity`，启动时一次性分配），
+  运行期**不扩容**、满则丢弃计数。因此 100 万次伤害零次 `operator new`。
+- 统计计数器、PRNG 状态均为栈 / 值类型，无 `unordered_map` 节点开销。
+
+### 3. 随机来自 per-Scene PRNG，禁全局 rand()
+
+`Prng`（xorshift128+）状态内嵌于 `DamageSystem`，`NextScaled` 用定点缩放（`v*scale>>32`）取高 32 位，
+避免低位质量差导致的分布偏斜；无参构造已删除，强制播种。PRNG 推进本身是几次整数异或 + 移位，对 `ApplyDamage` 耗时贡献可忽略。
+
+### 4. 派生属性读取走 `Character::attrs` 公开成员
+
+`ApplyDamage` 取 Attack / Defense 直接读 `Character::attrs.total_`（TASK-016 三层模型派生层），
+不触发重算、不访问 Role 私有数据，O(1)。
+
+## Bench 口径（复用 TASK-016 约定）
+
+- **延迟**：Windows `steady_clock` 分辨率 ≈ 100 ns，单次 `ApplyDamage` 无法直接采样；
+  `compute_damage_ns` 用「每轮批量 `iterations` 次、rolls 预生成」取中位数；`apply_damage_ns` 走多轮累计取中位数。
+- **内存**：替换全局 `operator new/delete` 计数分配次数（`alloc_per_damage` 直接 = 计数 / 次数，恒为 0）。

@@ -4,7 +4,8 @@ NAME: Damage / Heal
 PHASE: Phase 5 · 战斗
 MODULE: server/gamenode/combat
 OWNER: Codex / WorkBuddy Agent 实施；@技术总监 二次验收；本地 MinGW MSYS2 g++ + vcpkg 编译验证
-STATUS: PENDING
+STATUS: DONE
+DONE-DATE: 2026-09-04
 DEPENDENCIES: TASK-011, TASK-016, TASK-021
 ---
 

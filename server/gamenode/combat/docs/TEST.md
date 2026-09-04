@@ -49,3 +49,48 @@
 - 施法中途被打断 → 冷却保留、**资源不退**、效果不结算（见 `test_cast_bar_interrupt`）。
 - 配置引用不存在的 buff → 加载失败（见 `test_config_validation`）。
 - 飞行物目标中途死亡 / 超距 → 飞行物消失，不结算、不崩溃（见用例 9 / 10）。
+
+---
+
+# TASK-022 · DamageSystem · TEST
+
+## 单元测试（ctest -R Damage，§16 / §19）
+
+`damage_test.cpp`（13 个测试函数，约 110 项 `CHECK`，输出统一走 `test_print.h`，禁裸 cout/printf）。
+
+| # | 用例 | 覆盖点 |
+|---|---|---|
+| 1 | `test_formula_config` | `DamageFormula::LoadFromFile` 缺路径 → `NOT_FOUND`；错误路径**不会**静默返回旧配置；字段越界 `Validate()` 拒绝；正确加载后各系数可读 |
+| 2 | `test_prng_determinism` | 同种子 `Seed(SceneId, Tick, Seq)` 序列完全一致；`Save/Restore` 后序列对齐；`NextScaled` 落在 `[0, scale)` |
+| 3 | `test_pure_formula_branches` | 纯函数 `ComputeDamage` 各分支：暴击 / 非暴击 / 闪避归零 / 抗性缩放 / 真实伤害忽略抗性 / 真实伤害忽略闪避 |
+| 4 | `test_settlement_order` | §20.2 固定顺序逐条断言：raw → crit → dodge → mitigation → shield → HP → lethal → event |
+| 5 | `test_shield_full_absorb` | 护盾 ≥ 伤害 ⇒ `final = 0`、`is_blocked = true`、`absorbed == mitigated`；`IShieldSource::ConsumeShield` 被调用 |
+| 6 | `test_lethal_and_dead_target` | 致死只发生在「跃迁前是活的」；对已死亡目标 `ApplyDamage` → `NOT_FOUND`、**不改任何状态、不产生负 HP** |
+| 7 | `test_overflow_and_zero_damage` | `base_amount` 溢出 uint64 被钳到 `max_raw_damage`；`coefficient = 0` 伤害为 `min_damage`（保底 1）；`base_amount < 0` → `INVALID_ARGUMENT` |
+| 8 | `test_nan_coefficient` | `coefficient` 为 NaN / Inf → `INVALID_ARGUMENT`，不结算 |
+| 9 | `test_heal_overheal` | 治疗钳制到 `MaxHp`；`overheal_allowed = false` 时满血治疗**不发布、不计数**；`overheal_allowed = true` 时 `total_overheal` 计入统计 |
+| 10 | `test_stats_aggregation` | `DamageStats` 累加：events / hit / crit / dodge / blocked / lethal / total_raw / total_final / total_absorbed；派生 `CritRateBp` / `DodgeRateBp` / `AvgDamageX10000` 正确 |
+| 11 | `test_sampled_log` | 采样节流生效：`log_records` 远小于 `damage_events`；环形缓冲满则丢弃并 `log_dropped++`，**不扩容**（零分配） |
+| 12 | `test_integration_10000` | 5 玩家 × 20 怪 × 10000 次随机伤害/治疗：全部 `Ok`、HP 总量守恒（扣血 == 统计 total_final）、**循环 Drain 到 `QueueDepth()==0`**、`EntityDied` 只发一次 |
+| 13 | `test_hotpath_no_external_io` | 静态扫描 `src/damage/` 禁含 mysql/redis/grpc/kafka/`std::ifstream` 等词（§24 红线），保证热路径零外部 IO |
+
+### 集成用例的两个关键约定（沿用 TASK-021）
+
+1. **循环 Drain 直到队列清空**。`EventBus::Drain()` 单次上限 `default_max_events = 4096`，
+   10000 次伤害可产出远超 4096 的事件；测试用 `while (bus.QueueDepth() > 0) bus.Drain();`
+   保持与真实主循环每 Tick Drain 一致语义。
+2. **HP 总量守恒作为正确性判据**：`ApplyDamage` 经 `RoleSystem::ModifyHp(-final)` 单一写入口，
+   集成测试断言「所有角色最终 HP 之和」的下降量 == `stats.total_final`，交叉验证无重复扣血 / 漏扣。
+
+## Benchmark（§18 / §22）
+
+`damage_bench --iterations 1000000` 输出 `bench/damage.txt`，验收脚本断言
+`compute_damage_ns ≤ 50`、`alloc_per_damage ≤ 0`。详见 [PERFORMANCE.md](PERFORMANCE.md)。
+
+## 失败用例（§19）
+
+- 目标实体不存在 / 已死亡 → `NOT_FOUND`，不结算、不改状态（见用例 6）。
+- `coefficient` NaN / Inf 或 `base_amount < 0` → `INVALID_ARGUMENT`（见用例 7 / 8）。
+- 护盾耗尽后溢伤正常结算（见用例 5）；满血治疗且不计数（见用例 9）。
+- 错路径加载公式 → 静默返回旧配置被 `test_formula_config` 捕获（见用例 1）。
+- `src/damage/` 出现外部 IO 关键词 → 静态扫描失败（见用例 13）。

@@ -1,0 +1,32 @@
+{
+  "damage": {
+    "_comment": "TASK-022 伤害/治疗公式参数（§20.1 全部配置化，禁止硬编码系数）。万分比基准 10000 与 TASK-016 AttrFormula 的 CritRate/CritDamage 单位一致。",
+
+    "rate_scale": 10000,
+    "crit_damage_default": 15000,
+    "crit_rate_max": 9500,
+
+    "dodge_rate_base": 200,
+    "dodge_per_agility": 3,
+    "dodge_rate_max": 5000,
+
+    "mitigation_k": 400,
+    "mitigation_max": 7500,
+
+    "min_damage": 1,
+    "max_raw_damage": 1000000,
+
+    "true_damage_ignores_mitigation": true,
+    "true_damage_ignores_dodge": true,
+    "true_damage_can_crit": false,
+
+    "shield_absorbs_before_hp": true,
+    "lethal_hp_threshold": 0,
+
+    "heal_overheal_counts_to_stats": true,
+
+    "log_samples_per_second": 100,
+    "log_ring_capacity": 1024,
+    "tick_rate_hz": 20
+  }
+}
