@@ -41,6 +41,11 @@ public:
     /// 目录不存在 -> NOT_FOUND。
     static Result<void> LoadDir(std::string_view dir);
 
+    /// 读取文件原始文本（不直接进配置快照）。业务模块需要自行解析 JSON 数组等
+    /// 非键值结构时使用；文件 IO 统一收敛到 core，禁止在业务 src/ 内直接 ifstream（§24 红线）。
+    /// 文件不存在 -> NOT_FOUND；读取失败 -> INTERNAL_ERROR。
+    static Result<std::string> ReadFile(std::string_view path);
+
     /// 读取配置项。
     ///   key 不存在   -> ErrorCode::NOT_FOUND（message 带 key 名）
     ///   类型不匹配   -> ErrorCode::INVALID_ARGUMENT

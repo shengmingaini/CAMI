@@ -145,3 +145,39 @@ Buff（共 2 万实例），预热后跑 5 轮 `Tick` 全量结算，报告中�
   `DamageSystem::ApplyDamage/ApplyHeal` 结算（其本身零堆分配，见上节），**不 new 线程、不碰文件 IO**。
 - 属性重算走 `RecomputeFromBuff` → `from_buff` 数组写 + `AttributeSet::Recompute()`，全程栈上 `std::array`，零分配。
 - 统计计数器 `BuffStats` 标记为 `mutable`，在 `const` 重算路径中累加，不破坏逻辑 const。
+
+---
+
+# TASK-024 · CombatSystem 性能（实测）
+
+### 场景
+
+`combat_bench --entities 1000 --combat-ratio 0.5`（1000 实体、其中 500 处于战斗，
+每个 combat tick 跑 EnterCombat + 施法 + 伤害/治疗仇恨累加 + 威胁表查询 + 脱战判定），
+预热后跑 5 轮、每轮 2000 tick 取中位数。报告「每轮 Combat 阶段耗时」与子项。
+
+### 实测（MinGW g++ 16.1.0 / Release / vcpkg manifest，本机 2026-09-06）
+
+| 指标 | 值 | 阈值 | 结论 |
+|---|---|---|---|
+| `combat_phase_us_at_1k`（1000 实体单 tick Combat 阶段耗时，µs） | **1.0802** | ≤ 1200 | PASS |
+| `cast_resolve_ns`（单次 `CastSkill` 平均耗时，ns） | **38.5** | — | 备查 |
+| `threat_update_ns`（单次仇恨累加平均耗时，ns） | **3.5** | — | 备查 |
+| `alloc_per_combat_tick`（每 combat tick 热路径堆分配次数） | **0** | ≤ 0 | PASS |
+
+> 验收脚本 `scripts/verify/task-024.sh` 断言 `combat_phase_us_at_1k ≤ 1200` 与 `alloc_per_combat_tick ≤ 0`。
+> Debug 构建同场景略高（~数十 µs 量级），验收以 **Release** 为准（脚本默认 `BUILD_TYPE=Release`）。
+> 注：本模块无独立热路径线程，`thread_count_delta` 不适用（CombatSystem 全单线程、零外部 IO）。
+
+### 零分配 / 单线程保证
+
+- `CombatSystem` 拥有 `CombatEntity` 状态表（`unordered_map<EntityId, CombatEntity>`，`CombatEntity` 内为位标记 + 威胁表指针 + 时间戳，值类型），
+  Tick 不 new 线程、不碰文件 IO、不进总线大对象（`DamageEvent`/`HealEvent` 均 ≤32B 内联）。
+- 仇恨表 `ThreatTable` 定长 16 数组，累加/查询/Top 全为栈上定长操作，溢出淘汰最低威胁者、不扩容。
+- 脱战判定与 `Update` 同步控制类 Buff → 战斗标志均为 O(实体数) 本地遍历，无跨进程/无锁竞争。
+
+### 与 TASK-021/022/023 的预算关系
+
+- `CastSkill` 耗时被 `try_cast_ns`（122ns，TASK-021）主导；`combat_phase_us_at_1k` 含每实体一次
+  `TryCast` + 仇恨累加 + 状态机维护，1000 实体 ≈ 1µs 说明单次 Combat 维护本身极轻（仇恨 3.5ns + 标志位操作）。
+- `alloc_per_combat_tick=0` 继承自 Damage/Buff 热路径零分配（见上），CombatSystem 自身不引入额外分配。

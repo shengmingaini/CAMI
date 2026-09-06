@@ -197,6 +197,10 @@ Result<void> ConfigManager::LoadFile(std::string_view path) {
     return Result<void>::Ok();
 }
 
+Result<std::string> ConfigManager::ReadFile(std::string_view path) {
+    return ReadTextFile(path);
+}
+
 Result<void> ConfigManager::LoadDir(std::string_view dir) {
     std::error_code ec;
     const std::filesystem::path root(dir);

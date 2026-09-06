@@ -332,3 +332,82 @@ class BuffSystem final : public combat::IShieldSource {
 `BuffSystem` 继承 `combat::IShieldSource`；`DamageSystem::SetShieldSource(&buffs)` 后，
 `ApplyDamage` 先扣护盾（`ShieldOf` → `ConsumeShield`）再扣 HP。`StackRule::None` 的护盾 Buff
 重施加只刷新时长、**不补满**已消耗的护盾（补满需先 `Remove` 再 `Apply`）。
+
+---
+
+# TASK-024 · CombatSystem · INTERFACE
+
+命名空间 `mmo::game::combat`。头文件在 `include/mmo/game/combat/`。**战斗流程编排者（§4 State Owner）**：
+独占战斗状态机与当前目标写权限，但不拥有具体数值——HP 走 Damage/Heal、仇恨表由本系统独占、
+属性由 Role 经接口访问。跨模块写入一律走接口（Command / Interface），禁止直接改对方内存（§27.3）。
+
+## 构造
+
+```cpp
+CombatSystem(SkillSystem& skills, DamageSystem& dmg, buff::BuffSystem& buffs,
+             role::RoleSystem& roles, EntityManager& entities,
+             SceneId scene, core::EventBus* bus = nullptr);
+```
+
+`bus` 可空（benchmark 传 `nullptr` 避免事件分配干扰计时）。构造时内部 `BindEventBus(bus)`，
+订阅 `DamageEvent` / `HealEvent` 以驱动事件仇恨。
+
+## 战斗状态机（§7 / §8 / §15）
+
+| 方法 | 说明 |
+|---|---|
+| `EnterCombat(self, enemy, trace)` | 双向进入战斗：`self ↔ enemy` 互指、双方置 `InCombat`、Touch 时间戳 |
+| `LeaveCombat(self, reason, trace)` | 清 `InCombat` / `Casting`、清空威胁表、解目标（**不清 Buff**，§19） |
+| `IsInCombat(self)` / `TargetOf(self)` | 状态查询 |
+| `Update(ctx)` | 同线程 Tick 驱动：超时脱战（§8 `leave_ms_`）+ 同步控制类 Buff → 战斗标志 |
+
+- **脱战计时**：最近一次战斗行为满 `leave_ms_`（默认 6000ms）即强制 `LeaveCombat(Timeout)`。
+- **战斗状态用位标记**（`CombatFlag` 枚举：InCombat / Casting / Stunned / Rooted / Dead …），
+  无散落 `bool` 战斗状态字段（§21 Forbidden 散落 bool）。
+
+## 施法编排（委托 SkillSystem）
+
+```cpp
+core::Result<CastResult> CastSkill(const CastRequest& req, const SceneContext& ctx);
+core::Result<void>       Interrupt(EntityId caster, InterruptReason reason, core::TraceID trace);
+```
+
+- `CastSkill` 委托 `skills_.TryCast`；返回 `Ok` 且 `CastingOf(caster)==Casting` 时置 `CombatFlag::Casting`。
+- `Interrupt` 委托 `skills_.InterruptCasting`（其内部发布 `SkillInterrupted`，见 TASK-021），
+  成功后清 `Casting` 标志。注意：`SkillInterrupted` 事件经 `EventBus::Drain()` 派发，
+  **测试中断言计数须在 `Interrupt` 后显式 `DrainAll()`**，否则事件滞留在队列、订阅者不触发。
+
+## 仇恨表（§15.2 / §19，定长 16）
+
+`ThreatTable` 固定容量 16（`std::array<std::pair<EntityId,int64_t>, 16>` + 计数），**禁止无界增长**。
+
+| 方法 | 说明 |
+|---|---|
+| `Add(source, amount)` / `Scale(source, k)` | 累加 / 缩放威胁 |
+| `Remove(source)` | 移除来源 |
+| `Top()` | 返回最高威胁来源；**平局取「首位加入者」**（遍历 `>` 才更新） |
+| `Size()` | 当前条目数 |
+
+- **溢出淘汰最低**：填满 16 条后再 `Add` 新来源，淘汰当前最低威胁者（非崩溃、不扩容）。
+- **事件驱动仇恨**：`CombatSystem::OnDamageEvent` 按 `伤害 × 1.0`、`OnHealEvent` 按 `治疗 × 0.5`
+  累加进施法目标（`caster`）的威胁表（仇恨指向「造成该次伤害/治疗者」的敌对方）。
+
+## 控制类 Buff 联动（§6）
+
+`SyncControlFlags(id)` 把 `BuffSystem::ControlMask(id)`（Stun / Root / …）同步到 `CombatFlag`：
+眩晕 → `CombatFlag::Stunned`（影响施法与移动），定身 → `CombatFlag::Rooted`（影响移动）。
+Buff 到期 / 移除后经 `Update` 自动回落。
+
+## 配置加载（§21 配置化 / §24 红线）
+
+- 技能配置：`SkillSystem::LoadSkillsFromDir(dir, buffs)` 从 `config/gameplay/skills/*.json` 加载；
+  `ApplyBuff` 效果的 `buff_id` 在**加载期**用 `combat::BuffRegistry`（加载期校验用）的 `Contains` 校验，
+  引用不存在的 buff → 整个加载失败（禁止静默）。
+- **双 `BuffRegistry` 类型隔离**：
+  - `combat::BuffRegistry`（`skill/buff_def.h`）：SkillSystem 加载期校验 `ApplyBuff` 引用；
+    `Load(json_text)` 兼容裸数组 `[...]` 与 `{"buffs":[...]}` 两种格式。
+  - `buff::BuffRegistry`（`buff/buff_def.h`）：BuffSystem 运行时；
+    `LoadFromConfig(file)` 接受 `{"buffs":[...]}` 对象（经 `core::ConfigManager`）。
+- **红线 §24**：`combat/src/` 零 `mysql/redis/grpc/kafka/ifstream`；文件读取统一收敛到
+  `core::ConfigManager::ReadFile`（新增公开 API，IO 留在 core，业务 `src/` 不出现 `ifstream`）。
+

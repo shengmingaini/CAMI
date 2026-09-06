@@ -126,3 +126,41 @@
 - 护盾耗尽后溢伤正常结算（见用例 5）；满血治疗且不计数（见用例 9）。
 - 错路径加载公式 → 静默返回旧配置被 `test_formula_config` 捕获（见用例 1）。
 - `src/damage/` 出现外部 IO 关键词 → 静态扫描失败（见用例 13）。
+
+---
+
+# TASK-024 · CombatSystem 测试（`tests/combat_test.cpp`，ctest `Combat.Suite`）
+
+Debug / Release 全绿。约 10 个测试函数，输出统一走 `test_print.h`，禁裸 `cout/printf`。
+
+| # | 用例 | 覆盖点 |
+|---|---|---|
+| 1 | `test_threat_table_unit` | 仇恨表 `Add` / `Remove` / `Scale` / `Top`（平局取首位加入者）；**定长 16 溢出淘汰最低威胁**（填满 16 后加更低者，原最低被淘汰、表不超 16） |
+| 2 | `test_enter_leave_combat` | `EnterCombat` 双向置 `InCombat` 互指；`LeaveCombat` 清 `InCombat`（不清 Buff）、解目标 |
+| 3 | `test_combat_flag_bits` | 战斗状态用位标记（`CombatFlag`），无散落 bool；`SetFlag`/`ClearFlag`/`TestFlag` 正确 |
+| 4 | `test_cast_skill_delegates` | `CastSkill` 委托 `SkillSystem::TryCast`；瞬发技能不置 `Casting`，读条技能置 `Casting` |
+| 5 | `test_interrupt` | `Interrupt` 委托 `SkillSystem::InterruptCasting` 并发布 `SkillInterrupted`；冷却保留、资源不退；**断言 `SkillInterrupted` 计数须在 `Interrupt` 后 `DrainAll()`**（事件经总线派发） |
+| 6 | `test_control_buff_links` | 眩晕控制类 Buff → `CombatFlag::Stunned`（影响施法/移动）；到期经 `Update` 回落 |
+| 7 | `test_event_driven_threat` | `OnDamageEvent` 伤害×1.0、`OnHealEvent` 治疗×0.5 累加进施法者威胁表；Top 指向承伤/被治者 |
+| 8 | `test_death_clears_combat` | 目标死亡 → `OnDeath` 清其战斗状态与威胁；不残留 |
+| 9 | `test_integration_5v5` | 完整战斗流程：5 玩家（1 坦 + 3 DPS + 1 治疗）vs 5 怪；嘲讽/仇恨平局取坦克、怪物先打治疗者、治疗者自愈回血、DOT（Poison 1005）周期掉血、怪物死亡清场、脱战 6100ms |
+| 10 | `test_hotpath_no_external_io` | 静态扫描 `src/combat/` 禁含 `mysql/redis/grpc/kafka/ifstream`（§24 红线，含注释） |
+
+### 集成用例关键约定（TASK-024 特有）
+
+1. **Harness 双 `BuffRegistry`**：运行时 `buff::BuffRegistry registry`（→ `BuffSystem`，`LoadFromConfig`）；
+   加载期 `combat::BuffRegistry skill_buffs`（→ `SkillSystem::LoadSkillsFromDir` 校验 `ApplyBuff` 引用，
+   `Load(json_text)` 兼容裸数组与对象格式）。二者同名但命名空间不同，测试须显式写全前缀避免歧义。
+2. **`Spawn` 返回 `EntityId`、禁止在内部用 `CHECK`**：`CHECK` 宏展开为 `return;`，在返回值的函数里非法；
+   生成失败须改 `if(!x){ ErrorFmt(...); ++g_fail; return 0; }`。
+3. **异类型目标**：单体/飞行物技能拒绝「同 `EntityType`」目标（`InvalidTarget`）；集成测试受击怪须传
+   `EntityType::Monster`，否则被映射到 attack 参数导致目标选取失败。
+4. **DOT 必须推进 `now`**：`BuffSystem::Tick(ctx)` 以 `ctx.now` 判定周期结算，测试施加 DOT 后须
+   `for i:1..5 Tick(now + 1100ms*i)` 才能观测掉血。
+5. **循环 Drain 直到队列清空**：AOE/批量事件超 `default_max_events=4096`，`Cast` 内部已 `DrainAll()`，
+   但 `Interrupt` 不自动 Drain——需手动 `DrainAll()` 后才能断言 `SkillInterrupted` 计数。
+
+## TASK-024 Benchmark（`benchmark/combat_bench.cpp`）
+
+`combat_bench --entities 1000 --combat-ratio 0.5` 输出 `bench/combat.txt`，
+验收脚本断言 `combat_phase_us_at_1k ≤ 1200`、`alloc_per_combat_tick ≤ 0`。实测见 [PERFORMANCE.md](PERFORMANCE.md)。

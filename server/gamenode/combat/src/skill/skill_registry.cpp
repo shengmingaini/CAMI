@@ -13,13 +13,12 @@
 #include <cctype>
 #include <cstdint>
 #include <filesystem>
-#include <fstream>
-#include <sstream>
 #include <string>
 #include <system_error>
 #include <utility>
 #include <vector>
 
+#include "mmo/core/config/config_manager.h"
 #include "mmo/core/error/error.h"
 #include "mmo/core/error/error_code.h"
 
@@ -384,14 +383,6 @@ bool ParseSkill(const JsonValue& item, SkillDef& def, const BuffRegistry& buffs,
     return true;
 }
 
-std::string ReadFile(std::string_view path) {
-    std::ifstream in(std::string(path), std::ios::binary);
-    if (!in) return std::string();
-    std::ostringstream ss;
-    ss << in.rdbuf();
-    return ss.str();
-}
-
 }  // namespace
 
 core::Result<void> SkillRegistry::Load(std::string_view json_text, const BuffRegistry& buffs) {
@@ -448,12 +439,12 @@ core::Result<void> SkillRegistry::LoadFromDir(std::string_view dir, const BuffRe
     skills_.clear();
     id_to_index_.clear();
     for (const auto& f : files) {
-        const std::string text = ReadFile(f);
-        if (text.empty()) {
+        const auto text = core::ConfigManager::ReadFile(f);
+        if (!text.HasValue()) {
             return Fail(ErrorCode::INVALID_ARGUMENT,
                         std::string("skill config empty or unreadable: ") + f);
         }
-        auto r = LoadAppend(text, buffs);
+        auto r = LoadAppend(text.Value(), buffs);
         if (!r) return core::Result<void>::Fail(r.Err());
     }
     return core::Result<void>::Ok();

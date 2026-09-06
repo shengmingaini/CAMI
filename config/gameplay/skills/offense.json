@@ -21,5 +21,10 @@
       {"type": "SpawnProjectile", "speed": 15, "radius": 2.0, "max_distance": 45},
       {"type": "Damage", "school": 3, "base": 35, "coeff": 1.3}
     ]
+  },
+  {
+    "id": 1005, "name": "ChanneledBlast", "target_type": "SingleTarget",
+    "cast_time": 1.5, "cooldown": 5.0, "range": 30, "mana_cost": 30,
+    "effects": [ {"type": "Damage", "school": 1, "base": 80, "coeff": 1.0, "can_crit": true} ]
   }
 ]

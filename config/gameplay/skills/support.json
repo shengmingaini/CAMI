@@ -12,11 +12,11 @@
   {
     "id": 2003, "name": "ShieldSelf", "target_type": "Self",
     "cast_time": 0, "cooldown": 20.0, "mana_cost": 40,
-    "effects": [ {"type": "ApplyBuff", "buff_id": 1, "duration_ms": 10000, "stacks": 1} ]
+    "effects": [ {"type": "ApplyBuff", "buff_id": 1003, "duration_ms": 10000, "stacks": 1} ]
   },
   {
     "id": 2004, "name": "Blessing", "target_type": "SingleTarget",
     "cast_time": 0, "cooldown": 15.0, "range": 20, "mana_cost": 35,
-    "effects": [ {"type": "ApplyBuff", "buff_id": 2, "duration_ms": 15000, "stacks": 1} ]
+    "effects": [ {"type": "ApplyBuff", "buff_id": 1001, "duration_ms": 15000, "stacks": 1} ]
   }
 ]

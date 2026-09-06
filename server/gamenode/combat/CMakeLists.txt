@@ -15,7 +15,9 @@ add_library(mmo_gamenode_combat STATIC
     src/damage/damage_formula.cpp
     src/damage/damage_system.cpp
     src/buff/buff_system.cpp
-    src/buff/buff_config.cpp)
+    src/buff/buff_config.cpp
+    src/combat/threat_table.cpp
+    src/combat/combat_system.cpp)
 add_library(mmo::gamenode_combat ALIAS mmo_gamenode_combat)
 
 target_include_directories(mmo_gamenode_combat PUBLIC
@@ -75,6 +77,19 @@ if(MMORPG_BUILD_TESTS)
     target_compile_options(buff_test PRIVATE -Wno-pedantic)
     add_test(NAME Buff.Suite COMMAND buff_test
              WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
+    # ---- TASK-024 测试（§16 单元 / §17 集成 / §19 Failure / §20 验收）----
+    # 验收脚本 run_ctest 'Combat'：ctest -R Combat 必须全部通过。
+    add_executable(combat_test tests/combat_test.cpp)
+    target_link_libraries(combat_test PRIVATE
+        mmo::gamenode_combat
+        mmo::gamenode_aoi
+        mmo::gamenode_movement)
+    target_include_directories(combat_test PRIVATE
+        ${CMAKE_SOURCE_DIR}/engine/core/tests)
+    target_compile_options(combat_test PRIVATE -Wno-pedantic)
+    add_test(NAME Combat.Suite COMMAND combat_test
+             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 endif()
 
 # ---- Benchmark（TASK-021 §18，skill_bench 输出 bench/skill.txt）----
@@ -122,5 +137,20 @@ if(MMORPG_BUILD_BENCHMARKS)
         ${CMAKE_SOURCE_DIR}/engine/core/tests)
     target_compile_options(buff_bench PRIVATE -Wno-pedantic)
     set_target_properties(buff_bench PROPERTIES RUNTIME_OUTPUT_DIRECTORY
+        ${CMAKE_BINARY_DIR}/bin)
+
+    # ---- TASK-024 Benchmark（§18，combat_bench 输出 bench/combat.txt）----
+    # 验收脚本：run_bench bin/combat_bench --entities 1000 --combat-ratio 0.5
+    #           assert_metric bench/combat.txt combat_phase_us_at_1k le 1200
+    #           assert_metric bench/combat.txt alloc_per_combat_tick le 0
+    add_executable(combat_bench benchmark/combat_bench.cpp)
+    target_link_libraries(combat_bench PRIVATE
+        mmo::gamenode_combat
+        mmo::gamenode_aoi
+        mmo::gamenode_movement)
+    target_include_directories(combat_bench PRIVATE
+        ${CMAKE_SOURCE_DIR}/engine/core/tests)
+    target_compile_options(combat_bench PRIVATE -Wno-pedantic)
+    set_target_properties(combat_bench PROPERTIES RUNTIME_OUTPUT_DIRECTORY
         ${CMAKE_BINARY_DIR}/bin)
 endif()

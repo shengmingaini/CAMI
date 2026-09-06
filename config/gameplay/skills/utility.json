@@ -15,7 +15,7 @@
   {
     "id": 3003, "name": "WarCry", "target_type": "AoeCone",
     "cast_time": 0, "cooldown": 18.0, "radius": 14, "cone_deg": 120,
-    "effects": [ {"type": "ApplyBuff", "buff_id": 3, "duration_ms": 8000, "stacks": 1} ]
+    "effects": [ {"type": "ApplyBuff", "buff_id": 1002, "duration_ms": 8000, "stacks": 1} ]
   },
   {
     "id": 3004, "name": "ManaBurn", "target_type": "SingleTarget",

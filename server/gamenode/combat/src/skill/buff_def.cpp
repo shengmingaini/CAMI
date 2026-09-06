@@ -248,11 +248,21 @@ core::Result<void> BuffRegistry::Load(const std::string& json_text) {
             Error(ErrorCode::INVALID_ARGUMENT,
                   std::string("buff config parse error: ") + parser.Error()));
     }
-    if (root.type != JsonValue::Type::Array) {
+    // 兼容两种格式：裸数组 [ ... ]，或 {"buffs":[ ... ]}（与 BuffSystem::LoadFromConfig 同源 buffs.json）。
+    const JsonValue* arr = &root;
+    if (root.type == JsonValue::Type::Object) {
+        const JsonValue* b = root.Find("buffs");
+        if (b == nullptr || b->type != JsonValue::Type::Array) {
+            return core::Result<void>::Fail(Error(
+                ErrorCode::INVALID_ARGUMENT,
+                "buff config must be an array or an object with a 'buffs' array"));
+        }
+        arr = b;
+    } else if (root.type != JsonValue::Type::Array) {
         return core::Result<void>::Fail(
             Error(ErrorCode::INVALID_ARGUMENT, "buff config top-level must be an array"));
     }
-    for (const JsonValue& item : root.arr) {
+    for (const JsonValue& item : arr->arr) {
         if (item.type != JsonValue::Type::Object) {
             return core::Result<void>::Fail(
                 Error(ErrorCode::INVALID_ARGUMENT, "buff entry must be an object"));

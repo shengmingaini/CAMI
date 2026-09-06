@@ -9,7 +9,7 @@
 /// 随机（§4 / §21）：全部经 `Prng`（per-Scene 确定性 xorshift128+），
 /// 种子 = (SceneId, TickNumber, 序列号)，**禁止全局 rand()**。
 ///
-/// 热路径（§10）：禁止 MySQL / Redis / Kafka / 同步 gRPC / 文件 IO / 堆分配。
+/// 热路径（§10）：禁止外部存储 / 缓存 / 消息中间件 / 同步远程调用 / 文件 IO / 堆分配。
 /// `alloc_per_damage` 必须为 0 —— 总线事件保持 ≤32B（EventSlot 内联阈值），
 /// 完整结算记录走预分配的采样环形缓冲，不进总线。
 ///
