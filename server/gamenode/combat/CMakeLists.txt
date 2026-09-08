@@ -143,11 +143,13 @@ if(MMORPG_BUILD_BENCHMARKS)
     # 验收脚本：run_bench bin/combat_bench --entities 1000 --combat-ratio 0.5
     #           assert_metric bench/combat.txt combat_phase_us_at_1k le 1200
     #           assert_metric bench/combat.txt alloc_per_combat_tick le 0
+    # TASK-025：`--matrix` 模式委托 mmo::bench_combat（CombatBenchmark）跑 5×4 矩阵。
     add_executable(combat_bench benchmark/combat_bench.cpp)
     target_link_libraries(combat_bench PRIVATE
         mmo::gamenode_combat
         mmo::gamenode_aoi
-        mmo::gamenode_movement)
+        mmo::gamenode_movement
+        mmo::bench_combat)
     target_include_directories(combat_bench PRIVATE
         ${CMAKE_SOURCE_DIR}/engine/core/tests)
     target_compile_options(combat_bench PRIVATE -Wno-pedantic)
