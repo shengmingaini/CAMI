@@ -4,7 +4,7 @@ NAME: Economic Ledger / Idempotency
 PHASE: Phase 6 · 数据系统
 MODULE: server/gamenode/economy
 OWNER: Codex / WorkBuddy Agent 实施；@技术总监 二次验收；本地 MinGW MSYS2 g++ + vcpkg 编译验证
-STATUS: PENDING
+STATUS: DONE
 DEPENDENCIES: TASK-001, TASK-005, TASK-026, TASK-028, TASK-029
 ---
 
@@ -20,7 +20,7 @@ DEPENDENCIES: TASK-001, TASK-005, TASK-026, TASK-028, TASK-029
 | PHASE | Phase 6 · 数据系统 |
 | MODULE | `server/gamenode/economy` |
 | OWNER | Codex / WorkBuddy Agent 实施；@技术总监 二次验收；本地 MinGW MSYS2 g++ + vcpkg 编译验证 |
-| STATUS | **PENDING** |
+| STATUS | **DONE** |
 | DEPENDENCIES | `TASK-001`, `TASK-005`, `TASK-026`, `TASK-028`, `TASK-029` |
 
 ---
@@ -106,7 +106,7 @@ class Ledger { public:
 
 **幂等状态机**：`Fresh → InFlight → Completed | Failed`。`InFlight` 期间同一 key 的并发请求直接返回 BUSY（不重复执行）；`Completed` 的请求返回**首次结果**（deduplicated=true）。
 
-**账本表**（database/migrations/00N_ledger.sql）
+**账本表**（database/migrations/003_ledger.sql）
 
 | 列 | 约束 |
 |---|---|
@@ -225,7 +225,7 @@ bin/ledger_bench：`idem_check_ns=` / `ledger_append_ns=` / `flush_ns_per_1k=` /
 - server/gamenode/economy/include/mmo/game/economy/ledger/idempotency_store.h
 - server/gamenode/economy/src/ledger/*.cpp
 - server/gamenode/economy/tests/*
-- database/migrations/00N_ledger.sql
+- database/migrations/003_ledger.sql
 - tools/audit/economy_audit.py
 - server/gamenode/economy/docs/INTERFACE.md
 - docs/economy-failure-test-report.md

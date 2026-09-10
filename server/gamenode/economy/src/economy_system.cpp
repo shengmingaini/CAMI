@@ -82,16 +82,74 @@ core::Result<EconomyResult> EconomySystem::Execute(const EconomyCommand& cmd,
         return core::Result<EconomyResult>::Fail(v.Err());
     }
 
-    // 2) 幂等表（§15.10）→ 命中即返回首次结果
-    auto it = idempotency_.find(cmd.idempotency_key);
-    if (it != idempotency_.end()) {
-        ++stats_.dedup_count;
-        EconomyResult res = it->second;
-        res.deduplicated = true;
-        return core::Result<EconomyResult>::Ok(std::move(res));
+    // 2) 幂等（TASK-030 §15.6）：TryBegin 在**任何副作用之前**，这是「不重复扣钱」的全部依据。
+    if (idem_ != nullptr) {
+        auto began = idem_->TryBegin(cmd.idempotency_key, idem_ttl_);
+        if (!began.HasValue()) {
+            ++stats_.fail_count;
+            return core::Result<EconomyResult>::Fail(began.Err());
+        }
+        switch (began.Value()) {
+            case ledger::IdemStatus::Completed: {
+                // 已完成：返回**首次结果**而不是报错（§20.6 对客户端友好）。
+                auto prev = idem_->Lookup(cmd.idempotency_key);
+                if (prev.HasValue() && prev.Value().has_value()) {
+                    EconomyResult res = *prev.Value();
+                    res.deduplicated = true;
+                    ++stats_.dedup_count;
+                    return core::Result<EconomyResult>::Ok(std::move(res));
+                }
+                // Completed 却查不到结果：表被外部改写。按 BUSY 拒绝，绝不重新执行。
+                ++busy_count_;
+                ++stats_.fail_count;
+                return RejectFromWallets(cmd, core::ErrorCode::BUSY);
+            }
+            case ledger::IdemStatus::InFlight: {
+                // 并发执行者持有该 key：直接 BUSY，**不重复执行**（§8）。
+                ++busy_count_;
+                ++stats_.fail_count;
+                return RejectFromWallets(cmd, core::ErrorCode::BUSY);
+            }
+            case ledger::IdemStatus::Failed: {
+                // TTL 过期的未决态（§15.8）：先查账本决定「重放」还是「重做」。
+                std::optional<EconomyResult> recovered = TryRecoverFromLedger(cmd);
+                if (recovered.has_value()) {
+                    ++stats_.dedup_count;
+                    return core::Result<EconomyResult>::Ok(std::move(*recovered));
+                }
+                // 账本里没有该 key = 该操作从未落账 → 释放后按首次执行。
+                if (!RebeginIdempotency(cmd)) {
+                    ++busy_count_;
+                    ++stats_.fail_count;
+                    return RejectFromWallets(cmd, core::ErrorCode::BUSY);
+                }
+                break;
+            }
+            case ledger::IdemStatus::Fresh:
+            default:
+                break;
+        }
     }
 
-    // 3) 分派（Result 无默认构造，初值即「未知操作」；正常路径必被覆盖）
+    // 3) 兼容路径（未装配 TASK-030 的幂等存储时）：进程内 map 兜底，语义与 TASK-029 一致。
+    if (idem_ == nullptr) {
+        auto it = idempotency_.find(cmd.idempotency_key);
+        if (it != idempotency_.end()) {
+            ++stats_.dedup_count;
+            EconomyResult res = it->second;
+            res.deduplicated = true;
+            return core::Result<EconomyResult>::Ok(std::move(res));
+        }
+    }
+
+    // 4) 记录执行前余额：账本的 delta 由它算（不能用 cmd.amount，见 PostLedger 注释）。
+    std::int64_t balance_before = 0;
+    {
+        auto b = Balance(cmd.player, cmd.currency);
+        if (b.HasValue()) balance_before = b.Value();
+    }
+
+    // 5) 分派（Result 无默认构造，初值即「未知操作」；正常路径必被覆盖）
     core::Result<EconomyResult> r = core::Result<EconomyResult>::Fail(
         EconErr(core::ErrorCode::INVALID_ARGUMENT, "economy: unhandled op"));
     switch (cmd.op) {
@@ -122,22 +180,77 @@ core::Result<EconomyResult> EconomySystem::Execute(const EconomyCommand& cmd,
     }
     if (!r.HasValue()) {
         ++stats_.fail_count;
+        // 内部失败（如回滚失败）→ 释放幂等键，允许重试；绝不留下 InFlight 悬挂。
+        if (idem_ != nullptr) (void)idem_->Abort(cmd.idempotency_key);
         return r;
     }
 
     EconomyResult res = std::move(r).Value();
     if (!res.applied) {
         ++stats_.fail_count;
-        // 业务拒绝不写幂等表（见文件头说明），但仍返回结果供调用方读 code。
+        // 业务拒绝（余额不足/背包满）不写幂等表：否则「充值后用同一 key 重试」会被永久毒化。
+        if (idem_ != nullptr) (void)idem_->Abort(cmd.idempotency_key);
         return core::Result<EconomyResult>::Ok(std::move(res));
     }
 
     ++stats_.applied_count;
-    // 4) 异步投递账本（§9 禁止同步等待）；投递失败 → 标记 pending（§19 写死的一种）
-    PostLedger(cmd, res);
-    // 5) 落幂等表（在返回前完成，§9）
-    idempotency_.emplace(cmd.idempotency_key, res);
+    // 6) 异步投递账本（§9 禁止同步等待）；投递失败 → 标记 pending（§19 写死的一种）
+    PostLedger(cmd, res, res.balance_after - balance_before);
+    // 7) 落幂等表（必须在返回前完成，§9）
+    if (idem_ != nullptr) {
+        auto committed = idem_->Commit(cmd.idempotency_key, res);
+        if (!committed.HasValue()) {
+            // 内存态已变但幂等未落：**不能**当作成功返回（客户端重试会再执行一次）。
+            // 拒绝并把事实说清楚；此时该 key 仍是 InFlight，重试会被 BUSY 拦住；
+            // TTL 过期后走 TryRecoverFromLedger，从账本恢复出首次结果（自愈闭环）。
+            ++stats_.fail_count;
+            return core::Result<EconomyResult>::Fail(EconErr(
+                core::ErrorCode::INTERNAL_ERROR,
+                "economy: idempotency commit failed; ledger replay will reconcile"));
+        }
+    } else {
+        idempotency_.emplace(cmd.idempotency_key, res);
+    }
     return core::Result<EconomyResult>::Ok(std::move(res));
+}
+
+// ---------------------------------------------------------------- 幂等恢复（§15.8）
+
+core::Result<EconomyResult> EconomySystem::RejectFromWallets(const EconomyCommand& cmd,
+                                                             core::ErrorCode code) {
+    std::int64_t bal = 0;
+    auto b = Balance(cmd.player, cmd.currency);
+    if (b.HasValue()) bal = b.Value();
+    const Wallet* w = wallets_.Find(cmd.player);
+    return Reject(code, bal, w != nullptr ? w->version : 0u);
+}
+
+std::optional<EconomyResult> EconomySystem::TryRecoverFromLedger(const EconomyCommand& cmd) {
+    if (ledger_store_ == nullptr || idem_ == nullptr) return std::nullopt;
+
+    auto hit = ledger_store_->QueryByKey(cmd.idempotency_key);
+    if (!hit.HasValue() || !hit.Value().has_value()) return std::nullopt;
+
+    const ledger::LedgerEntry& e = *hit.Value();
+    EconomyResult res;
+    res.applied = true;
+    res.deduplicated = true;
+    res.code = core::ErrorCode::OK;
+    res.balance_after = e.balance_after;
+    res.version = e.version;
+    // created_guids 无法从账本还原（账本按 §7 不存新生成 guid）；恢复路径的客户端应
+    // 以背包查询为准。这一点在 docs/INTERFACE.md 与故障报告里显式记录。
+    res.ledger_pending = false;
+
+    // 把幂等表补记为 Completed，后续同 key 请求直接命中首次结果。
+    (void)idem_->Commit(cmd.idempotency_key, res);
+    return std::optional<EconomyResult>(std::move(res));
+}
+
+bool EconomySystem::RebeginIdempotency(const EconomyCommand& cmd) noexcept {
+    (void)idem_->Abort(cmd.idempotency_key);  // 回到 Fresh（行删除）
+    auto again = idem_->TryBegin(cmd.idempotency_key, idem_ttl_);
+    return again.HasValue() && again.Value() == ledger::IdemStatus::Fresh;
 }
 
 core::Result<std::int64_t> EconomySystem::Balance(PlayerId player,
@@ -553,7 +666,34 @@ core::Result<std::uint32_t> EconomySystem::RemoveByDef(PlayerId p, inventory::It
 
 // ---------------------------------------------------------------- 账本 / 事件
 
-void EconomySystem::PostLedger(const EconomyCommand& cmd, EconomyResult& res) noexcept {
+void EconomySystem::PostLedger(const EconomyCommand& cmd, EconomyResult& res,
+                               std::int64_t delta) noexcept {
+    // ---- TASK-030：完整账本（append-only + 哈希链 + 幂等键唯一）----
+    // 投递失败与 sink 路径同语义：内存态已生效 → 标记 pending，不回滚（§19）。
+    if (ledger_store_ != nullptr) {
+        ledger::LedgerEntry e;
+        e.transaction_id = cmd.transaction_id;
+        e.request_id = cmd.request_id;
+        e.idempotency_key = cmd.idempotency_key;
+        e.player = cmd.player;
+        e.peer = cmd.peer;
+        e.op = cmd.op;
+        e.currency = cmd.currency;
+        e.delta = delta;
+        e.balance_after = res.balance_after;
+        e.item_deltas = cmd.item_deltas;  // 按值拷贝：账本在异步落库时不能再引用命令
+        e.reason.assign(cmd.reason.data(), cmd.reason.size());
+        e.source.assign(cmd.source.data(), cmd.source.size());
+        e.timestamp_ms = cmd.timestamp_ms;
+        e.version = res.version;
+
+        auto appended = ledger_store_->Append(e);
+        if (!appended.HasValue()) {
+            res.ledger_pending = true;
+            ++stats_.ledger_pending_count;
+        }
+    }
+
     if (ledger_ == nullptr) return;  // 未安装 sink = 不投递，pending 恒 false
 
     LedgerEntry e;

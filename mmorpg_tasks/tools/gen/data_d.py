@@ -51,7 +51,7 @@ class Ledger { public:
 
 **幂等状态机**：`Fresh → InFlight → Completed | Failed`。`InFlight` 期间同一 key 的并发请求直接返回 BUSY（不重复执行）；`Completed` 的请求返回**首次结果**（deduplicated=true）。
 
-**账本表**（database/migrations/00N_ledger.sql）
+**账本表**（database/migrations/003_ledger.sql）
 
 | 列 | 约束 |
 |---|---|
@@ -113,12 +113,12 @@ class Ledger { public:
  deliver=["server/gamenode/economy/include/mmo/game/economy/ledger/ledger.h",
           "server/gamenode/economy/include/mmo/game/economy/ledger/idempotency_store.h",
           "server/gamenode/economy/src/ledger/*.cpp", "server/gamenode/economy/tests/*",
-          "database/migrations/00N_ledger.sql", "tools/audit/economy_audit.py",
+          "database/migrations/003_ledger.sql", "tools/audit/economy_audit.py",
           "server/gamenode/economy/docs/INTERFACE.md", "docs/economy-failure-test-report.md"],
  ctest="Economy_Ledger", both_build=True,
  bench_bins=[("bin/ledger_bench", "--ops 10000")],
  metrics=[("bench/ledger.txt", "idem_check_ns", "le", "200"), ("bench/ledger.txt", "mem_bytes_per_entry", "le", "256")],
- artifacts=["server/gamenode/economy/include/mmo/game/economy/ledger/ledger.h", "database/migrations/00N_ledger.sql"],
+ artifacts=["server/gamenode/economy/include/mmo/game/economy/ledger/ledger.h", "database/migrations/003_ledger.sql"],
 ),
 # ------------------------------------------------------------------ 031
 dict(

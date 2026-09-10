@@ -13,6 +13,7 @@
 /// 禁止 include 其 src/，禁止直接改背包内存。
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <unordered_map>
 
@@ -21,6 +22,8 @@
 #include "mmo/game/economy/currency.h"
 #include "mmo/game/economy/economy_command.h"
 #include "mmo/game/economy/economy_events.h"
+#include "mmo/game/economy/ledger/idempotency_store.h"
+#include "mmo/game/economy/ledger/ledger.h"
 #include "mmo/game/economy/price_table.h"
 #include "mmo/game/inventory/inventory_system.h"
 #include "mmo/game/scene/scene_context.h"
@@ -88,6 +91,31 @@ public:
     /// 安装异步账本 sink（nullptr = 不投递，ledger_pending 恒 false）。
     void SetLedgerSink(ILedgerSink* sink) noexcept { ledger_ = sink; }
 
+    // ---- TASK-030 扩展（§15.6）：幂等存储 + 完整账本接入 ----
+    //
+    // 两者都是**可选**装配：都为 nullptr 时，行为与 TASK-029 完全一致（进程内
+    // `idempotency_` map 兜底），既有测试与既有调用方零改动 —— 这是刻意的向后兼容，
+    // 不是遗漏。生产装配必须同时设置二者，否则「重复请求不扣两次钱」只在单进程内成立。
+    //
+    // 装配顺序（Execute 内的真实顺序，§15.6）：
+    //   TryBegin → （Fresh）执行 → 投递账本 → Commit
+    //            └（Completed）Lookup 首次结果          └（业务拒绝/内部失败）Abort
+
+    /// 安装幂等存储（nullptr = 用进程内 map 兜底）。
+    void SetIdempotencyStore(ledger::IIdempotencyStore* store) noexcept { idem_ = store; }
+
+    /// 安装账本（nullptr = 不记完整账本，仅走 ILedgerSink 的兼容路径）。
+    void SetLedger(ledger::Ledger* ledger) noexcept { ledger_store_ = ledger; }
+
+    /// InFlight 保留时长（§15.8 默认 30 秒）。<= 0 会被 `TryBegin` 拒绝（§21 禁止无 TTL）。
+    void SetIdempotencyTtlMs(std::int64_t ms) noexcept {
+        idem_ttl_ = ledger::DurationMs{ms};
+    }
+    std::int64_t IdempotencyTtlMs() const noexcept { return idem_ttl_.count(); }
+
+    /// 命中 InFlight 而被拒绝（BUSY）的次数（并发/重试拦截的可观测口径）。
+    std::uint64_t BusyCount() const noexcept { return busy_count_; }
+
     EconomyStats Stats() const noexcept { return stats_; }
 
     /// 幂等表大小（测试/运维观测用）。
@@ -110,7 +138,10 @@ private:
 
     /// 记账：更新 minted / burned 统计，并按 pending 语义异步投递账本。
     /// res 以非 const 引用传入：投递失败时须把 ledger_pending 写回结果（§19）。
-    void PostLedger(const EconomyCommand& cmd, EconomyResult& res) noexcept;
+    /// delta 由调用方按「执行前余额 → res.balance_after」算出并传入，而不是从
+    /// `cmd.amount` 推算：Purchase 的真实扣款是价格表算出的总价（不等于 amount），
+    /// 从 amount 推会让对账口径与余额变化对不上（§17「Σ账本 delta == Σ余额变化」）。
+    void PostLedger(const EconomyCommand& cmd, EconomyResult& res, std::int64_t delta) noexcept;
 
     /// 不指定 guid 时的移除：按 def_id 跨堆叠扣减。
     /// **先校验总量再扣**（避免扣到一半才发现不够，产生无法回滚的部分扣除）；
@@ -129,6 +160,20 @@ private:
     ILedgerSink* ledger_{nullptr};
     /// 幂等表（§15.10）：key → 首次结果；为 TASK-030 完整账本预留同一接口。
     std::unordered_map<std::string, EconomyResult> idempotency_;
+
+    // ---- TASK-030 装配（默认 nullptr / 30s，行为与 TASK-029 一致）----
+    ledger::IIdempotencyStore* idem_{nullptr};
+    ledger::Ledger* ledger_store_{nullptr};
+    ledger::DurationMs idem_ttl_{ledger::kDefaultIdempotencyTtlMs};
+    std::uint64_t busy_count_{0};
+
+    /// TASK-030 §15.8 恢复路径：命中 TTL 过期的未决幂等键时，查账本决定「重放」还是「重做」。
+    /// 返回值有值 = 账本已落账，应把该结果作为首次结果返回（deduplicated=true）。
+    std::optional<EconomyResult> TryRecoverFromLedger(const EconomyCommand& cmd);
+    /// 释放幂等键并重新占位（恢复路径专用）。返回 false = 重新占位失败，调用方须拒绝本次请求。
+    bool RebeginIdempotency(const EconomyCommand& cmd) noexcept;
+    /// 以当前钱包状态构造一个「未执行」的拒绝结果（幂等拦截路径专用：不产生任何副作用）。
+    core::Result<EconomyResult> RejectFromWallets(const EconomyCommand& cmd, core::ErrorCode code);
 };
 
 }  // namespace mmo::game::economy
