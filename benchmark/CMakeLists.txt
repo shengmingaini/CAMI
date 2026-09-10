@@ -5,3 +5,4 @@
 
 add_subdirectory(common)
 add_subdirectory(combat)
+add_subdirectory(resilience)

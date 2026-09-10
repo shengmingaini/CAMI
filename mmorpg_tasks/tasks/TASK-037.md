@@ -4,7 +4,7 @@ NAME: Reconnect / Failover / Scene Recovery
 PHASE: Phase 9 · 容灾
 MODULE: server/gateway + server/gamenode
 OWNER: Codex / WorkBuddy Agent 实施；@技术总监 二次验收；本地 MinGW MSYS2 g++ + vcpkg 编译验证
-STATUS: PENDING
+STATUS: DONE
 DEPENDENCIES: TASK-009, TASK-010, TASK-012, TASK-026, TASK-027
 ---
 
@@ -20,7 +20,7 @@ DEPENDENCIES: TASK-009, TASK-010, TASK-012, TASK-026, TASK-027
 | PHASE | Phase 9 · 容灾 |
 | MODULE | `server/gateway + server/gamenode` |
 | OWNER | Codex / WorkBuddy Agent 实施；@技术总监 二次验收；本地 MinGW MSYS2 g++ + vcpkg 编译验证 |
-| STATUS | **PENDING** |
+| STATUS | **DONE** |
 | DEPENDENCIES | `TASK-009`, `TASK-010`, `TASK-012`, `TASK-026`, `TASK-027` |
 
 ---

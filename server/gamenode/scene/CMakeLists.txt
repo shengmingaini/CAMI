@@ -50,3 +50,6 @@ if(MMORPG_BUILD_BENCHMARKS)
     set_target_properties(scene_bench PROPERTIES RUNTIME_OUTPUT_DIRECTORY
         ${CMAKE_BINARY_DIR}/bin)
 endif()
+
+# ---- TASK-037 §37.4 Scene Recovery（新增子模块，非修改 TASK-012 既有目标）----
+add_subdirectory(recovery)

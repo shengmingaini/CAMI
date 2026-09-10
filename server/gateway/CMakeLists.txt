@@ -88,3 +88,51 @@ if(MMORPG_BUILD_BENCHMARKS)
     set_target_properties(route_bench PROPERTIES RUNTIME_OUTPUT_DIRECTORY
         ${CMAKE_BINARY_DIR}/bin)
 endif()
+
+# ===========================================================================
+# TASK-037 · Gateway Resilience —— 37.1 HealthMonitor
+#
+# 设计（§27.3 模块边界）：复用 TASK-010 NodeRegistry（节点目录 + 一致性哈希 Pick），
+# 自身仅维护健康三态权威表（nodes_）+ 替换节点选择。不重写 NodeRegistry，不 include
+# 任何上游 src/。依赖方向：resilience -> gateway_router -> gateway_session -> core。
+# ===========================================================================
+add_library(mmo_gateway_resilience STATIC
+    src/resilience/health_monitor.cpp
+    src/resilience/reconnect_service.cpp
+    src/resilience/failover_coordinator.cpp)
+add_library(mmo::gateway_resilience ALIAS mmo_gateway_resilience)
+target_include_directories(mmo_gateway_resilience PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:include>)
+target_compile_features(mmo_gateway_resilience PUBLIC cxx_std_20)
+target_link_libraries(mmo_gateway_resilience PUBLIC
+    mmo::core_error
+    mmo::core_time
+    mmo::core_bus
+    mmo::gateway_session
+    mmo::gateway_router)
+mmorpg_add_warnings(mmo_gateway_resilience)
+
+# ---- 测试（§16 单元 / §17 集成，统一 Resilience 前缀，供 ctest -R Resilience 过滤）----
+if(MMORPG_BUILD_TESTS)
+    add_executable(gateway_resilience_test tests/resilience_test.cpp)
+    target_link_libraries(gateway_resilience_test PRIVATE mmo::gateway_resilience)
+    target_include_directories(gateway_resilience_test PRIVATE
+        ${CMAKE_SOURCE_DIR}/engine/core/tests)
+    add_test(NAME Gateway_Resilience.Suite COMMAND gateway_resilience_test
+             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
+    add_executable(gateway_resilience_reconnect_test tests/reconnect_test.cpp)
+    target_link_libraries(gateway_resilience_reconnect_test PRIVATE mmo::gateway_resilience)
+    target_include_directories(gateway_resilience_reconnect_test PRIVATE
+        ${CMAKE_SOURCE_DIR}/engine/core/tests)
+    add_test(NAME Gateway_Resilience_Reconnect.Suite COMMAND gateway_resilience_reconnect_test
+             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
+    add_executable(gateway_resilience_failover_test tests/failover_test.cpp)
+    target_link_libraries(gateway_resilience_failover_test PRIVATE mmo::gateway_resilience)
+    target_include_directories(gateway_resilience_failover_test PRIVATE
+        ${CMAKE_SOURCE_DIR}/engine/core/tests)
+    add_test(NAME Gateway_Resilience_Failover.Suite COMMAND gateway_resilience_failover_test
+             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+endif()
