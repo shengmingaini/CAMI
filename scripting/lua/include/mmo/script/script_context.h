@@ -120,6 +120,26 @@ public:
     /// **失败时不留任何半成品**（脚本不会被登记，版本号不变）。
     core::Result<ScriptId> Load(std::string_view name, std::string_view source);
 
+    /// 原地热替换（TASK-032 加法扩展，不改变既有 `Load` / `Unload` / `Call` 语义）。
+    ///
+    /// **与 `Load` 的唯一但关键的区别**：`Load` 对同名脚本也是「新建 `_ENV` → 换模块表」，
+    /// 等于把脚本全局状态清零（首次装载无所谓，热更时不可接受）。本方法**复用旧脚本的私有
+    /// `_ENV`**，只把新编译产物接到同一个环境上 —— 脚本里 `counter = counter + 1` 这类跨调用
+    /// 累积的状态因此**连续保留**，满足 TASK-032 §17「切换后新逻辑生效且状态连续（脚本全局
+    /// 变量保留）」与 §21「禁止热更时重建 VM（会丢失脚本全局状态）」。
+    ///
+    /// 语义与失败保证：
+    ///   - `name` 必须**已装载**，否则 `NOT_FOUND`（热替换不是装载，缺失即报错，不静默新建）；
+    ///   - 必须在 OwnerThread 调用，否则 `BUSY`；
+    ///   - 必须在**没有脚本正在执行**时调用（`InScriptExecution() == false`），否则 `BUSY`
+    ///     —— 这是「Activate 只能在 Tick Safe Point 执行」的强制点（TASK-032 §9 / §21）；
+    ///   - 失败（语法错误 / 顶层执行出错）时**线上旧版本完全不受影响**：新 chunk 先编译再执行，
+    ///     任一步失败立即返回，旧模块表、旧 `_ENV` 与版本号原样保留（TASK-032 §20 验收 #2）；
+    ///   - 成功时只有该脚本的模块表被换掉，版本号 +1，其余脚本与 `_ENV` 不受影响。
+    ///
+    /// 注意：本方法替换的是**模块表/函数引用**，不重建 VM（TASK-032 §15 第 5 步）。
+    core::Result<ScriptId> ReloadInPlace(std::string_view name, std::string_view source);
+
     /// §7 卸载脚本：释放其模块表与 `_ENV`（脚本全局状态随之回收）。
     /// 幂等：未加载的 id 返回 `NOT_FOUND`（与 TASK-011 Destroy 的幂等口径一致，可安全重试）。
     core::Result<void> Unload(ScriptId id);
@@ -287,11 +307,19 @@ private:
     explicit ScriptContext(std::unique_ptr<LuaVM> vm);
 
     /// 已加载脚本条目：模块表注册表引用（-1 = 已卸载）。
-    /// 脚本的私有 `_ENV` 通过模块表的 `__index` 可达，故无需单独持有。
     struct ScriptEntry {
         ScriptId id{kInvalidScriptId};
         std::string name;
         int module_ref{-1};  ///< LUA_NOREF
+        /// 该脚本私有 `_ENV` 表的注册表引用（-1 = 无）。
+        ///
+        /// 为什么必须显式持有（TASK-032 加法扩展）：热更要求在**不新建 VM、不新建 `_ENV`** 的
+        /// 前提下替换脚本实现，否则脚本全局变量（计数器/缓存）会随旧 `_ENV` 一起被丢弃，
+        /// 违反 TASK-032 §17「切换后状态连续」与 §21「禁止热更时重建 VM（会丢失脚本全局状态）」。
+        /// 仅靠 `module_ref` 无法可靠取回 `_ENV`：脚本返回 table 时模块表是那张表、`_ENV` 挂在
+        /// 它的元表 `__index` 上；脚本不返回 table 时模块表**就是** `_ENV` —— 两种形态靠
+        /// 猜测区分会出错，所以直接存引用。
+        int env_ref{-1};
     };
 
     /// 暂存的脚本变更（§13 Safe Point 生效）。
@@ -315,13 +343,18 @@ private:
     /// 仅编译（不接受字节码）：语法错误在此立即暴露，返回 chunk 的注册表引用。
     core::Result<void> CompileChunk(std::string_view name, std::string_view source,
                                     int* out_chunk_ref);
-    /// 在独立 `_ENV` 中执行已编译 chunk，返回模块表引用（失败细节写入 VM 的 LastError）。
-    core::Result<void> RunCompiledChunk(std::string_view name, int chunk_ref, int* out_module_ref);
-    /// 编译 + 执行（一步到位）。
-    core::Result<int> RunChunkFromSource(std::string_view name, std::string_view source);
+    /// 在 `_ENV` 中执行已编译 chunk，返回模块表引用（失败细节写入 VM 的 LastError）。
+    ///
+    /// `env_ref < 0` 时**新建**私有 `_ENV`（首次装载）；`env_ref >= 0` 时**复用**该环境
+    /// （原地热替换，脚本全局状态保留）。两种情形都把实际使用的 `_ENV` 引用写入 `out_env_ref`。
+    core::Result<void> RunCompiledChunk(std::string_view name, int chunk_ref, int env_ref,
+                                        int* out_module_ref, int* out_env_ref);
+    /// 编译 + 执行（一步到位）。`env_ref < 0` = 新建环境。
+    core::Result<int> RunChunkFromSource(std::string_view name, std::string_view source,
+                                         int env_ref, int* out_env_ref);
 
-    /// 登记脚本（同名 = 热替换，id 不变）并递增版本号。
-    core::Result<ScriptId> ActivateScript(std::string_view name, int module_ref);
+    /// 登记脚本（同名 = 热替换，id 不变）并递增版本号。旧模块表与旧 `_ENV` 在此释放。
+    core::Result<ScriptId> ActivateScript(std::string_view name, int module_ref, int env_ref);
 
     /// 立即卸载（释放引用 + 版本 +1）。幂等判定在调用方。
     core::Result<void> UnloadImmediate(ScriptId id);

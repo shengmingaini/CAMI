@@ -44,7 +44,11 @@ add_library(mmo_script_lua STATIC
     src/bind_entity.cpp
     src/bind_command.cpp
     src/bind_query.cpp
-    src/bind_event.cpp)
+    src/bind_event.cpp
+    # ---- TASK-032 · Lua Hot Reload ----
+    src/hot_reload/hot_reloader.cpp
+    src/hot_reload/audit_sink.cpp
+    src/hot_reload/script_reload_stage.cpp)
 add_library(mmo::script_lua ALIAS mmo_script_lua)
 
 target_include_directories(mmo_script_lua PUBLIC
@@ -56,6 +60,10 @@ target_link_libraries(mmo_script_lua PUBLIC
     mmo::core_bus
     mmo::core_time
     mmo::gamenode_entity
+    # TASK-032 §27.2：消费 TASK-013 的公开接口（ISimulationStage / TickPhase / SceneContext），
+    # 用于把热更安全点接到 Tick 边界。方向为 scripting -> scheduler（无环：scheduler 不依赖
+    # scripting，scene/entity 也不依赖 scripting，已核对）。
+    mmo::gamenode_sched
     mmo_lua_thirdparty)
 mmorpg_add_warnings(mmo_script_lua)
 
@@ -76,6 +84,22 @@ if(MMORPG_BUILD_TESTS)
     target_compile_options(lua_integration_test PRIVATE -Wno-pedantic)
     add_test(NAME Lua_Integration.Suite COMMAND lua_integration_test
              WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
+    # ---- TASK-032 · Lua Hot Reload（验收脚本 run_ctest 'HotReload'）----
+    add_executable(hot_reload_test tests/hot_reload_test.cpp)
+    target_link_libraries(hot_reload_test PRIVATE mmo::script_lua)
+    target_include_directories(hot_reload_test PRIVATE ${CMAKE_SOURCE_DIR}/engine/core/tests)
+    target_compile_options(hot_reload_test PRIVATE -Wno-pedantic)
+    add_test(NAME HotReload.Suite COMMAND hot_reload_test
+             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
+    add_executable(hot_reload_integration_test tests/hot_reload_integration_test.cpp)
+    target_link_libraries(hot_reload_integration_test PRIVATE mmo::script_lua)
+    target_include_directories(hot_reload_integration_test PRIVATE
+        ${CMAKE_SOURCE_DIR}/engine/core/tests)
+    target_compile_options(hot_reload_integration_test PRIVATE -Wno-pedantic)
+    add_test(NAME HotReload_Integration.Suite COMMAND hot_reload_integration_test
+             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 endif()
 
 # ---- Benchmark（§18，lua_bench 输出 bench/lua.txt）----
@@ -88,4 +112,21 @@ if(MMORPG_BUILD_BENCHMARKS)
     target_compile_options(lua_bench PRIVATE -Wno-pedantic)
     set_target_properties(lua_bench PROPERTIES RUNTIME_OUTPUT_DIRECTORY
         ${CMAKE_BINARY_DIR}/bin)
+
+    # ---- TASK-032 · Lua Hot Reload（验收脚本：bin/hotreload_bench --scripts 100 --reloads 10）----
+    add_executable(hotreload_bench benchmark/hotreload_bench.cpp)
+    target_link_libraries(hotreload_bench PRIVATE mmo::script_lua)
+    target_include_directories(hotreload_bench PRIVATE ${CMAKE_SOURCE_DIR}/engine/core/tests)
+    target_compile_options(hotreload_bench PRIVATE -Wno-pedantic)
+    set_target_properties(hotreload_bench PROPERTIES RUNTIME_OUTPUT_DIRECTORY
+        ${CMAKE_BINARY_DIR}/bin)
 endif()
+
+# ---- 运维 CLI（§15 第 9 步 / §23 Deliverables: tools/scriptctl/*）----
+# 接入方式与 tools/migrate/main.cpp → mysql_migrate 一致（源码放 tools/，由所属模块接入 CMake）。
+# 刻意放在 MMORPG_BUILD_TESTS/BENCHMARKS 之外：这是运维/CI 门禁工具，常规构建也应产出。
+add_executable(scriptctl ${CMAKE_SOURCE_DIR}/tools/scriptctl/main.cpp)
+target_link_libraries(scriptctl PRIVATE mmo::script_lua)
+target_compile_options(scriptctl PRIVATE -Wno-pedantic)
+set_target_properties(scriptctl PROPERTIES RUNTIME_OUTPUT_DIRECTORY
+    ${CMAKE_BINARY_DIR}/bin)

@@ -442,27 +442,70 @@ core::Result<void> ScriptContext::CompileChunk(std::string_view name, std::strin
 }
 
 core::Result<void> ScriptContext::RunCompiledChunk(std::string_view name, int chunk_ref,
-                                                  int* out_module_ref) {
+                                                  int env_ref, int* out_module_ref,
+                                                  int* out_env_ref) {
     lua_State* state = vm_->NativeState();
     const int base = lua_gettop(state);
+    *out_env_ref = -1;
 
-    // ---- 独立 _ENV：`__index = _G`，写落在本脚本私有表，读回落到沙箱全局 ----
-    // 收益：脚本 A 的全局写不会污染脚本 B（§4 单 Owner 精神），卸载即整体回收。
+    // ---- `_ENV`：新建 or 复用 ----
     //
-    // 【踩坑】栈序必须满足：**被调函数（chunk）必须是 lua_pcall 前的栈顶**。
-    // 先前实现把 env 压在 chunk 之上，`lua_pcall` 便把 env（一个 table）当成被调函数，
-    // 报 `attempt to call a table value` —— 症状极具误导性：chunk 根本没被执行，
-    // 却报成「调用了一个 table」。所以这里改成 env 先压栈、chunk 后压栈。
-    // 同时 `lua_setupvalue` 会把传入值弹出，因此 pcall 前栈顶自然回到 chunk。
-    (void)lua_pushglobaltable(state);
-    const int globals = lua_gettop(state);
-    lua_createtable(state, 0, 2);
-    const int env = lua_gettop(state);
-    lua_createtable(state, 0, 1);
-    (void)lua_pushvalue(state, globals);
-    lua_setfield(state, -2, "__index");
-    lua_setmetatable(state, env);
-    lua_settop(state, env);  // 丢掉 globals：env 的 __index 已持有引用
+    // 复用路径（`env_ref >= 0`，原地热替换，TASK-032）**不是**直接把旧环境当新环境用，
+    // 而是「新建环境 + 浅拷贝旧环境里的**非函数**值」。原因：
+    //   1. 直接复用同一张表 ⇒ 新版本删掉的旧函数仍留在表里（删不掉，因为不知道新版本会定义
+    //      哪些名字）→ 线上处于「半新半旧」，违反 TASK-032 §21；
+    //   2. 让新环境 `__index` 指向旧环境（链式继承）⇒ 连续热更会拉出 v1→v2→…→vn 的
+    //      `__index` 链，内存不释放（违反 §19「连续 10 次热更不泄漏」），且链过长会触发
+    //      Lua 的 `'__index' chain too long; possible loop`（TASK-031 已实测踩过）。
+    // 浅拷贝非函数值则同时满足三点：状态连续保留、旧函数被干净替换、内存有界。
+    // （被排除的「函数型全局」若是脚本刻意持久化的闭包，会在热更时丢失 —— 已写入
+    //   docs/HOTRELOAD.md §4 作为显式契约。）
+    int env = -1;
+    if (env_ref >= 0) {
+        (void)lua_rawgeti(state, LUA_REGISTRYINDEX, env_ref);  // [old_env]
+        if (lua_istable(state, -1) == 0) {
+            lua_settop(state, base);
+            return core::Result<void>::Fail(core::Error(
+                core::ErrorCode::INTERNAL_ERROR, "env ref not a table", core::domain::kLua));
+        }
+        const int old_env = lua_gettop(state);
+
+        (void)lua_pushglobaltable(state);
+        const int globals = lua_gettop(state);
+        lua_createtable(state, 0, 2);
+        env = lua_gettop(state);
+        lua_createtable(state, 0, 1);
+        (void)lua_pushvalue(state, globals);
+        lua_setfield(state, -2, "__index");
+        lua_setmetatable(state, env);
+
+        // 浅拷贝旧环境：跳过函数值（函数由新版本源码重新定义）。
+        (void)lua_pushnil(state);  // [old_env][globals][env][nil]
+        while (lua_next(state, old_env) != 0) {
+            // 栈：… [key][value]
+            if (lua_isfunction(state, -1) == 0) {
+                (void)lua_pushvalue(state, -2);  // [key][value][key]
+                lua_insert(state, -2);           // [key][key][value]
+                lua_rawset(state, env);          // env[key] = value（弹出 key/value）
+            } else {
+                lua_pop(state, 1);  // 丢函数值，保留 key 供 lua_next 继续
+            }
+        }
+
+        lua_settop(state, env);  // 丢掉 globals 与 old_env：env 的 __index 已持 _G 引用
+    } else {
+        // ---- 新建独立 _ENV：`__index = _G`，写落在本脚本私有表，读回落到沙箱全局 ----
+        // 收益：脚本 A 的全局写不会污染脚本 B（§4 单 Owner 精神），卸载即整体回收。
+        (void)lua_pushglobaltable(state);
+        const int globals = lua_gettop(state);
+        lua_createtable(state, 0, 2);
+        env = lua_gettop(state);
+        lua_createtable(state, 0, 1);
+        (void)lua_pushvalue(state, globals);
+        lua_setfield(state, -2, "__index");
+        lua_setmetatable(state, env);
+        lua_settop(state, env);  // 丢掉 globals：env 的 __index 已持有引用
+    }
 
     lua_pushcfunction(state, &LuaErrorHandler);
     const int msgh = lua_gettop(state);
@@ -498,6 +541,12 @@ core::Result<void> ScriptContext::RunCompiledChunk(std::string_view name, int ch
     }
 
     // ---- 结果：chunk 返回 table ⇒ 该表为模块表；否则以 env 为模块表 ----
+    //
+    // 【踩坑 · 栈序】`lua_pcall` 要求**被调函数在栈顶**。此前把 env 压在 chunk 之上，
+    // pcall 便把 env（一张 table）当成被调函数，报 `attempt to call a table value`
+    // —— 症状极具误导性：chunk 根本没执行，却报成「调用了一个 table」。
+    // 因此本函数严格保证：env 先压栈、chunk 后压栈；`lua_setupvalue` 会弹出传入值，
+    // pcall 前栈顶自然回到 chunk。
     int module = -1;
     if (lua_istable(state, -1) != 0) {
         if (lua_getmetatable(state, -1) == 0) {
@@ -514,6 +563,10 @@ core::Result<void> ScriptContext::RunCompiledChunk(std::string_view name, int ch
         (void)lua_pushvalue(state, env);
         module = luaL_ref(state, LUA_REGISTRYINDEX);
     }
+    // 把实际使用的 `_ENV` 也固化成一个注册表引用返回给调用方（热更需要长期持有它）。
+    (void)lua_pushvalue(state, env);
+    *out_env_ref = luaL_ref(state, LUA_REGISTRYINDEX);
+
     lua_settop(state, base);
     *out_module_ref = module;
     (void)name;
@@ -521,17 +574,30 @@ core::Result<void> ScriptContext::RunCompiledChunk(std::string_view name, int ch
 }
 
 core::Result<int> ScriptContext::RunChunkFromSource(std::string_view name,
-                                                   std::string_view source) {
+                                                    std::string_view source, int env_ref,
+                                                    int* out_env_ref) {
     int chunk_ref = -1;
     const core::Result<void> compiled = CompileChunk(name, source, &chunk_ref);
     if (!compiled) {
         return core::Result<int>::Fail(compiled.Err());
     }
     int module_ref = -1;
-    const core::Result<void> ran = RunCompiledChunk(name, chunk_ref, &module_ref);
+    int used_env_ref = -1;
+    const core::Result<void> ran =
+        RunCompiledChunk(name, chunk_ref, env_ref, &module_ref, &used_env_ref);
     luaL_unref(vm_->NativeState(), LUA_REGISTRYINDEX, chunk_ref);
     if (!ran) {
+        // 失败路径：本次新建的 `_ENV` 引用必须立刻释放，否则每次失败的 Prepare/Activate
+        // 都会在 registry 里漏一个槽位（§19「连续热更不泄漏」的反面）。
+        if (used_env_ref >= 0 && used_env_ref != env_ref) {
+            luaL_unref(vm_->NativeState(), LUA_REGISTRYINDEX, used_env_ref);
+        }
         return core::Result<int>::Fail(ran.Err());
+    }
+    if (out_env_ref != nullptr) {
+        *out_env_ref = used_env_ref;
+    } else if (used_env_ref >= 0 && used_env_ref != env_ref) {
+        luaL_unref(vm_->NativeState(), LUA_REGISTRYINDEX, used_env_ref);
     }
     return core::Result<int>::Ok(module_ref);
 }
@@ -574,14 +640,57 @@ core::Result<ScriptId> ScriptContext::Load(std::string_view name, std::string_vi
         return core::Result<ScriptId>::Ok(target_id);
     }
 
-    auto module = RunChunkFromSource(name, source);
+    int env_ref = -1;
+    auto module = RunChunkFromSource(name, source, -1, &env_ref);
     if (!module) {
         return core::Result<ScriptId>::Fail(module.Err());
     }
-    return ActivateScript(name, module.Value());
+    return ActivateScript(name, module.Value(), env_ref);
 }
 
-core::Result<ScriptId> ScriptContext::ActivateScript(std::string_view name, int module_ref) {
+core::Result<ScriptId> ScriptContext::ReloadInPlace(std::string_view name,
+                                                   std::string_view source) {
+    if (!vm_->OnOwnerThread()) {
+        return core::Result<ScriptId>::Fail(core::Error(
+            core::ErrorCode::BUSY, "not lua owner thread", core::domain::kLua));
+    }
+    if (name.empty()) {
+        return core::Result<ScriptId>::Fail(core::Error(
+            core::ErrorCode::INVALID_ARGUMENT, "empty script name", core::domain::kLua));
+    }
+    // §9「Activate 只能在 SimulationThread 的 Tick Safe Point」的强制点：
+    // 正在执行脚本时调用 = 试图在 Tick 中途替换 → 拒绝（不排队；热更有自己的 Prepare/票证
+    // 机制，宿主应在安全点重试）。
+    if (run_depth_ > 0) {
+        return core::Result<ScriptId>::Fail(core::Error(
+            core::ErrorCode::BUSY, "reload not allowed during script execution",
+            core::domain::kLua));
+    }
+    const auto existing = by_name_.find(name);
+    if (existing == by_name_.end()) {
+        // 热替换不是装载：名字不存在就是调用方搞错了，静默新建会掩盖问题。
+        return core::Result<ScriptId>::Fail(core::Error(
+            core::ErrorCode::NOT_FOUND, "script not loaded", core::domain::kLua));
+    }
+    const ScriptId id = existing->second;
+    if (id == kInvalidScriptId || id > scripts_.size() || scripts_[id - 1].module_ref < 0) {
+        return core::Result<ScriptId>::Fail(core::Error(
+            core::ErrorCode::NOT_FOUND, "script not loaded", core::domain::kLua));
+    }
+    const int old_env_ref = scripts_[id - 1].env_ref;
+
+    int env_ref = -1;
+    auto module = RunChunkFromSource(name, source, old_env_ref, &env_ref);
+    if (!module) {
+        // 新版本编译/执行失败：**旧版本完全不受影响**（§20 验收 #2）。上面 RunChunkFromSource
+        // 已负责释放本次新建的 env 引用，这里直接透传错误。
+        return core::Result<ScriptId>::Fail(module.Err());
+    }
+    return ActivateScript(name, module.Value(), env_ref);
+}
+
+core::Result<ScriptId> ScriptContext::ActivateScript(std::string_view name, int module_ref,
+                                                    int env_ref) {
     lua_State* state = vm_->NativeState();
     const auto existing = by_name_.find(name);
     if (existing != by_name_.end()) {
@@ -589,7 +698,13 @@ core::Result<ScriptId> ScriptContext::ActivateScript(std::string_view name, int 
         if (entry.module_ref >= 0) {
             luaL_unref(state, LUA_REGISTRYINDEX, entry.module_ref);  // 热替换：释放旧模块表
         }
+        if (entry.env_ref >= 0) {
+            // 旧 `_ENV` 也必须释放：模块表与 `_ENV` 是两个独立的 registry 槽位，
+            // 只放前者会在每次热更漏一个槽位（§19「连续热更不泄漏」的反面）。
+            luaL_unref(state, LUA_REGISTRYINDEX, entry.env_ref);
+        }
         entry.module_ref = module_ref;
+        entry.env_ref = env_ref;
         entry.name.assign(name);
         vm_->BumpVersion();
         return core::Result<ScriptId>::Ok(entry.id);
@@ -599,6 +714,7 @@ core::Result<ScriptId> ScriptContext::ActivateScript(std::string_view name, int 
     entry.id = static_cast<ScriptId>(scripts_.size() + 1);
     entry.name.assign(name);
     entry.module_ref = module_ref;
+    entry.env_ref = env_ref;
     scripts_.push_back(entry);
     by_name_.emplace(entry.name, entry.id);
     activated_.push_back(scripts_.size() - 1);
@@ -633,6 +749,10 @@ core::Result<void> ScriptContext::UnloadImmediate(ScriptId id) {
     }
     ScriptEntry& entry = scripts_[id - 1];
     luaL_unref(vm_->NativeState(), LUA_REGISTRYINDEX, entry.module_ref);
+    if (entry.env_ref >= 0) {
+        luaL_unref(vm_->NativeState(), LUA_REGISTRYINDEX, entry.env_ref);  // 释放私有 `_ENV`
+        entry.env_ref = -1;
+    }
     entry.module_ref = -1;
     by_name_.erase(entry.name);
     vm_->BumpVersion();
@@ -955,7 +1075,9 @@ core::Result<void> ScriptContext::ApplyPendingChanges() {
             continue;
         }
         int module_ref = -1;
-        const core::Result<void> ran = RunCompiledChunk(op.name, op.chunk_ref, &module_ref);
+        int env_ref = -1;
+        const core::Result<void> ran =
+            RunCompiledChunk(op.name, op.chunk_ref, -1, &module_ref, &env_ref);
         if (op.chunk_ref >= 0) {
             luaL_unref(state, LUA_REGISTRYINDEX, op.chunk_ref);
             op.chunk_ref = -1;
@@ -963,9 +1085,12 @@ core::Result<void> ScriptContext::ApplyPendingChanges() {
         if (!ran) {
             // 激活失败（例如运行期错误 / 内存触顶）：**放弃该变更**，保留原脚本集
             // —— 这是 §13 Rollback 的语义：热更不能把好的旧版本一起赔进去。
+            if (env_ref >= 0) {
+                luaL_unref(state, LUA_REGISTRYINDEX, env_ref);
+            }
             continue;
         }
-        (void)ActivateScript(op.name, module_ref);
+        (void)ActivateScript(op.name, module_ref, env_ref);
     }
     return core::Result<void>::Ok();
 }
