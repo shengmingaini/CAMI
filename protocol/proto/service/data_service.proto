@@ -1,0 +1,49 @@
+// data_service.proto — DataService 持久化接口契约（TASK-026）
+//
+// 定位：GameNode 与 DataService 之间的跨进程存储契约。本任务只定义接口与内存实现，
+// 真实落盘（外部持久化 / 外部缓存）由后续任务接入；此处给出与 IDataStore / ICache
+// 一致的 RPC 签名，供 gRPC 代码生成使用（本任务不强制生成，仅作为契约交付物）。
+syntax = "proto3";
+
+package mmo.protocol.data;
+
+// 单条数据记录（与具体存储技术无关的中性载体）。
+message Record {
+  string key            = 1;  // 主键 <domain>:<id>
+  bytes  payload        = 2;  // 序列化后字节
+  uint32 version        = 3;  // 乐观锁版本号
+  int64  updated_at_unix_ms = 4;  // 最后更新时刻（墙钟，仅供审计）
+}
+
+message LoadRequest   { string key = 1; }
+message LoadResponse  { Record record = 1; bool found = 2; }
+
+message SaveRequest {
+  Record record           = 1;
+  uint32 expected_version = 2;  // 乐观锁期望版本
+  bool   version_check    = 3;  // true 时强制校验
+}
+message SaveResponse { bool ok = 1; uint32 code = 2; uint32 actual_version = 3; }
+
+message DeleteRequest {
+  string key              = 1;
+  uint32 expected_version = 2;
+  bool   version_check    = 3;
+}
+message DeleteResponse { bool ok = 1; uint32 code = 2; }
+
+message BatchLoadRequest  { repeated string keys = 1; }
+message BatchLoadResponse { repeated Record records = 1; }
+
+message BatchOutcome { string key = 1; bool ok = 2; uint32 code = 3; }
+message BatchSaveRequest  { repeated Record records = 1; }
+message BatchSaveResponse { repeated BatchOutcome outcomes = 1; }
+
+// 持久化服务：与 IDataStore / ICache 语义对齐。
+service DataService {
+  rpc Load(LoadRequest) returns (LoadResponse);
+  rpc Save(SaveRequest) returns (SaveResponse);
+  rpc BatchLoad(BatchLoadRequest) returns (BatchLoadResponse);
+  rpc BatchSave(BatchSaveRequest) returns (BatchSaveResponse);
+  rpc Delete(DeleteRequest) returns (DeleteResponse);
+}

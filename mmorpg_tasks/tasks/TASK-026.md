@@ -4,7 +4,8 @@ NAME: DataService Interface
 PHASE: Phase 6 · 数据系统
 MODULE: server/dataservice
 OWNER: Codex / WorkBuddy Agent 实施；@技术总监 二次验收；本地 MinGW MSYS2 g++ + vcpkg 编译验证
-STATUS: PENDING
+STATUS: DONE
+DONE-DATE: 2026-09-10
 DEPENDENCIES: TASK-005, TASK-006
 ---
 
