@@ -4,7 +4,7 @@ NAME: Lua Runtime
 PHASE: Phase 7 · Lua 脚本
 MODULE: scripting/lua
 OWNER: Codex / WorkBuddy Agent 实施；@技术总监 二次验收；本地 MinGW MSYS2 g++ + vcpkg 编译验证
-STATUS: PENDING
+STATUS: DONE
 DEPENDENCIES: TASK-001, TASK-004, TASK-005, TASK-007, TASK-011
 ---
 
@@ -20,7 +20,7 @@ DEPENDENCIES: TASK-001, TASK-004, TASK-005, TASK-007, TASK-011
 | PHASE | Phase 7 · Lua 脚本 |
 | MODULE | `scripting/lua` |
 | OWNER | Codex / WorkBuddy Agent 实施；@技术总监 二次验收；本地 MinGW MSYS2 g++ + vcpkg 编译验证 |
-| STATUS | **PENDING** |
+| STATUS | **DONE** |
 | DEPENDENCIES | `TASK-001`, `TASK-004`, `TASK-005`, `TASK-007`, `TASK-011` |
 
 ---
