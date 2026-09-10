@@ -21,11 +21,18 @@ namespace mmo::data::redis {
 namespace {
 
 core::Error MapCtxErr(redisContext* c) {
+    // 用 hiredis 的**命名常量**而非魔数：其编号非顺序语义
+    // （IO=1 / OTHER=2 / EOF=3 / PROTOCOL=4 / OOM=5 / TIMEOUT=6）。
+    // 首版曾写 `err==4 -> TIMEOUT`（实为 PROTOCOL）与 `err==3 -> IO`（实为 EOF），
+    // 导致真实读超时(6) 落空、被误报为 INTERNAL_ERROR。此处不再依赖 errno 启发式：
+    // 实测 hiredis 对 SO_RCVTIMEO 到期即置 REDIS_ERR_TIMEOUT + errstr="recv timeout"。
     core::ErrorCode code = core::ErrorCode::INTERNAL_ERROR;
-    if (c->err == 4 /*REDIS_ERR_TIMEOUT*/)
-        code = core::ErrorCode::TIMEOUT;
-    else if (c->err == 3 /*REDIS_ERR_IO*/)
-        code = core::ErrorCode::BUSY;
+    if (c->err == REDIS_ERR_TIMEOUT) {
+        code = core::ErrorCode::TIMEOUT;                       // 网络类瞬时失败（可重试）
+    } else if (c->err == REDIS_ERR_IO || c->err == REDIS_ERR_EOF ||
+               c->err == REDIS_ERR_OTHER) {
+        code = core::ErrorCode::BUSY;                          // 连接层不可用（可重试）
+    }                                                          // PROTOCOL / OOM：不可恢复
     const char* msg = (c->errstr[0] != '\0') ? c->errstr : "redis context error";
     return core::Error(code, msg, core::domain::kData);
 }

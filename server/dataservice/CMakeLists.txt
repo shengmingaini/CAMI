@@ -49,10 +49,13 @@ endif()
 
 # ---- TASK-027 · Redis 适配器 ----
 # 依赖第三方客户端库 hiredis（mingw 已提供 libhiredis）。仅本模块 src/ 引用。
+# SessionStore 消费 TASK-009 gateway/session 公开头（ISessionStore 契约 + Session POD），
+# 故此处链接 mmo::gateway_session（仅取公开 include，不 include 其 src/，§27.3）。
 add_library(mmo_dataservice_redis STATIC
     src/redis/serialization.cpp
     src/redis/connection_pool.cpp
-    src/redis/redis_cache.cpp)
+    src/redis/redis_cache.cpp
+    src/redis/session_store.cpp)
 add_library(mmo::dataservice_redis ALIAS mmo_dataservice_redis)
 
 target_include_directories(mmo_dataservice_redis PUBLIC
@@ -61,6 +64,7 @@ target_include_directories(mmo_dataservice_redis PUBLIC
 target_compile_features(mmo_dataservice_redis PUBLIC cxx_std_20)
 target_link_libraries(mmo_dataservice_redis PUBLIC
     mmo::dataservice
+    mmo::gateway_session
     hiredis)
 mmorpg_add_warnings(mmo_dataservice_redis)
 # hiredis 内部 int/size_t 混用，关闭转换告警避免与第三方库纠缠（不影响本模块自有告警）

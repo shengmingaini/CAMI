@@ -11,8 +11,21 @@
 #include <hiredis/hiredis.h>
 
 #include "mmo/core/error/error_code.h"
+#include "mmo/data/redis/retry.h"
 
 namespace mmo::data::redis {
+
+// 编译期护栏（§15.5）：retry.h 的数值镜像必须与 hiredis 真值逐项一致。
+// 首版 bug 的根因是「按顺序假设」写魔数（4=TIMEOUT / 3=IO），实际 4=PROTOCOL、3=EOF，
+// 使真实超时(6) 落空。这里把该假设固化为编译期断言，hiredis 升级改动编号即构建失败。
+static_assert(static_cast<int>(kRedisErrIo) == REDIS_ERR_IO, "retry.h 镜像漂移: Io");
+static_assert(static_cast<int>(kRedisErrOther) == REDIS_ERR_OTHER, "retry.h 镜像漂移: Other");
+static_assert(static_cast<int>(kRedisErrEof) == REDIS_ERR_EOF, "retry.h 镜像漂移: Eof");
+static_assert(static_cast<int>(kRedisErrProtocol) == REDIS_ERR_PROTOCOL,
+              "retry.h 镜像漂移: Protocol");
+static_assert(static_cast<int>(kRedisErrOom) == REDIS_ERR_OOM, "retry.h 镜像漂移: Oom");
+static_assert(static_cast<int>(kRedisErrTimeout) == REDIS_ERR_TIMEOUT,
+              "retry.h 镜像漂移: Timeout");
 
 core::Result<std::string> ResolveRedisPassword(const RedisConfig& cfg) {
     if (cfg.password_env.empty()) {
@@ -42,6 +55,18 @@ redisContext* ConnectionPool::ConnectOne() const {
     redisContext* c = redisConnectWithTimeout(cfg_.host.c_str(), static_cast<int>(cfg_.port), tv);
     if (c == nullptr) return nullptr;
     if (c->err != 0) {
+        redisFree(c);
+        return nullptr;
+    }
+
+    // §19：单次操作超时必须落到 socket 上，否则慢查询（服务端阻塞）会让客户端挂死而非
+    // 返回 TIMEOUT。redisSetTimeout 设置 SO_RCVTIMEO/SO_SNDTIMEO；到期后 hiredis 置
+    // c->err = REDIS_ERR_TIMEOUT（= 6，**不是** 1..5 的顺序值）且 errstr = "recv timeout"，
+    // 由 MapCtxErr 映射为 ErrorCode::TIMEOUT。实测 op_timeout=200ms 时调用耗时 203ms。
+    struct timeval op_tv;
+    op_tv.tv_sec = static_cast<long>(cfg_.op_timeout.count() / 1000);
+    op_tv.tv_usec = static_cast<long>((cfg_.op_timeout.count() % 1000) * 1000);
+    if (redisSetTimeout(c, op_tv) != REDIS_OK) {
         redisFree(c);
         return nullptr;
     }
@@ -110,8 +135,10 @@ core::Result<PooledConnection> ConnectionPool::Acquire(mmo::core::DurationMs tim
             if (in_use_ < cfg_.pool_size) {
                 redisContext* c = ConnectOne();
                 if (c == nullptr) {
+                    // 口径统一（§19）：后端不可用一律 BUSY（core 无 UNAVAILABLE 码），
+                    // 与 Create 的探测失败保持同码，便于上层按 IsRetryable 统一退避。
                     return core::Result<PooledConnection>::Fail(core::Error(
-                        core::ErrorCode::TIMEOUT, "redis connect failed", core::domain::kData));
+                        core::ErrorCode::BUSY, "redis connect failed", core::domain::kData));
                 }
                 ++in_use_;
                 return core::Result<PooledConnection>::Ok(PooledConnection(c, this));
