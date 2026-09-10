@@ -46,3 +46,45 @@ if(MMORPG_BUILD_BENCHMARKS)
     set_target_properties(data_bench PROPERTIES RUNTIME_OUTPUT_DIRECTORY
         ${CMAKE_BINARY_DIR}/bin)
 endif()
+
+# ---- TASK-027 · Redis 适配器 ----
+# 依赖第三方客户端库 hiredis（mingw 已提供 libhiredis）。仅本模块 src/ 引用。
+add_library(mmo_dataservice_redis STATIC
+    src/redis/serialization.cpp
+    src/redis/connection_pool.cpp
+    src/redis/redis_cache.cpp)
+add_library(mmo::dataservice_redis ALIAS mmo_dataservice_redis)
+
+target_include_directories(mmo_dataservice_redis PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:include>)
+target_compile_features(mmo_dataservice_redis PUBLIC cxx_std_20)
+target_link_libraries(mmo_dataservice_redis PUBLIC
+    mmo::dataservice
+    hiredis)
+mmorpg_add_warnings(mmo_dataservice_redis)
+# hiredis 内部 int/size_t 混用，关闭转换告警避免与第三方库纠缠（不影响本模块自有告警）
+target_compile_options(mmo_dataservice_redis PRIVATE -Wno-conversion -Wno-sign-conversion -Wno-pedantic)
+
+if(MMORPG_BUILD_TESTS)
+    add_executable(redis_test tests/redis_test.cpp)
+    target_link_libraries(redis_test PRIVATE
+        mmo::dataservice_redis)
+    target_include_directories(redis_test PRIVATE
+        ${CMAKE_SOURCE_DIR}/engine/core/tests)
+    target_compile_options(redis_test PRIVATE -Wno-conversion -Wno-sign-conversion -Wno-pedantic)
+    # ctest -R DataService_Redis 命中；无实例时集成用例明确 SKIP（§20.7）
+    add_test(NAME DataService.Redis COMMAND redis_test
+             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+endif()
+
+if(MMORPG_BUILD_BENCHMARKS)
+    add_executable(redis_bench benchmark/redis_bench.cpp)
+    target_link_libraries(redis_bench PRIVATE
+        mmo::dataservice_redis)
+    target_include_directories(redis_bench PRIVATE
+        ${CMAKE_SOURCE_DIR}/engine/core/tests)
+    target_compile_options(redis_bench PRIVATE -Wno-conversion -Wno-sign-conversion -Wno-pedantic)
+    set_target_properties(redis_bench PROPERTIES RUNTIME_OUTPUT_DIRECTORY
+        ${CMAKE_BINARY_DIR}/bin)
+endif()

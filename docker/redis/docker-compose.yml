@@ -1,0 +1,22 @@
+# docker/redis/docker-compose.yml — TASK-027 本地 Redis 实例
+#
+# 仅用于本地验收（§15.9 / §17 / §19）。生产由 DataService 统一管控，禁止 GameNode 直连。
+# 启动： docker compose -f docker/redis/docker-compose.yml up -d
+# 停止： docker compose -f docker/redis/docker-compose.yml down
+#
+# 注意：GFW 可能拦截 Docker Hub 拉取；可选用国内镜像（在 Docker Desktop 配置 registry-mirrors）
+# 或改用 Windows 原生实现（Memurai / tporadowski-redis），监听 6379 即可。
+
+services:
+  redis:
+    image: redis:7
+    container_name: cami-redis
+    ports:
+      - "6379:6379"
+    command: ["redis-server", "--appendonly", "no", "--save", ""]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped

@@ -135,28 +135,49 @@ cmake_configure() {
   step "cmake configure ($bt)"
   local dir="$BUILD_ROOT/$bt"
   mkdir -p "$dir"
-  cmake -S "$ROOT" -B "$dir" -G "$GENERATOR" \
-    -DCMAKE_BUILD_TYPE="$bt" \
-    -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
-    -DMMORPG_BUILD_TESTS=ON \
-    -DMMORPG_BUILD_BENCHMARKS=ON \
-    || die "cmake configure 失败（$bt）。禁止跳过，先修根因。"
+  if [ "${MMO_OFFLINE:-0}" = "1" ]; then
+    # 离线模式：跳过 vcpkg manifest 安装，改走系统 MinGW 库（Windows 风格编译器/构建器路径，
+    # 规避 MSYS 路径在全新 shell 下无法 spawn ninja 的问题）。与本地手动验证口径一致。
+    cmake -S "$ROOT" -B "$dir" -G "$GENERATOR" \
+      -DCMAKE_BUILD_TYPE="$bt" \
+      -DMMORPG_BUILD_TESTS=ON \
+      -DMMORPG_BUILD_BENCHMARKS=ON \
+      -DVCPKG_MANIFEST_INSTALL=OFF \
+      -DVCPKG_APPLOCAL_DEPS=OFF \
+      -DCMAKE_CXX_COMPILER="C:/msys64/mingw64/bin/c++.exe" \
+      -DCMAKE_C_COMPILER="C:/msys64/mingw64/bin/gcc.exe" \
+      -DCMAKE_MAKE_PROGRAM="C:/msys64/mingw64/bin/ninja.exe" \
+      || die "cmake configure 失败（离线，$bt）。禁止跳过，先修根因。"
+  else
+    cmake -S "$ROOT" -B "$dir" -G "$GENERATOR" \
+      -DCMAKE_BUILD_TYPE="$bt" \
+      -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
+      -DMMORPG_BUILD_TESTS=ON \
+      -DMMORPG_BUILD_BENCHMARKS=ON \
+      || die "cmake configure 失败（$bt）。禁止跳过，先修根因。"
+  fi
   ok "cmake configure 通过（$bt）"
 }
 
 # ---- 编译 ----------------------------------------------------------------
+# 支持多目标：cmake_build <bt> <t1> [t2 ...]；缺省 all。
 cmake_build() {
-  local bt="${1:-$BUILD_TYPE}" target="${2:-all}"
-  step "cmake build ($bt / $target)"
-  cmake --build "$BUILD_ROOT/$bt" --target "$target" -j "$PARALLEL" \
-    || die "编译失败（$bt）。禁止注释代码绕过，禁止 -k 忽略错误。"
-  ok "编译通过（$bt / $target）"
+  local bt="${1:-$BUILD_TYPE}"; shift || true
+  local targets=("${@:-all}")
+  step "cmake build ($bt / ${targets[*]})"
+  for t in "${targets[@]}"; do
+    cmake --build "$BUILD_ROOT/$bt" --target "$t" -j "$PARALLEL" \
+      || die "编译失败（$bt / $t）。禁止注释代码绕过，禁止 -k 忽略错误。"
+  done
+  ok "编译通过（$bt / ${targets[*]}）"
 }
 
 # ---- Debug + Release 双构建（基础类任务要求） ----------------------------
+# MMO_BUILD_TARGET 可限定只编本任务相关目标（离线验收避免拉起整项目 vcpkg-only 依赖）。
 cmake_build_both() {
-  cmake_configure Debug;   cmake_build Debug
-  cmake_configure Release; cmake_build Release
+  local tgts="${MMO_BUILD_TARGET:-all}"
+  cmake_configure Debug;   cmake_build Debug $tgts
+  cmake_configure Release; cmake_build Release $tgts
 }
 
 # ---- ctest ---------------------------------------------------------------
@@ -214,4 +235,16 @@ require_free_port() {
     die "端口 $p 已被占用，先释放或使用 MMORPG_PORT_OFFSET 偏移"
   fi
   ok "端口可用：$p"
+}
+
+# ---- 端口已占用检查（真实实例类任务：期望实例已在线监听，如 Redis/MariaDB）----
+# 与 require_free_port 语义相反；真实实例任务（§20.1）要求端口被实例占用而非空闲。
+require_port_open() {
+  local p="$1"
+  if (exec 3<>"/dev/tcp/127.0.0.1/$p") 2>/dev/null; then
+    exec 3>&- 2>/dev/null
+    ok "端口已占用（实例在线）：$p"
+  else
+    die "端口 $p 未占用（期望有真实实例在监听，如 Redis/MariaDB）。先启动实例再验收。"
+  fi
 }
