@@ -220,9 +220,9 @@ bash scripts/verify/task-028.sh
 
 1. 前置任务门禁：`require_tasks_done 026`
 2. 交付物存在性检查（6 项）
-3. 端口占用检查：3306
+3. 端口在线检查：3306（须有真实外部实例在监听）
 4. CMake configure + 编译（Debug + Release 双构建）
-5. ctest 过滤执行：`-R DataService_MySql`
+5. ctest 过滤执行：`-R DataService.MySql`
 6. Benchmark 执行：`bin/mysql_bench --ops 10000`
 7. 性能阈值断言：`bench/mysql.txt` 中 `select_ns` ≤ `1000000`
 8. 性能阈值断言：`bench/mysql.txt` 中 `pool_acquire_ns` ≤ `5000`

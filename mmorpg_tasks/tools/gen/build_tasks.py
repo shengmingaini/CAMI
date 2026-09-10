@@ -55,6 +55,7 @@ OPTIONAL = {
     "state": "",             # 该任务专属的 State Owner 描述（缺省用 STATE[id]）
     "ctype": "feat",         # Conventional Commits 类型
     "both_build": False,
+    "notice": [],            # 前置阻塞/警示块（行列表，渲染为任务书顶部引用块）
 }
 
 # --------------------------------------------------------------------------
@@ -324,6 +325,16 @@ def render_md(t):
     head.append("")
     head.append("---")
     head.append("")
+
+    # 前置阻塞/警示块（可选）：用于「规格已过期，暂不具备开工条件」这类必须显眼的信息。
+    # 单靠 docs/ 或 RFC 里的记录不够——实施者（人或 Agent）通常是**从任务书开头开始读**，
+    # 不在任务书里拦住，就会直接按过期规格开工。
+    if t.get("notice"):
+        for ln in t["notice"]:
+            head.append(("> " + ln).rstrip() if ln else ">")
+        head.append("")
+        head.append("---")
+        head.append("")
 
     s = []
     s.append("## 1. Objective")

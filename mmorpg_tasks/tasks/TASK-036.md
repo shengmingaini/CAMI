@@ -25,6 +25,18 @@ DEPENDENCIES: TASK-034, TASK-035
 
 ---
 
+> **⛔ 前置阻塞（2026-09-10）：本任务规格已过期，禁止按现规格开工。**
+>
+> **冲突**：本任务按「**自研资源系统**（自研 Asset 加载器 / 自研纹理与网格缓存 / 自研 Chunk Streaming）」编写，且 §1 的目标是「Low Poly + 三档画质 + 3D 地图分块常驻」；而客户端路线已于 **2026-08-29 批准为 Godot 4.7.1**，并于 **2026-09-10 追加 2D 约束**（RFC **§9**）。Godot 自带 `ResourceLoader` / `.import` 管线 / 引用计数资源缓存，本任务交付物与之全面重复；3D 网格缓存与 Chunk Streaming 在 2D 阶段**不适用**。
+>
+> §9 已把本任务的规格改写为：**2D 资源管线**——图集（atlas）+ `.import` 配置 + 音频常驻/流式划分；**地图分块加载改为 `TileMap` 区块**（替代 3D Chunk Streaming）；三档画质按 2D 口径重定义；Low 档（4 核 / 4GB RAM / 1GB VRAM）目标从「激进值」变为**宽松值**，但**仍需实测容量报告**。
+>
+> **处置**：① 本任务**不开工**，直到 RFC §9.8 的触发条件满足（先完成服务端与游戏核心 TASK-030~033 / 037 / 039 / 040 / 041）；② 届时按 RFC §6.1 + §9 用生成器**重写**本任务为 Godot 4.7.1 + 2D 规格后再执行；③ `client/` 目录当前为空（`find client -type f` 计数为 0），无既有实现需迁移，重写无沉没成本。
+>
+> **不变项**（重写时必须保留）：协议契约（TASK-005 的 FlatBuffers schema）、AOI Delta 与快照格式、通过 GDExtension(C++) 下沉协议与热路径的策略、`client/{runtime,network,gameplay,ui,extensions}` 目录分层与单向依赖约束、以及「**逻辑层不得解算表现**」这条纪律（RFC §9.6）。
+
+---
+
 ## 1. Objective
 
 这是「老电脑能跑」的核心任务：ResourceManager / TextureCache / MeshCache / AudioCache / SceneStreaming / ChunkLoading / LOD，支持 Low / Medium / High 三档。**地图不能全部常驻内存：只保留 Current Chunk + Nearby Chunk，远处自动释放。**

@@ -25,6 +25,18 @@ DEPENDENCIES: TASK-034
 
 ---
 
+> **⛔ 前置阻塞（2026-09-10）：本任务规格已过期，禁止按现规格开工。**
+>
+> **冲突**：本任务明确「选定后端 **D3D11**，预留 Vulkan 抽象层但不实现」+「**禁止引入重型第三方引擎**」→ 即**自研轻量渲染器**；而客户端路线已于 **2026-08-29 批准为 Godot 4.7.1**，并于 **2026-09-10 追加形态约束：2D 优先，现阶段不做 3D 几何模型**（RFC **§9**）。
+>
+> §9 已把本任务的规格改写为：**2D 渲染管线**——`TileMapLayer` + `Sprite2D` / `AnimatedSprite2D` + Y-sort 遮挡 + 2D 粒子 + `CanvasLayer` UI；**仅启用 Compatibility 渲染器单档**（OpenGL 3.3 / DX11），Forward+ 高档推迟到引入 3D 表现时再启用；**性能预算改 2D 口径**（DrawCall 与图集切换次数、同屏精灵数、Canvas 重绘面积 / 每帧填充率、纹理显存），不再考核三角面数 / LOD 级数 / 烘焙光照。
+>
+> **处置**：① 本任务**不开工**，直到 RFC §9.8 的触发条件满足（先完成服务端与游戏核心 TASK-030~033 / 037 / 039 / 040 / 041）；② 届时按 RFC §6.1 + §9 用生成器**重写**本任务为 Godot 4.7.1 + 2D 规格后再执行；③ `client/` 目录当前为空（`find client -type f` 计数为 0），无既有实现需迁移，重写无沉没成本。
+>
+> **不变项**（重写时必须保留）：协议契约（TASK-005 的 FlatBuffers schema）、AOI Delta 与快照格式、通过 GDExtension(C++) 下沉协议与热路径的策略、`client/{runtime,network,gameplay,ui,extensions}` 目录分层与单向依赖约束、以及「**逻辑层不得解算表现**」这条纪律（RFC §9.6）。
+
+---
+
 ## 1. Objective
 
 实现低复杂度渲染器：Camera / Mesh / Material / Texture / Animation / UI。目标 Low Poly + Simple Lighting + Low Draw Call + Static Batching + LOD，**不要把引擎复杂度做得太高**。

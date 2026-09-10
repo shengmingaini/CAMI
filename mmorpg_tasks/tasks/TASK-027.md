@@ -213,9 +213,9 @@ bash scripts/verify/task-027.sh
 1. 前置任务门禁：`require_tasks_done 026`
 2. 交付物存在性检查（4 项）
 3. 静态红线扫描：`server/dataservice/src/redis` 内禁止出现 /\"KEYS\"/
-4. 端口占用检查：6379
+4. 端口在线检查：6379（须有真实外部实例在监听）
 5. CMake configure + 编译（Debug + Release 双构建）
-6. ctest 过滤执行：`-R DataService_Redis`
+6. ctest 过滤执行：`-R DataService.Redis`
 7. Benchmark 执行：`bin/redis_bench --ops 10000`
 8. 性能阈值断言：`bench/redis.txt` 中 `get_ns` ≤ `200000`
 9. 性能阈值断言：`bench/redis.txt` 中 `pool_acquire_ns` ≤ `1000`
