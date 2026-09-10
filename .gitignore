@@ -37,9 +37,10 @@ vcpkg/downloads/
 .DS_Store
 
 # 本地运行时数据（Redis/MariaDB 数据目录，不入库）
+# 注意：必须根锚定 /data/，否则会误伤 C++ 模块路径 server/.../include/mmo/data/
 *.rdb
 *.sock
-data/
+/data/
 
 # 工具脚本本地覆盖（保留模板，忽略本地覆盖）
 scripts/verify/_local_override.sh
