@@ -210,7 +210,7 @@ bash scripts/verify/task-023.sh
 脚本执行的检查项：
 
 1. 前置任务门禁：`require_tasks_done 004 016`
-2. 交付物存在性检查（1 项）
+2. 交付物存在性检查（4 项）
 3. 静态红线扫描：`server/gamenode/combat/src/buff` 内禁止出现 /std::thread/
 4. 静态红线扫描：`server/gamenode/combat/src/buff` 内禁止出现 /(mysql|redis|grpc)/
 5. CMake configure + 编译（Debug + Release 双构建）

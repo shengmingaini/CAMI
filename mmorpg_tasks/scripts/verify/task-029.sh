@@ -16,7 +16,10 @@ require_tasks_done 017 026
 
 # ---- 2. 交付物存在性 ----
 require_files \
-  'server/gamenode/economy/include/mmo/game/economy/economy_system.h'
+  'server/gamenode/economy/include/mmo/game/economy/economy_system.h' \
+  'server/gamenode/economy/include/mmo/game/economy/economy_command.h' \
+  'config/gameplay/economy/prices.json' \
+  'server/gamenode/economy/docs/INTERFACE.md'
 
 # ---- 3. 模块边界：公开头不得 include 内部 src/ ----
 if [ -d "$ROOT/server/gamenode/economy/include" ]; then

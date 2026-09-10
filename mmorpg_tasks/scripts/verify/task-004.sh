@@ -17,7 +17,13 @@ require_tasks_done 001 003
 # ---- 2. 交付物存在性 ----
 require_files \
   'engine/core/include/mmo/core/sched/scheduler.h' \
-  'engine/core/include/mmo/core/memory/object_pool.h'
+  'engine/core/include/mmo/core/memory/object_pool.h' \
+  'engine/core/include/mmo/core/thread/thread.h' \
+  'engine/core/include/mmo/core/thread/mpmc_queue.h' \
+  'engine/core/include/mmo/core/memory/memory_pool.h' \
+  'engine/core/include/mmo/core/memory/arena.h' \
+  'engine/core/docs/DEPENDENCY.md' \
+  'engine/core/docs/PERFORMANCE.md'
 
 # ---- 3. 静态红线扫描 ----
 scan_forbidden 'engine/core/src/sched' 'std::thread'

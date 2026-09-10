@@ -215,7 +215,7 @@ bash scripts/verify/task-018.sh
 脚本执行的检查项：
 
 1. 前置任务门禁：`require_tasks_done 011 014 015`
-2. 交付物存在性检查（1 项）
+2. 交付物存在性检查（5 项）
 3. CMake configure + 编译（Debug + Release 双构建）
 4. ctest 过滤执行：`-R Ai`
 5. Benchmark 执行：`bin/ai_bench --monsters 1000 --ticks 12000`

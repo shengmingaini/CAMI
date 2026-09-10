@@ -17,7 +17,9 @@ require_tasks_done 001 004 005 007 011
 # ---- 2. 交付物存在性 ----
 require_files \
   'scripting/lua/include/mmo/script/script_context.h' \
-  'scripting/lua/docs/SANDBOX.md'
+  'scripting/lua/docs/SANDBOX.md' \
+  'scripting/lua/include/mmo/script/lua_vm.h' \
+  'scripting/lua/docs/INTERFACE.md'
 
 # ---- 3. 模块边界：公开头不得 include 内部 src/ ----
 if [ -d "$ROOT/scripting/lua/include" ]; then

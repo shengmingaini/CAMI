@@ -16,7 +16,11 @@ require_tasks_done 003 004 012
 
 # ---- 2. 交付物存在性 ----
 require_files \
-  'server/gamenode/scheduler/include/mmo/game/sched/simulation_scheduler.h'
+  'server/gamenode/scheduler/include/mmo/game/sched/simulation_scheduler.h' \
+  'server/gamenode/scheduler/include/mmo/game/sched/tick_phase.h' \
+  'server/gamenode/scheduler/include/mmo/game/sched/tick_timing.h' \
+  'server/gamenode/scheduler/docs/INTERFACE.md' \
+  'server/gamenode/scheduler/docs/PERFORMANCE.md'
 
 # ---- 3. 模块边界：公开头不得 include 内部 src/ ----
 if [ -d "$ROOT/server/gamenode/scheduler/include" ]; then

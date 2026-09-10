@@ -16,7 +16,10 @@ require_tasks_done 011 014
 
 # ---- 2. 交付物存在性 ----
 require_files \
-  'server/gamenode/movement/include/mmo/game/movement/movement_system.h'
+  'server/gamenode/movement/include/mmo/game/movement/movement_system.h' \
+  'server/gamenode/movement/include/mmo/game/movement/validator.h' \
+  'server/gamenode/movement/docs/INTERFACE.md' \
+  'server/gamenode/movement/docs/PERFORMANCE.md'
 
 # ---- 3. 静态红线扫描 ----
 scan_forbidden 'server/gamenode/movement/src' '(mysql|redis|grpc|sql::|std::ifstream)'

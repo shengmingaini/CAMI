@@ -17,7 +17,11 @@ require_tasks_done 009 010 012 026 027
 # ---- 2. 交付物存在性 ----
 require_files \
   'server/gateway/include/mmo/gateway/resilience/failover_coordinator.h' \
-  'docs/failover-drill-report.md'
+  'docs/failover-drill-report.md' \
+  'server/gateway/include/mmo/gateway/resilience/health_monitor.h' \
+  'server/gateway/include/mmo/gateway/resilience/reconnect_service.h' \
+  'server/gamenode/scene/include/mmo/game/scene/recovery/scene_recovery.h' \
+  'tools/chaos/kill_gamenode.sh'
 
 # ---- 3. 模块边界：公开头不得 include 内部 src/ ----
 if [ -d "$ROOT/server/gateway + server/gamenode/include" ]; then

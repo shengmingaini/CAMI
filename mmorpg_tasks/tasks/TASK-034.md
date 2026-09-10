@@ -208,7 +208,7 @@ bash scripts/verify/task-034.sh
 脚本执行的检查项：
 
 1. 前置任务门禁：`require_tasks_done 005`
-2. 交付物存在性检查（2 项）
+2. 交付物存在性检查（6 项）
 3. CMake configure + 编译（Debug + Release 双构建）
 4. ctest 过滤执行：`-R Client`
 5. Benchmark 执行：`bin/client_bench --frames 600`

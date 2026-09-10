@@ -215,7 +215,7 @@ bash scripts/verify/task-022.sh
 脚本执行的检查项：
 
 1. 前置任务门禁：`require_tasks_done 011 016 021`
-2. 交付物存在性检查（1 项）
+2. 交付物存在性检查（5 项）
 3. 静态红线扫描：`server/gamenode/combat/src/damage` 内禁止出现 /(mysql|redis|grpc|kafka|sql::|std::ifstream|std::ofstream)/
 4. CMake configure + 编译（Debug + Release 双构建）
 5. ctest 过滤执行：`-R Damage`

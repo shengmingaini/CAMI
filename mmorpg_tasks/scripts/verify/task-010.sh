@@ -16,7 +16,12 @@ require_tasks_done 007 009
 
 # ---- 2. 交付物存在性 ----
 require_files \
-  'server/gateway/include/mmo/gateway/route/player_router.h'
+  'server/gateway/include/mmo/gateway/route/player_router.h' \
+  'server/gateway/include/mmo/gateway/route/node_registry.h' \
+  'server/gateway/include/mmo/gateway/route/scene_router.h' \
+  'server/gateway/include/mmo/gateway/route/route_cache.h' \
+  'server/gateway/docs/INTERFACE.md' \
+  'server/gateway/docs/PERFORMANCE.md'
 
 # ---- 3. 模块边界：公开头不得 include 内部 src/ ----
 if [ -d "$ROOT/server/gateway/include" ]; then

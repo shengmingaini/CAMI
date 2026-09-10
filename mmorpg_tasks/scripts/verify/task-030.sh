@@ -17,7 +17,11 @@ require_tasks_done 001 005 026 028 029
 # ---- 2. 交付物存在性 ----
 require_files \
   'server/gamenode/economy/include/mmo/game/economy/ledger/ledger.h' \
-  'database/migrations/00N_ledger.sql'
+  'database/migrations/00N_ledger.sql' \
+  'server/gamenode/economy/include/mmo/game/economy/ledger/idempotency_store.h' \
+  'tools/audit/economy_audit.py' \
+  'server/gamenode/economy/docs/INTERFACE.md' \
+  'docs/economy-failure-test-report.md'
 
 # ---- 3. 模块边界：公开头不得 include 内部 src/ ----
 if [ -d "$ROOT/server/gamenode/economy/include" ]; then

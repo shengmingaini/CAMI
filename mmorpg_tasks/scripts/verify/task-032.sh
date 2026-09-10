@@ -17,7 +17,8 @@ require_tasks_done 003 013 031
 # ---- 2. 交付物存在性 ----
 require_files \
   'scripting/lua/include/mmo/script/hot_reload/hot_reloader.h' \
-  'docs/script-versions.md'
+  'docs/script-versions.md' \
+  'scripting/lua/docs/HOTRELOAD.md'
 
 # ---- 3. 模块边界：公开头不得 include 内部 src/ ----
 if [ -d "$ROOT/scripting/lua/include" ]; then

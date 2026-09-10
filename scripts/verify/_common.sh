@@ -21,7 +21,8 @@ PACK_ROOT="$(cd "$(dirname "${BASH_SOURCE[1]:-${BASH_SOURCE[0]}}")/../.." && pwd
 PROJECT_ROOT="${MMO_PROJECT_ROOT:-$(cd "$PACK_ROOT/.." && pwd)}"
 ROOT="$PROJECT_ROOT"
 # 本仓库任务文件位于 mmorpg_tasks/tasks/（而非仓库根 tasks/），用 MMO_TASKS_DIR 显式覆盖
-# 任务包位置，避免依赖脚本自身路径推导。生成器源 mmorpg_tasks/scripts/verify/_common.sh 未改。
+# 任务包位置，避免依赖脚本自身路径推导。此文件已与任务包源 mmorpg_tasks/scripts/verify/_common.sh
+# 保持同步（两份内容一致），避免重新播种任务包时丢失本仓库的修复。
 TASK_DIR="${MMO_TASKS_DIR:-$PACK_ROOT/tasks}"
 BUILD_ROOT="${BUILD_ROOT:-$PROJECT_ROOT/build}"
 BUILD_TYPE="${BUILD_TYPE:-Release}"
@@ -184,9 +185,18 @@ cmake_build_both() {
 run_ctest() {
   local bt="${1:-$BUILD_TYPE}" pattern="$2" label="${3:-$2}"
   step "ctest -R '$pattern' ($label)"
+  # 先确认过滤模式至少匹配到 1 个用例：ctest 在「零匹配」时打印 No tests were found!!!
+  # 却返回退出码 0 —— 一旦模式与实际注册名不符（如真实名带点号 DataService.Redis 而写成
+  # DataService_Redis），验收会「零用例假通过」。此处显式拦截，禁止以 0 用例视为通过。
+  local matched
+  matched="$( cd "$BUILD_ROOT/$bt" && "$CTEST_BIN" -N -R "$pattern" 2>/dev/null \
+              | sed -nE 's/^Total Tests: *([0-9]+).*/\1/p' | tail -1 )"
+  [ -n "$matched" ] || die "无法解析 ctest -N 输出（$label）：请检查 CTEST_BIN 与构建目录"
+  [ "$matched" -gt 0 ] \
+    || die "ctest 过滤 '$pattern' 未匹配到任何用例（0 个）。真实注册名可能带点号或命名不同，禁止以 0 用例视为通过。"
   ( cd "$BUILD_ROOT/$bt" && "$CTEST_BIN" --output-on-failure -R "$pattern" ) \
     || die "测试失败：$label（ctest -R '$pattern'）"
-  ok "测试通过：$label"
+  ok "测试通过：$label（匹配 $matched 个用例）"
 }
 
 # ---- Benchmark -----------------------------------------------------------

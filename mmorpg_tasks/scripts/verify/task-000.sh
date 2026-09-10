@@ -21,7 +21,13 @@ require_files \
   'ARCHITECTURE.md' \
   'DEVELOPMENT.md' \
   'CMakeLists.txt' \
-  'vcpkg.json'
+  'vcpkg.json' \
+  'LICENSE' \
+  '.gitignore' \
+  '.gitattributes' \
+  '.github/workflows/build.yml' \
+  'docs/build-baseline.md' \
+  'docs/ci-status.md'
 
 # ---- 3. 静态红线扫描 ----
 scan_forbidden 'engine' '\bstd::cout\s*<<'

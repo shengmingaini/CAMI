@@ -17,14 +17,19 @@ require_tasks_done 026
 # ---- 2. 交付物存在性 ----
 require_files \
   'database/migrations/001_init.sql' \
-  'server/dataservice/include/mmo/data/mysql/shard_router.h'
+  'server/dataservice/include/mmo/data/mysql/shard_router.h' \
+  'server/dataservice/include/mmo/data/mysql/mysql_store.h' \
+  'server/dataservice/include/mmo/data/mysql/connection_pool.h' \
+  'docker/mysql/docker-compose.yml' \
+  'server/dataservice/docs/SCHEMA.md'
 
 # ---- 3. 模块边界：公开头不得 include 内部 src/ ----
 if [ -d "$ROOT/server/dataservice/include" ]; then
   scan_forbidden 'server/dataservice/include' '#include\s+["<][^">]*src/[^">]*'
 fi
 
-# ---- 4. 端口占用检查 ----
+# ---- 4. 端口在线检查（真实外部实例：端口须已在线监听，§20.1）----
+#    语义与 require_free_port 相反：真实实例类任务要求端口被实例占用而非空闲。
 require_port_open 3306
 
 # ---- 5. 编译（本地 MinGW + vcpkg，CI 不作为验收依据） ----

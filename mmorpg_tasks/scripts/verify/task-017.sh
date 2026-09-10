@@ -16,7 +16,11 @@ require_tasks_done 007 016
 
 # ---- 2. 交付物存在性 ----
 require_files \
-  'server/gamenode/inventory/include/mmo/game/inventory/inventory_system.h'
+  'server/gamenode/inventory/include/mmo/game/inventory/inventory_system.h' \
+  'server/gamenode/inventory/include/mmo/game/inventory/item.h' \
+  'server/gamenode/inventory/include/mmo/game/inventory/inventory.h' \
+  'server/gamenode/inventory/docs/INTERFACE.md' \
+  'server/gamenode/inventory/docs/README.md'
 
 # ---- 3. 模块边界：公开头不得 include 内部 src/ ----
 if [ -d "$ROOT/server/gamenode/inventory/include" ]; then

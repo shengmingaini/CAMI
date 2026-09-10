@@ -17,7 +17,10 @@ require_tasks_done 004 005
 # ---- 2. 交付物存在性 ----
 require_files \
   'engine/net/include/mmo/net/transport.h' \
-  'engine/net/docs/PERFORMANCE.md'
+  'engine/net/docs/PERFORMANCE.md' \
+  'engine/net/include/mmo/net/connection.h' \
+  'engine/net/include/mmo/net/buffer.h' \
+  'engine/net/docs/INTERFACE.md'
 
 # ---- 3. 模块边界：公开头不得 include 内部 src/ ----
 if [ -d "$ROOT/engine/net/include" ]; then

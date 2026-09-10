@@ -16,7 +16,11 @@ require_tasks_done 011 016 021
 
 # ---- 2. 交付物存在性 ----
 require_files \
-  'server/gamenode/combat/include/mmo/game/combat/damage/damage_system.h'
+  'server/gamenode/combat/include/mmo/game/combat/damage/damage_system.h' \
+  'server/gamenode/combat/include/mmo/game/combat/damage/damage.h' \
+  'server/gamenode/combat/include/mmo/game/combat/damage/prng.h' \
+  'config/gameplay/combat/formula.json' \
+  'server/gamenode/combat/docs/INTERFACE.md'
 
 # ---- 3. 静态红线扫描 ----
 scan_forbidden 'server/gamenode/combat/src/damage' '(mysql|redis|grpc|kafka|sql::|std::ifstream|std::ofstream)'

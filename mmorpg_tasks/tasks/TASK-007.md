@@ -220,7 +220,7 @@ bash scripts/verify/task-007.sh
 脚本执行的检查项：
 
 1. 前置任务门禁：`require_tasks_done 001 004 005`
-2. 交付物存在性检查（2 项）
+2. 交付物存在性检查（7 项）
 3. 静态红线扫描：`engine/core/src/bus` 内禁止出现 /std::thread/
 4. CMake configure + 编译（Debug + Release 双构建）
 5. ctest 过滤执行：`-R Core_Bus`

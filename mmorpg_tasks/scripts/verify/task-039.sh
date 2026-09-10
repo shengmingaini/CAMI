@@ -16,7 +16,9 @@ require_tasks_done 007 011 016 028
 
 # ---- 2. 交付物存在性 ----
 require_files \
-  'server/gamenode/social/include/mmo/game/social/social_system.h'
+  'server/gamenode/social/include/mmo/game/social/social_system.h' \
+  'config/gameplay/social.json' \
+  'server/gamenode/social/docs/INTERFACE.md'
 
 # ---- 3. 模块边界：公开头不得 include 内部 src/ ----
 if [ -d "$ROOT/server/gamenode/social/include" ]; then

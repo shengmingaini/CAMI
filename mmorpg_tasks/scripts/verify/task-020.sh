@@ -16,7 +16,10 @@ require_tasks_done 012 018
 
 # ---- 2. 交付物存在性 ----
 require_files \
-  'server/gamenode/world/include/mmo/game/world/instance_manager.h'
+  'server/gamenode/world/include/mmo/game/world/instance_manager.h' \
+  'server/gamenode/world/include/mmo/game/world/world_manager.h' \
+  'server/gamenode/world/docs/INTERFACE.md' \
+  'server/gamenode/world/docs/README.md'
 
 # ---- 3. 模块边界：公开头不得 include 内部 src/ ----
 if [ -d "$ROOT/server/gamenode/world/include" ]; then

@@ -17,7 +17,9 @@ require_tasks_done 025 030 033
 # ---- 2. 交付物存在性 ----
 require_files \
   'tools/qa/docs/REGRESSION.md' \
-  'bench/combat_regression_lua.txt'
+  'bench/combat_regression_lua.txt' \
+  'tools/qa/e2e/e2e_runner.h' \
+  'tools/qa/regression/run.sh'
 
 # ---- 3. 模块边界：公开头不得 include 内部 src/ ----
 if [ -d "$ROOT/tools/qa/include" ]; then

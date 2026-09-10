@@ -750,12 +750,12 @@ class SessionStore final : public gateway::ISessionStore { public:  // 实现 TA
           "server/dataservice/include/mmo/data/redis/connection_pool.h",
           "server/dataservice/src/redis/*.cpp", "server/dataservice/tests/*",
           "docker/redis/docker-compose.yml", "server/dataservice/docs/INTERFACE.md"],
- ctest="DataService_Redis", both_build=True,
+ ctest="DataService.Redis", both_build=True,
  bench_bins=[("bin/redis_bench", "--ops 10000")],
  metrics=[("bench/redis.txt", "get_ns", "le", "200000"), ("bench/redis.txt", "pool_acquire_ns", "le", "1000")],
  artifacts=["server/dataservice/include/mmo/data/redis/redis_cache.h", "docker/redis/docker-compose.yml"],
  scan=[("server/dataservice/src/redis", r"\"KEYS\"")],
- ports=[6379],
+ ports_open=[6379],
 ),
 # ------------------------------------------------------------------ 028
 dict(
@@ -848,11 +848,11 @@ template <typename T> class MySqlRepository final : public IRepository<T> { /* �
           "server/dataservice/src/mysql/*.cpp", "server/dataservice/tests/*",
           "database/migrations/001_init.sql", "tools/migrate/*",
           "docker/mysql/docker-compose.yml", "server/dataservice/docs/SCHEMA.md"],
- ctest="DataService_MySql", both_build=True,
+ ctest="DataService.MySql", both_build=True,
  bench_bins=[("bin/mysql_bench", "--ops 10000")],
  metrics=[("bench/mysql.txt", "select_ns", "le", "1000000"), ("bench/mysql.txt", "pool_acquire_ns", "le", "5000")],
  artifacts=["database/migrations/001_init.sql", "server/dataservice/include/mmo/data/mysql/shard_router.h"],
- ports=[3306],
+ ports_open=[3306],
 ),
 # ------------------------------------------------------------------ 029
 dict(

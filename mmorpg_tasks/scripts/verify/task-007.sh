@@ -17,7 +17,12 @@ require_tasks_done 001 004 005
 # ---- 2. 交付物存在性 ----
 require_files \
   'engine/core/include/mmo/core/bus/command_bus.h' \
-  'engine/core/tests/demo_pipeline.cpp'
+  'engine/core/tests/demo_pipeline.cpp' \
+  'engine/core/include/mmo/core/bus/query_bus.h' \
+  'engine/core/include/mmo/core/bus/event_bus.h' \
+  'engine/core/docs/README.md' \
+  'engine/core/docs/INTERFACE.md' \
+  'engine/core/docs/PERFORMANCE.md'
 
 # ---- 3. 静态红线扫描 ----
 scan_forbidden 'engine/core/src/bus' 'std::thread'

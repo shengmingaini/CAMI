@@ -17,7 +17,13 @@ require_tasks_done 000
 # ---- 2. 交付物存在性 ----
 require_files \
   'engine/core/include/mmo/core/time/tick_clock.h' \
-  'config/tick.json'
+  'config/tick.json' \
+  'engine/core/include/mmo/core/time/clock.h' \
+  'engine/core/include/mmo/core/uuid/uuid.h' \
+  'engine/core/include/mmo/core/config/config_manager.h' \
+  'config/app.json' \
+  'config/network.json' \
+  'engine/core/docs/INTERFACE.md'
 
 # ---- 3. 静态红线扫描 ----
 scan_forbidden 'engine/core/src/time' 'std::chrono::system_clock'

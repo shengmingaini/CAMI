@@ -16,7 +16,10 @@ require_tasks_done 004 016
 
 # ---- 2. 交付物存在性 ----
 require_files \
-  'server/gamenode/combat/include/mmo/game/combat/buff/buff_system.h'
+  'server/gamenode/combat/include/mmo/game/combat/buff/buff_system.h' \
+  'server/gamenode/combat/include/mmo/game/combat/buff/buff_def.h' \
+  'server/gamenode/combat/docs/INTERFACE.md' \
+  'server/gamenode/combat/docs/PERFORMANCE.md'
 
 # ---- 3. 静态红线扫描 ----
 scan_forbidden 'server/gamenode/combat/src/buff' 'std::thread'

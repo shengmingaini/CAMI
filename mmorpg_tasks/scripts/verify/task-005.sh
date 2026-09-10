@@ -18,7 +18,15 @@ require_tasks_done 001
 require_files \
   'protocol/proto/envelope.proto' \
   'protocol/flatbuffers/movement.fbs' \
-  'protocol/docs/VERSIONING.md'
+  'protocol/docs/VERSIONING.md' \
+  'protocol/proto/common.proto' \
+  'protocol/proto/command.proto' \
+  'protocol/proto/query.proto' \
+  'protocol/proto/event.proto' \
+  'protocol/flatbuffers/aoi.fbs' \
+  'protocol/flatbuffers/combat.fbs' \
+  'protocol/docs/INTERFACE.md' \
+  'protocol/CMakeLists.txt'
 
 # ---- 3. 编译（本地 MinGW + vcpkg，CI 不作为验收依据） ----
 cmake_build_both

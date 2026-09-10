@@ -192,7 +192,7 @@ bash scripts/verify/task-000.sh
 
 脚本执行的检查项：
 
-1. 交付物存在性检查（6 项）
+1. 交付物存在性检查（12 项）
 2. 静态红线扫描：`engine` 内禁止出现 /\bstd::cout\s*<</
 3. 静态红线扫描：`server` 内禁止出现 /\bstd::cout\s*<</
 4. 静态红线扫描：`engine` 内禁止出现 /\bprintf\s*\(/

@@ -17,7 +17,11 @@ require_tasks_done 000
 # ---- 2. 交付物存在性 ----
 require_files \
   'engine/core/include/mmo/core/error/result.h' \
-  'engine/core/docs/INTERFACE.md'
+  'engine/core/docs/INTERFACE.md' \
+  'engine/core/include/mmo/core/error/error_code.h' \
+  'engine/core/include/mmo/core/error/error.h' \
+  'engine/core/docs/README.md' \
+  'engine/core/docs/PERFORMANCE.md'
 
 # ---- 3. 静态红线扫描 ----
 scan_forbidden 'engine/core/src/error' '\bthrow\s+'

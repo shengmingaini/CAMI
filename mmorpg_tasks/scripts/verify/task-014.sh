@@ -17,7 +17,9 @@ require_tasks_done 011 012
 # ---- 2. 交付物存在性 ----
 require_files \
   'server/gamenode/aoi/include/mmo/game/aoi/aoi.h' \
-  'server/gamenode/aoi/docs/PERFORMANCE.md'
+  'server/gamenode/aoi/docs/PERFORMANCE.md' \
+  'server/gamenode/aoi/include/mmo/game/aoi/dynamic_grid_aoi.h' \
+  'server/gamenode/aoi/docs/INTERFACE.md'
 
 # ---- 3. 模块边界：公开头不得 include 内部 src/ ----
 if [ -d "$ROOT/server/gamenode/aoi/include" ]; then

@@ -20,7 +20,10 @@ set -euo pipefail
 PACK_ROOT="$(cd "$(dirname "${BASH_SOURCE[1]:-${BASH_SOURCE[0]}}")/../.." && pwd)"
 PROJECT_ROOT="${MMO_PROJECT_ROOT:-$(cd "$PACK_ROOT/.." && pwd)}"
 ROOT="$PROJECT_ROOT"
-TASK_DIR="$PACK_ROOT/tasks"
+# 本仓库任务文件位于 mmorpg_tasks/tasks/（而非仓库根 tasks/），用 MMO_TASKS_DIR 显式覆盖
+# 任务包位置，避免依赖脚本自身路径推导。此文件已与任务包源 mmorpg_tasks/scripts/verify/_common.sh
+# 保持同步（两份内容一致），避免重新播种任务包时丢失本仓库的修复。
+TASK_DIR="${MMO_TASKS_DIR:-$PACK_ROOT/tasks}"
 BUILD_ROOT="${BUILD_ROOT:-$PROJECT_ROOT/build}"
 BUILD_TYPE="${BUILD_TYPE:-Release}"
 VCPKG_ROOT="${VCPKG_ROOT:-${VCPKG_INSTALLATION_ROOT:-$HOME/vcpkg}}"
@@ -57,6 +60,25 @@ step()  { printf "%b==> %s%b\n" "$C_YEL" "$*" "$C_OFF"; }
 ok()    { printf "%b  [OK] %s%b\n" "$C_GRN" "$*" "$C_OFF"; }
 bad()   { printf "%b  [FAIL] %s%b\n" "$C_RED" "$*" "$C_OFF" >&2; }
 info()  { printf "%b  %s%b\n" "$C_DIM" "$*" "$C_OFF"; }
+# 兼容别名：早期生成的验收脚本（如 TASK-000）调用 log()，与 info() 同义。
+log()   { info "$@"; }
+
+# 兼容别名（早期脚本 API）：check_file <绝对路径> —— 单文件存在性，缺失即失败。
+check_file() {
+  local f="$1"
+  [ -e "$f" ] || die "交付物缺失：$f"
+  ok "交付物存在：$f"
+}
+
+# 兼容别名（早期脚本 API）：redline_scan <绝对路径目录> <正则> [说明]
+# 与 scan_forbidden 的区别：接受绝对路径、且第三个参数是「说明」而非额外正则。
+redline_scan() {
+  local dir="$1" pat="$2"
+  if grep -rnE "$pat" "$dir" --include='*.cpp' --include='*.h' --include='*.hpp' >/dev/null 2>&1; then
+    die "红线扫描命中：$dir 内出现 /$pat/（命中文件见上，禁止提交）"
+  fi
+  ok "红线扫描通过：$dir 无 /$pat/"
+}
 
 begin_task() {
   local id="$1"
@@ -114,37 +136,67 @@ cmake_configure() {
   step "cmake configure ($bt)"
   local dir="$BUILD_ROOT/$bt"
   mkdir -p "$dir"
-  cmake -S "$ROOT" -B "$dir" -G "$GENERATOR" \
-    -DCMAKE_BUILD_TYPE="$bt" \
-    -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
-    -DMMORPG_BUILD_TESTS=ON \
-    -DMMORPG_BUILD_BENCHMARKS=ON \
-    || die "cmake configure 失败（$bt）。禁止跳过，先修根因。"
+  if [ "${MMO_OFFLINE:-0}" = "1" ]; then
+    # 离线模式：跳过 vcpkg manifest 安装，改走系统 MinGW 库（Windows 风格编译器/构建器路径，
+    # 规避 MSYS 路径在全新 shell 下无法 spawn ninja 的问题）。与本地手动验证口径一致。
+    cmake -S "$ROOT" -B "$dir" -G "$GENERATOR" \
+      -DCMAKE_BUILD_TYPE="$bt" \
+      -DMMORPG_BUILD_TESTS=ON \
+      -DMMORPG_BUILD_BENCHMARKS=ON \
+      -DVCPKG_MANIFEST_INSTALL=OFF \
+      -DVCPKG_APPLOCAL_DEPS=OFF \
+      -DCMAKE_CXX_COMPILER="C:/msys64/mingw64/bin/c++.exe" \
+      -DCMAKE_C_COMPILER="C:/msys64/mingw64/bin/gcc.exe" \
+      -DCMAKE_MAKE_PROGRAM="C:/msys64/mingw64/bin/ninja.exe" \
+      || die "cmake configure 失败（离线，$bt）。禁止跳过，先修根因。"
+  else
+    cmake -S "$ROOT" -B "$dir" -G "$GENERATOR" \
+      -DCMAKE_BUILD_TYPE="$bt" \
+      -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
+      -DMMORPG_BUILD_TESTS=ON \
+      -DMMORPG_BUILD_BENCHMARKS=ON \
+      || die "cmake configure 失败（$bt）。禁止跳过，先修根因。"
+  fi
   ok "cmake configure 通过（$bt）"
 }
 
 # ---- 编译 ----------------------------------------------------------------
+# 支持多目标：cmake_build <bt> <t1> [t2 ...]；缺省 all。
 cmake_build() {
-  local bt="${1:-$BUILD_TYPE}" target="${2:-all}"
-  step "cmake build ($bt / $target)"
-  cmake --build "$BUILD_ROOT/$bt" --target "$target" -j "$PARALLEL" \
-    || die "编译失败（$bt）。禁止注释代码绕过，禁止 -k 忽略错误。"
-  ok "编译通过（$bt / $target）"
+  local bt="${1:-$BUILD_TYPE}"; shift || true
+  local targets=("${@:-all}")
+  step "cmake build ($bt / ${targets[*]})"
+  for t in "${targets[@]}"; do
+    cmake --build "$BUILD_ROOT/$bt" --target "$t" -j "$PARALLEL" \
+      || die "编译失败（$bt / $t）。禁止注释代码绕过，禁止 -k 忽略错误。"
+  done
+  ok "编译通过（$bt / ${targets[*]}）"
 }
 
 # ---- Debug + Release 双构建（基础类任务要求） ----------------------------
+# MMO_BUILD_TARGET 可限定只编本任务相关目标（离线验收避免拉起整项目 vcpkg-only 依赖）。
 cmake_build_both() {
-  cmake_configure Debug;   cmake_build Debug
-  cmake_configure Release; cmake_build Release
+  local tgts="${MMO_BUILD_TARGET:-all}"
+  cmake_configure Debug;   cmake_build Debug $tgts
+  cmake_configure Release; cmake_build Release $tgts
 }
 
 # ---- ctest ---------------------------------------------------------------
 run_ctest() {
   local bt="${1:-$BUILD_TYPE}" pattern="$2" label="${3:-$2}"
   step "ctest -R '$pattern' ($label)"
+  # 先确认过滤模式至少匹配到 1 个用例：ctest 在「零匹配」时打印 No tests were found!!!
+  # 却返回退出码 0 —— 一旦模式与实际注册名不符（如真实名带点号 DataService.Redis 而写成
+  # DataService_Redis），验收会「零用例假通过」。此处显式拦截，禁止以 0 用例视为通过。
+  local matched
+  matched="$( cd "$BUILD_ROOT/$bt" && "$CTEST_BIN" -N -R "$pattern" 2>/dev/null \
+              | sed -nE 's/^Total Tests: *([0-9]+).*/\1/p' | tail -1 )"
+  [ -n "$matched" ] || die "无法解析 ctest -N 输出（$label）：请检查 CTEST_BIN 与构建目录"
+  [ "$matched" -gt 0 ] \
+    || die "ctest 过滤 '$pattern' 未匹配到任何用例（0 个）。真实注册名可能带点号或命名不同，禁止以 0 用例视为通过。"
   ( cd "$BUILD_ROOT/$bt" && "$CTEST_BIN" --output-on-failure -R "$pattern" ) \
     || die "测试失败：$label（ctest -R '$pattern'）"
-  ok "测试通过：$label"
+  ok "测试通过：$label（匹配 $matched 个用例）"
 }
 
 # ---- Benchmark -----------------------------------------------------------
@@ -193,4 +245,16 @@ require_free_port() {
     die "端口 $p 已被占用，先释放或使用 MMORPG_PORT_OFFSET 偏移"
   fi
   ok "端口可用：$p"
+}
+
+# ---- 端口已占用检查（真实实例类任务：期望实例已在线监听，如 Redis/MariaDB）----
+# 与 require_free_port 语义相反；真实实例任务（§20.1）要求端口被实例占用而非空闲。
+require_port_open() {
+  local p="$1"
+  if (exec 3<>"/dev/tcp/127.0.0.1/$p") 2>/dev/null; then
+    exec 3>&- 2>/dev/null
+    ok "端口已占用（实例在线）：$p"
+  else
+    die "端口 $p 未占用（期望有真实实例在监听，如 Redis/MariaDB）。先启动实例再验收。"
+  fi
 }

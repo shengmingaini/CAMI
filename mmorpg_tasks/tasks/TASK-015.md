@@ -206,7 +206,7 @@ bash scripts/verify/task-015.sh
 脚本执行的检查项：
 
 1. 前置任务门禁：`require_tasks_done 011 014`
-2. 交付物存在性检查（1 项）
+2. 交付物存在性检查（4 项）
 3. 静态红线扫描：`server/gamenode/movement/src` 内禁止出现 /(mysql|redis|grpc|sql::|std::ifstream)/
 4. CMake configure + 编译（Debug + Release 双构建）
 5. ctest 过滤执行：`-R Movement`

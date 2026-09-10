@@ -17,7 +17,9 @@ require_tasks_done 018 019 021 031 032
 # ---- 2. 交付物存在性 ----
 require_files \
   'config/gameplay/scripts.json' \
-  'scripting/gameplay/skill/fireball.lua'
+  'scripting/gameplay/skill/fireball.lua' \
+  'scripting/gameplay/docs/README.md' \
+  'docs/gameplay-script-report.md'
 
 # ---- 3. 模块边界：公开头不得 include 内部 src/ ----
 if [ -d "$ROOT/scripting/gameplay/include" ]; then

@@ -16,7 +16,12 @@ require_tasks_done 011 012 015
 
 # ---- 2. 交付物存在性 ----
 require_files \
-  'server/gamenode/role/include/mmo/game/role/attribute.h'
+  'server/gamenode/role/include/mmo/game/role/attribute.h' \
+  'server/gamenode/role/include/mmo/game/role/character.h' \
+  'server/gamenode/role/include/mmo/game/role/role_system.h' \
+  'config/gameplay/exp_curve.json' \
+  'server/gamenode/role/docs/INTERFACE.md' \
+  'server/gamenode/role/docs/README.md'
 
 # ---- 3. 静态红线扫描 ----
 scan_forbidden 'server/gamenode/role/src' '(mysql|redis|grpc|sql::)'

@@ -16,7 +16,11 @@ require_tasks_done 007 016 018
 
 # ---- 2. 交付物存在性 ----
 require_files \
-  'server/gamenode/quest/include/mmo/game/quest/quest_system.h'
+  'server/gamenode/quest/include/mmo/game/quest/quest_system.h' \
+  'server/gamenode/quest/include/mmo/game/quest/quest_def.h' \
+  'server/gamenode/quest/include/mmo/game/quest/quest_index.h' \
+  'server/gamenode/quest/docs/INTERFACE.md' \
+  'server/gamenode/quest/docs/README.md'
 
 # ---- 3. 模块边界：公开头不得 include 内部 src/ ----
 if [ -d "$ROOT/server/gamenode/quest/include" ]; then

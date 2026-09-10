@@ -17,7 +17,11 @@ require_tasks_done 005
 # ---- 2. 交付物存在性 ----
 require_files \
   'client/core/include/mmo/client/net_client.h' \
-  'config/client/client.json'
+  'config/client/client.json' \
+  'client/core/include/mmo/client/game_loop.h' \
+  'client/core/include/mmo/client/client_world.h' \
+  'client/core/docs/INTERFACE.md' \
+  'client/core/docs/README.md'
 
 # ---- 3. 模块边界：公开头不得 include 内部 src/ ----
 if [ -d "$ROOT/client/core/include" ]; then

@@ -16,7 +16,9 @@ require_tasks_done 003 006 010
 
 # ---- 2. 交付物存在性 ----
 require_files \
-  'server/control/include/mmo/control/control_service.h'
+  'server/control/include/mmo/control/control_service.h' \
+  'protocol/proto/service/control_service.proto' \
+  'server/control/docs/INTERFACE.md'
 
 # ---- 3. 模块边界：公开头不得 include 内部 src/ ----
 if [ -d "$ROOT/server/control/include" ]; then

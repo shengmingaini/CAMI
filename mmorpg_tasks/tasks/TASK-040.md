@@ -192,7 +192,7 @@ bash scripts/verify/task-040.sh
 脚本执行的检查项：
 
 1. 前置任务门禁：`require_tasks_done 003 006 010`
-2. 交付物存在性检查（1 项）
+2. 交付物存在性检查（3 项）
 3. CMake configure + 编译（Debug + Release 双构建）
 4. ctest 过滤执行：`-R Control`
 

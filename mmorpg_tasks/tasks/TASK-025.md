@@ -217,7 +217,7 @@ bash scripts/verify/task-025.sh
 脚本执行的检查项：
 
 1. 前置任务门禁：`require_tasks_done 013 014 015 024`
-2. 交付物存在性检查（2 项）
+2. 交付物存在性检查（4 项）
 3. CMake configure + 编译（Release 单构建）
 4. ctest 过滤执行：`-R Bench_Combat`
 5. Benchmark 执行：`bin/combat_bench --matrix --duration 60 --warmup 5 --out bench/combat_matrix.json`

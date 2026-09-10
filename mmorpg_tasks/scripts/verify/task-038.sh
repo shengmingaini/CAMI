@@ -18,7 +18,12 @@ require_tasks_done 025 027 028 034 036 037 039 040 041
 require_files \
   'docs/architecture/architecture.md' \
   'docs/architecture/capacity-report.md' \
-  'tools/bot/bot.h'
+  'tools/bot/bot.h' \
+  'docs/architecture/state-ownership.md' \
+  'docs/architecture/dependency.md' \
+  'README.md' \
+  'DEPLOYMENT.md' \
+  'OPERATIONS.md'
 
 # ---- 3. 模块边界：公开头不得 include 内部 src/ ----
 if [ -d "$ROOT/tools/qa + docs/architecture/include" ]; then

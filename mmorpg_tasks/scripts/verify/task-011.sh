@@ -16,7 +16,11 @@ require_tasks_done 004 007
 
 # ---- 2. 交付物存在性 ----
 require_files \
-  'server/gamenode/entity/include/mmo/game/entity/entity_manager.h'
+  'server/gamenode/entity/include/mmo/game/entity/entity_manager.h' \
+  'server/gamenode/entity/include/mmo/game/entity/entity.h' \
+  'server/gamenode/entity/include/mmo/game/entity/component_store.h' \
+  'server/gamenode/entity/docs/INTERFACE.md' \
+  'server/gamenode/entity/docs/PERFORMANCE.md'
 
 # ---- 3. 模块边界：公开头不得 include 内部 src/ ----
 if [ -d "$ROOT/server/gamenode/entity/include" ]; then

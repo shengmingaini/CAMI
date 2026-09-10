@@ -16,7 +16,11 @@ require_tasks_done 008
 
 # ---- 2. 交付物存在性 ----
 require_files \
-  'server/gateway/include/mmo/gateway/session/session_manager.h'
+  'server/gateway/include/mmo/gateway/session/session_manager.h' \
+  'server/gateway/include/mmo/gateway/session/session.h' \
+  'server/gateway/include/mmo/gateway/session/session_store.h' \
+  'server/gateway/docs/INTERFACE.md' \
+  'server/gateway/docs/README.md'
 
 # ---- 3. 模块边界：公开头不得 include 内部 src/ ----
 if [ -d "$ROOT/server/gateway/include" ]; then

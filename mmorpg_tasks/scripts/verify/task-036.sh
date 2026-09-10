@@ -17,7 +17,12 @@ require_tasks_done 034 035
 # ---- 2. 交付物存在性 ----
 require_files \
   'config/client/quality.json' \
-  'client/resource/include/mmo/client/resource/scene_streamer.h'
+  'client/resource/include/mmo/client/resource/scene_streamer.h' \
+  'client/resource/include/mmo/client/resource/resource_manager.h' \
+  'client/resource/include/mmo/client/resource/quality_preset.h' \
+  'tools/lowspec/profile.py' \
+  'client/resource/docs/INTERFACE.md' \
+  'client/resource/docs/PERFORMANCE.md'
 
 # ---- 3. 模块边界：公开头不得 include 内部 src/ ----
 if [ -d "$ROOT/client/resource/include" ]; then

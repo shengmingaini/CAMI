@@ -16,7 +16,11 @@ require_tasks_done 011
 
 # ---- 2. 交付物存在性 ----
 require_files \
-  'server/gamenode/scene/include/mmo/game/scene/scene.h'
+  'server/gamenode/scene/include/mmo/game/scene/scene.h' \
+  'server/gamenode/scene/include/mmo/game/scene/scene_context.h' \
+  'server/gamenode/scene/include/mmo/game/scene/scene_manager.h' \
+  'server/gamenode/scene/docs/INTERFACE.md' \
+  'server/gamenode/scene/docs/README.md'
 
 # ---- 3. 模块边界：公开头不得 include 内部 src/ ----
 if [ -d "$ROOT/server/gamenode/scene/include" ]; then

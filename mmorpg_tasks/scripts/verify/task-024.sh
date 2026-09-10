@@ -16,7 +16,11 @@ require_tasks_done 021 022 023 018
 
 # ---- 2. 交付物存在性 ----
 require_files \
-  'server/gamenode/combat/include/mmo/game/combat/combat_system.h'
+  'server/gamenode/combat/include/mmo/game/combat/combat_system.h' \
+  'server/gamenode/combat/include/mmo/game/combat/threat_table.h' \
+  'server/gamenode/combat/include/mmo/game/combat/combat_entity.h' \
+  'server/gamenode/combat/docs/INTERFACE.md' \
+  'server/gamenode/combat/docs/DEPENDENCY.md'
 
 # ---- 3. 静态红线扫描 ----
 scan_forbidden 'server/gamenode/combat/src' '(mysql|redis|grpc|kafka|sql::)'

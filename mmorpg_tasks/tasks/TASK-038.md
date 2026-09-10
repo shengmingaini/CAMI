@@ -235,7 +235,7 @@ bash scripts/verify/task-038.sh
 脚本执行的检查项：
 
 1. 前置任务门禁：`require_tasks_done 025 027 028 034 036 037 039 040 041`
-2. 交付物存在性检查（3 项）
+2. 交付物存在性检查（8 项）
 3. CMake configure + 编译（Debug + Release 双构建）
 4. ctest 过滤执行：`-R Bot`
 5. Benchmark 执行：`bin/bot_bench --bots 1000 --duration 300`

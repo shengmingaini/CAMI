@@ -49,7 +49,8 @@ OPTIONAL = {
     "metrics": [],
     "artifacts": [],
     "scan": [],
-    "ports": [],
+    "ports": [],             # 本任务自起服务占用的端口：验收时须「空闲」
+    "ports_open": [],        # 外部真实实例端口（Redis/MariaDB 等）：验收时须「已在线监听」
     "content": [],           # [(file, regex, desc)]
     "state": "",             # 该任务专属的 State Owner 描述（缺省用 STATE[id]）
     "ctype": "feat",         # Conventional Commits 类型
@@ -488,7 +489,10 @@ def render_md(t):
     checks = []
     if dep_full:
         checks.append("前置任务门禁：`require_tasks_done %s`" % " ".join(deps))
-    fc = concrete(t.get("artifacts") or t["deliver"])
+    # 交付物存在性检查取「关键交付物 artifacts」与「§8 交付物清单 deliver」的并集：
+    # 早期用 `artifacts or deliver`（二选一）导致给了 artifacts 的任务只检查 1~3 项，
+    # 其余交付物缺失也不报错（如 TASK-010 只查 1/12、TASK-028 只查 2/6）——属静默漏检。
+    fc = concrete(list(dict.fromkeys(list(t.get("artifacts") or []) + t["deliver"])))
     if fc:
         checks.append("交付物存在性检查（%d 项）" % len(fc))
     for f, pat, desc in t.get("content", []):
@@ -496,7 +500,9 @@ def render_md(t):
     for d, pat in t.get("scan", []):
         checks.append("静态红线扫描：`%s` 内禁止出现 /%s/" % (d, pat))
     for p in t.get("ports", []):
-        checks.append("端口占用检查：%s" % p)
+        checks.append("端口空闲检查：%s（本任务自起服务须可用）" % p)
+    for p in t.get("ports_open", []):
+        checks.append("端口在线检查：%s（须有真实外部实例在监听）" % p)
     checks.append("CMake configure + 编译（%s）" % ("Debug + Release 双构建" if t.get("both_build") else "Release 单构建"))
     if t.get("ctest"):
         checks.append("ctest 过滤执行：`-R %s`" % t["ctest"])
@@ -652,7 +658,8 @@ def render_sh(t):
         L.append("")
         i = 2
 
-    files = concrete(t.get("artifacts") or t["deliver"])
+    # 同 §20：存在性检查覆盖 artifacts ∪ deliver（去重保序），避免只查少数关键产物。
+    files = concrete(list(dict.fromkeys(list(t.get("artifacts") or []) + t["deliver"])))
     if files:
         L.append("# ---- %d. 交付物存在性 ----" % i)
         L.append("require_files \\")
@@ -686,9 +693,17 @@ def render_sh(t):
         i += 1
 
     if t.get("ports"):
-        L.append("# ---- %d. 端口占用检查 ----" % i)
+        L.append("# ---- %d. 端口空闲检查（本任务自起服务：端口须可用） ----" % i)
         for p in t["ports"]:
             L.append("require_free_port %s" % p)
+        L.append("")
+        i += 1
+
+    if t.get("ports_open"):
+        L.append("# ---- %d. 端口在线检查（真实外部实例：端口须已在线监听，§20.1）----" % i)
+        L.append("#    语义与 require_free_port 相反：真实实例类任务要求端口被实例占用而非空闲。")
+        for p in t["ports_open"]:
+            L.append("require_port_open %s" % p)
         L.append("")
         i += 1
 

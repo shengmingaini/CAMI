@@ -17,7 +17,11 @@ require_tasks_done 001 005
 # ---- 2. 交付物存在性 ----
 require_files \
   'engine/rpc/include/mmo/rpc/status_mapping.h' \
-  'engine/rpc/docs/INTERFACE.md'
+  'engine/rpc/docs/INTERFACE.md' \
+  'engine/rpc/include/mmo/rpc/grpc_client.h' \
+  'engine/rpc/include/mmo/rpc/grpc_server.h' \
+  'engine/rpc/include/mmo/rpc/grpc_channel_pool.h' \
+  'engine/rpc/docs/PERFORMANCE.md'
 
 # ---- 3. 模块边界：公开头不得 include 内部 src/ ----
 if [ -d "$ROOT/engine/rpc/include" ]; then

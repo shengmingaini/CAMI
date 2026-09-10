@@ -17,7 +17,11 @@ require_tasks_done 034
 # ---- 2. 交付物存在性 ----
 require_files \
   'client/renderer/include/mmo/client/render/renderer.h' \
-  'client/renderer/docs/PERFORMANCE.md'
+  'client/renderer/docs/PERFORMANCE.md' \
+  'client/renderer/include/mmo/client/render/camera.h' \
+  'client/renderer/include/mmo/client/render/material_system.h' \
+  'config/client/render.json' \
+  'client/renderer/docs/INTERFACE.md'
 
 # ---- 3. 模块边界：公开头不得 include 内部 src/ ----
 if [ -d "$ROOT/client/renderer/include" ]; then

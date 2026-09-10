@@ -17,7 +17,11 @@ require_tasks_done 001
 # ---- 2. 交付物存在性 ----
 require_files \
   'engine/core/include/mmo/core/log/logger.h' \
-  'tools/logtrace/parse_trace.py'
+  'tools/logtrace/parse_trace.py' \
+  'engine/core/include/mmo/core/log/log_context.h' \
+  'engine/core/include/mmo/core/log/trace_id.h' \
+  'engine/core/docs/README.md' \
+  'engine/core/docs/PERFORMANCE.md'
 
 # ---- 3. 静态红线扫描 ----
 scan_forbidden 'engine/core/src' '\bstd::cout\s*<<'

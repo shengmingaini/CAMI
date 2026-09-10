@@ -17,7 +17,9 @@ require_tasks_done 013 014 015 024
 # ---- 2. 交付物存在性 ----
 require_files \
   'docs/benchmark/combat-report.md' \
-  'benchmark/combat/combat_benchmark.h'
+  'benchmark/combat/combat_benchmark.h' \
+  'tools/report/compare.py' \
+  'docs/benchmark/matrix.json'
 
 # ---- 3. 模块边界：公开头不得 include 内部 src/ ----
 if [ -d "$ROOT/benchmark/combat/include" ]; then

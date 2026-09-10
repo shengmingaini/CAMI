@@ -17,7 +17,9 @@ require_tasks_done 026
 # ---- 2. 交付物存在性 ----
 require_files \
   'server/dataservice/include/mmo/data/redis/redis_cache.h' \
-  'docker/redis/docker-compose.yml'
+  'docker/redis/docker-compose.yml' \
+  'server/dataservice/include/mmo/data/redis/connection_pool.h' \
+  'server/dataservice/docs/INTERFACE.md'
 
 # ---- 3. 静态红线扫描 ----
 scan_forbidden 'server/dataservice/src/redis' '\"KEYS\"'
@@ -27,13 +29,14 @@ if [ -d "$ROOT/server/dataservice/include" ]; then
   scan_forbidden 'server/dataservice/include' '#include\s+["<][^">]*src/[^">]*'
 fi
 
-# ---- 5. 端口占用检查（真实实例须在线监听 6379，§20.1）----
+# ---- 5. 端口在线检查（真实外部实例：端口须已在线监听，§20.1）----
+#    语义与 require_free_port 相反：真实实例类任务要求端口被实例占用而非空闲。
 require_port_open 6379
 
 # ---- 6. 编译（本地 MinGW + vcpkg，CI 不作为验收依据） ----
 cmake_build_both
 
-# ---- 7. 单元测试（ctest 过滤执行；注册名为 DataService.Redis，§16/§17）----
+# ---- 7. 单元测试（ctest 过滤执行） ----
 run_ctest "$BUILD_TYPE" 'DataService.Redis' 'DataService.Redis'
 
 # ---- 8. Benchmark 与性能阈值断言 ----

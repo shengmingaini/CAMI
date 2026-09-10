@@ -17,7 +17,12 @@ require_tasks_done 005 006
 # ---- 2. 交付物存在性 ----
 require_files \
   'server/dataservice/include/mmo/data/data_service.h' \
-  'protocol/proto/service/data_service.proto'
+  'protocol/proto/service/data_service.proto' \
+  'server/dataservice/include/mmo/data/idata_store.h' \
+  'server/dataservice/include/mmo/data/icache.h' \
+  'server/dataservice/include/mmo/data/irepository.h' \
+  'server/dataservice/docs/INTERFACE.md' \
+  'server/dataservice/docs/README.md'
 
 # ---- 3. 模块边界：公开头不得 include 内部 src/ ----
 if [ -d "$ROOT/server/dataservice/include" ]; then

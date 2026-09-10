@@ -16,7 +16,9 @@ require_tasks_done 011 016
 
 # ---- 2. 交付物存在性 ----
 require_files \
-  'server/gamenode/combat/include/mmo/game/combat/skill/skill_system.h'
+  'server/gamenode/combat/include/mmo/game/combat/skill/skill_system.h' \
+  'server/gamenode/combat/include/mmo/game/combat/skill/skill_def.h' \
+  'server/gamenode/combat/docs/INTERFACE.md'
 
 # ---- 3. 模块边界：公开头不得 include 内部 src/ ----
 if [ -d "$ROOT/server/gamenode/combat/include" ]; then
