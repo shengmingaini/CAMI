@@ -92,3 +92,104 @@ if(MMORPG_BUILD_BENCHMARKS)
     set_target_properties(redis_bench PROPERTIES RUNTIME_OUTPUT_DIRECTORY
         ${CMAKE_BINARY_DIR}/bin)
 endif()
+
+# ---- TASK-028 · MySQL 适配器 ----
+# 第三方依赖（仅 src/mysql 内 include，公开头不外泄第三方类型）：
+#   · MariaDB Connector/C（pkg-config libmariadb）—— 客户端库
+#   · argon2（pkg-config libargon2）—— 口令 salted hash（§15.9）
+#   · OpenSSL Crypto —— 盐的 CSPRNG（RAND_bytes）
+# 依赖缺失一律 FATAL_ERROR：**禁止静默跳过**（否则模块不编译却构建全绿）。
+find_package(PkgConfig QUIET)
+if(PkgConfig_FOUND)
+    pkg_check_modules(MARIADB_PC QUIET IMPORTED_TARGET libmariadb)
+    pkg_check_modules(ARGON2_PC QUIET IMPORTED_TARGET libargon2)
+endif()
+
+add_library(mmo_tp_mariadb INTERFACE)
+if(TARGET PkgConfig::MARIADB_PC)
+    target_link_libraries(mmo_tp_mariadb INTERFACE PkgConfig::MARIADB_PC)
+else()
+    find_path(MARIADB_INCLUDE_DIR NAMES mysql.h PATH_SUFFIXES mariadb mysql)
+    find_library(MARIADB_LIBRARY NAMES mariadb mariadbclient mysqlclient)
+    if(NOT MARIADB_INCLUDE_DIR OR NOT MARIADB_LIBRARY)
+        message(FATAL_ERROR
+            "TASK-028: 未找到 MySQL 客户端库（mysql.h / libmariadb）。"
+            "安装：pacman -S mingw-w64-x86_64-libmariadbclient")
+    endif()
+    target_include_directories(mmo_tp_mariadb INTERFACE ${MARIADB_INCLUDE_DIR})
+    target_link_libraries(mmo_tp_mariadb INTERFACE ${MARIADB_LIBRARY})
+endif()
+
+add_library(mmo_tp_argon2 INTERFACE)
+if(TARGET PkgConfig::ARGON2_PC)
+    target_link_libraries(mmo_tp_argon2 INTERFACE PkgConfig::ARGON2_PC)
+else()
+    find_path(ARGON2_INCLUDE_DIR NAMES argon2.h)
+    find_library(ARGON2_LIBRARY NAMES argon2)
+    if(NOT ARGON2_INCLUDE_DIR OR NOT ARGON2_LIBRARY)
+        message(FATAL_ERROR
+            "TASK-028: 未找到 argon2（§15.9 口令 salted hash）。"
+            "安装：pacman -S mingw-w64-x86_64-argon2")
+    endif()
+    target_include_directories(mmo_tp_argon2 INTERFACE ${ARGON2_INCLUDE_DIR})
+    target_link_libraries(mmo_tp_argon2 INTERFACE ${ARGON2_LIBRARY})
+endif()
+
+find_package(OpenSSL REQUIRED)
+
+add_library(mmo_dataservice_mysql STATIC
+    src/mysql/shard_router.cpp
+    src/mysql/sql_builder.cpp
+    src/mysql/mysql_client.cpp
+    src/mysql/connection_pool.cpp
+    src/mysql/mysql_store.cpp
+    src/mysql/migration.cpp
+    src/mysql/password_hash.cpp
+    src/mysql/repository.cpp
+    src/mysql/repositories.cpp)
+add_library(mmo::dataservice_mysql ALIAS mmo_dataservice_mysql)
+
+target_include_directories(mmo_dataservice_mysql PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:include>)
+target_compile_features(mmo_dataservice_mysql PUBLIC cxx_std_20)
+target_link_libraries(mmo_dataservice_mysql PUBLIC
+    mmo::dataservice
+    mmo::core_config
+    mmo_tp_mariadb
+    mmo_tp_argon2
+    OpenSSL::Crypto)
+mmorpg_add_warnings(mmo_dataservice_mysql)
+# 第三方头（mysql.h / argon2.h）内部的 int/size_t 与 signed 比较告警不计入本模块
+target_compile_options(mmo_dataservice_mysql PRIVATE
+    -Wno-conversion -Wno-sign-conversion -Wno-pedantic)
+
+# 迁移工具（§15.6）：up / status / dry-run
+add_executable(mysql_migrate ${CMAKE_CURRENT_SOURCE_DIR}/../../tools/migrate/main.cpp)
+target_link_libraries(mysql_migrate PRIVATE mmo::dataservice_mysql)
+target_include_directories(mysql_migrate PRIVATE
+    ${CMAKE_SOURCE_DIR}/engine/core/tests)
+target_compile_options(mysql_migrate PRIVATE -Wno-conversion -Wno-sign-conversion -Wno-pedantic)
+set_target_properties(mysql_migrate PROPERTIES RUNTIME_OUTPUT_DIRECTORY
+    ${CMAKE_BINARY_DIR}/bin)
+
+if(MMORPG_BUILD_TESTS)
+    add_executable(mysql_test tests/mysql_test.cpp)
+    target_link_libraries(mysql_test PRIVATE mmo::dataservice_mysql)
+    target_include_directories(mysql_test PRIVATE
+        ${CMAKE_SOURCE_DIR}/engine/core/tests)
+    target_compile_options(mysql_test PRIVATE -Wno-conversion -Wno-sign-conversion -Wno-pedantic)
+    # ctest -R DataService.MySql 命中；无实例时 [mysql] 集成用例明确 SKIP（§20.8）
+    add_test(NAME DataService.MySql COMMAND mysql_test
+             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+endif()
+
+if(MMORPG_BUILD_BENCHMARKS)
+    add_executable(mysql_bench benchmark/mysql_bench.cpp)
+    target_link_libraries(mysql_bench PRIVATE mmo::dataservice_mysql)
+    target_include_directories(mysql_bench PRIVATE
+        ${CMAKE_SOURCE_DIR}/engine/core/tests)
+    target_compile_options(mysql_bench PRIVATE -Wno-conversion -Wno-sign-conversion -Wno-pedantic)
+    set_target_properties(mysql_bench PROPERTIES RUNTIME_OUTPUT_DIRECTORY
+        ${CMAKE_BINARY_DIR}/bin)
+endif()

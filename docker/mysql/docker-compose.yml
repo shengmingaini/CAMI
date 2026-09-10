@@ -1,0 +1,48 @@
+# docker/mysql/docker-compose.yml — TASK-028 本地 MySQL/MariaDB 实例
+#
+# 仅用于本地验收（§15.6 / §17 / §19）。生产由 DataService 统一管控，禁止 GameNode 直连（§4）。
+#
+# 形态：**一个实例 + 8 个逻辑库**（mmo_shard0..mmo_shard7），与 ShardConfig.shard_count
+# 初始容量一致（§4：分片数由本模块独占决定，业务层不可见）。分片也可以分散到多个实例，
+# 只需把 MySqlConfig.endpoints 配成不同 host/port —— 代码不变。
+#
+# 启动： docker compose -f docker/mysql/docker-compose.yml up -d
+# 停止： docker compose -f docker/mysql/docker-compose.yml down
+#        （加 -v 会删除数据卷，谨慎）
+#
+# 建表（禁止手工改表，§4）：
+#   bin/mysql_migrate up --shards=8 --db-prefix=mmo_shard
+#
+# 注意：GFW 可能拦截 Docker Hub 拉取；可改用 Windows 原生 MariaDB zip
+# （archive.mariadb.org/mariadb-11.8.6/winx64-packages/mariadb-11.8.6-winx64.zip），
+# 只要监听 3306 且提供 8 个逻辑库即可，验收口径与容器一致。
+
+services:
+  mysql:
+    image: mariadb:11.8
+    container_name: cami-mysql
+    ports:
+      - "3306:3306"
+    environment:
+      # 仅本地验收使用；生产口令必须经 MMORPG_MYSQL_PASSWORD 环境变量注入，禁止硬编码。
+      MARIADB_ALLOW_EMPTY_ROOT_PASSWORD: "1"
+      MARIADB_ROOT_HOST: "%"
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --default-time-zone=+08:00
+      # 验收需要观测到锁等待超时（1205），把默认 50s 降到 1s 便于测试注入
+      - --innodb-lock-wait-timeout=1
+    volumes:
+      # 8 个逻辑库在首次启动时创建（分片 = 逻辑库）
+      - ./init-shards.sql:/docker-entrypoint-initdb.d/01-init-shards.sql:ro
+      - cami-mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  cami-mysql-data:
