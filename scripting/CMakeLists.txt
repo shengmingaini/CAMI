@@ -10,3 +10,7 @@
 # MMORPG_ENABLE_LUA 保留给未来客户端侧裁剪使用。
 
 add_subdirectory(lua)
+
+# TASK-033 · Gameplay Script —— 玩法脚本与 C++/Lua 桥接层。
+# 依赖方向：scripting/gameplay -> scripting/lua（只消费公开头）-> engine/core + gamenode/entity。
+add_subdirectory(gameplay)

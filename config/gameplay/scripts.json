@@ -1,0 +1,162 @@
+{
+  "version": 1,
+  "comment": "TASK-033 §8 · 玩法脚本清单。C++ 侧不含任何脚本名字面量：路由 = (hook, key) → 脚本，全部来自本文件。",
+  "limit_note": "tick_hz 仅允许 0（不周期）或 1（1Hz）。> 1 在装载期直接报错（§21 禁止高频周期脚本）。",
+
+  "scripts": [
+    {
+      "name": "quest/kill_10_wolves",
+      "path": "scripting/gameplay/quest/kill_10_wolves.lua",
+      "category": "quest",
+      "hooks": ["quest_event"],
+      "keys": ["monster_killed", "quest_completed"],
+      "requires": ["quest:1001", "npc:1001"],
+      "tick_hz": 0,
+      "enabled": true
+    },
+    {
+      "name": "quest/collect_herbs",
+      "path": "scripting/gameplay/quest/collect_herbs.lua",
+      "category": "quest",
+      "hooks": ["quest_event"],
+      "keys": ["item_collected"],
+      "requires": ["quest:1002", "item:9001"],
+      "tick_hz": 0,
+      "enabled": true
+    },
+    {
+      "name": "quest/escort_merchant",
+      "path": "scripting/gameplay/quest/escort_merchant.lua",
+      "category": "quest",
+      "hooks": ["quest_event"],
+      "keys": ["npc_talked", "location_reached"],
+      "requires": ["quest:1004", "npc:2002"],
+      "tick_hz": 1,
+      "enabled": true
+    },
+
+    {
+      "name": "skill/fireball",
+      "path": "scripting/gameplay/skill/fireball.lua",
+      "category": "skill",
+      "hooks": ["skill_formula"],
+      "keys": ["fireball"],
+      "requires": ["skill:fireball"],
+      "tick_hz": 0,
+      "enabled": true
+    },
+    {
+      "name": "skill/ice_lance",
+      "path": "scripting/gameplay/skill/ice_lance.lua",
+      "category": "skill",
+      "hooks": ["skill_formula"],
+      "keys": ["ice_lance"],
+      "requires": ["skill:ice_lance"],
+      "tick_hz": 0,
+      "enabled": true
+    },
+    {
+      "name": "skill/heal_light",
+      "path": "scripting/gameplay/skill/heal_light.lua",
+      "category": "skill",
+      "hooks": ["skill_formula"],
+      "keys": ["heal_light"],
+      "requires": ["skill:heal_light"],
+      "tick_hz": 0,
+      "enabled": true
+    },
+
+    {
+      "name": "ai/aggressive_guard",
+      "path": "scripting/gameplay/ai/aggressive_guard.lua",
+      "category": "ai",
+      "hooks": ["ai_decide"],
+      "keys": ["aggressive_guard"],
+      "requires": ["ai:aggressive_guard", "npc:1001"],
+      "tick_hz": 0,
+      "enabled": true
+    },
+    {
+      "name": "ai/patrol_sentry",
+      "path": "scripting/gameplay/ai/patrol_sentry.lua",
+      "category": "ai",
+      "hooks": ["ai_decide"],
+      "keys": ["patrol_sentry"],
+      "requires": ["ai:patrol_sentry"],
+      "tick_hz": 0,
+      "enabled": true
+    },
+    {
+      "name": "ai/fleeing_scout",
+      "path": "scripting/gameplay/ai/fleeing_scout.lua",
+      "category": "ai",
+      "hooks": ["ai_decide"],
+      "keys": ["fleeing_scout"],
+      "requires": ["ai:fleeing_scout"],
+      "tick_hz": 0,
+      "enabled": true
+    },
+
+    {
+      "name": "boss/dragon_phase",
+      "path": "scripting/gameplay/boss/dragon_phase.lua",
+      "category": "boss",
+      "hooks": ["boss_phase"],
+      "keys": ["dragon"],
+      "requires": ["boss:dragon"],
+      "tick_hz": 0,
+      "enabled": true
+    },
+    {
+      "name": "boss/lich_phase",
+      "path": "scripting/gameplay/boss/lich_phase.lua",
+      "category": "boss",
+      "hooks": ["boss_phase"],
+      "keys": ["lich"],
+      "requires": ["boss:lich"],
+      "tick_hz": 0,
+      "enabled": true
+    },
+    {
+      "name": "boss/golem_phase",
+      "path": "scripting/gameplay/boss/golem_phase.lua",
+      "category": "boss",
+      "hooks": ["boss_phase"],
+      "keys": ["golem"],
+      "requires": ["boss:golem"],
+      "tick_hz": 0,
+      "enabled": true
+    },
+
+    {
+      "name": "event/double_exp",
+      "path": "scripting/gameplay/event/double_exp.lua",
+      "category": "event",
+      "hooks": ["activity_modifier"],
+      "keys": ["double_exp"],
+      "requires": ["activity:double_exp"],
+      "tick_hz": 1,
+      "enabled": true
+    },
+    {
+      "name": "event/world_boss_dawn",
+      "path": "scripting/gameplay/event/world_boss_dawn.lua",
+      "category": "event",
+      "hooks": ["activity_modifier"],
+      "keys": ["world_boss_dawn"],
+      "requires": ["activity:world_boss_dawn"],
+      "tick_hz": 0,
+      "enabled": true
+    },
+    {
+      "name": "event/festival_lantern",
+      "path": "scripting/gameplay/event/festival_lantern.lua",
+      "category": "event",
+      "hooks": ["activity_modifier"],
+      "keys": ["festival_lantern"],
+      "requires": ["activity:festival_lantern"],
+      "tick_hz": 0,
+      "enabled": true
+    }
+  ]
+}

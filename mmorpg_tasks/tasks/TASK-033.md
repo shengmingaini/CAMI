@@ -4,7 +4,7 @@ NAME: Gameplay Script
 PHASE: Phase 7 · Lua 脚本
 MODULE: scripting/gameplay
 OWNER: Codex / WorkBuddy Agent 实施；@技术总监 二次验收；本地 MinGW MSYS2 g++ + vcpkg 编译验证
-STATUS: PENDING
+STATUS: DONE
 DEPENDENCIES: TASK-018, TASK-019, TASK-021, TASK-031, TASK-032
 ---
 
@@ -20,7 +20,7 @@ DEPENDENCIES: TASK-018, TASK-019, TASK-021, TASK-031, TASK-032
 | PHASE | Phase 7 · Lua 脚本 |
 | MODULE | `scripting/gameplay` |
 | OWNER | Codex / WorkBuddy Agent 实施；@技术总监 二次验收；本地 MinGW MSYS2 g++ + vcpkg 编译验证 |
-| STATUS | **PENDING** |
+| STATUS | **DONE** |
 | DEPENDENCIES | `TASK-018`, `TASK-019`, `TASK-021`, `TASK-031`, `TASK-032` |
 
 ---
