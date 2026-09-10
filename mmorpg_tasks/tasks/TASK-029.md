@@ -4,7 +4,7 @@ NAME: Economy System
 PHASE: Phase 6 · 数据系统
 MODULE: server/gamenode/economy
 OWNER: Codex / WorkBuddy Agent 实施；@技术总监 二次验收；本地 MinGW MSYS2 g++ + vcpkg 编译验证
-STATUS: PENDING
+STATUS: DONE
 DEPENDENCIES: TASK-017, TASK-026
 ---
 
@@ -20,7 +20,7 @@ DEPENDENCIES: TASK-017, TASK-026
 | PHASE | Phase 6 · 数据系统 |
 | MODULE | `server/gamenode/economy` |
 | OWNER | Codex / WorkBuddy Agent 实施；@技术总监 二次验收；本地 MinGW MSYS2 g++ + vcpkg 编译验证 |
-| STATUS | **PENDING** |
+| STATUS | **DONE** |
 | DEPENDENCIES | `TASK-017`, `TASK-026` |
 
 ---
