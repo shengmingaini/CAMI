@@ -312,7 +312,7 @@ void* LuaVM::Allocate(void* ud, void* ptr, std::size_t osize, std::size_t nsize)
     // 的关键 —— 不允许「先超再回收」。判定失败直接返回 nullptr，Lua 会抛 LUA_ERRMEM
     // 并由 pcall 转成 MemoryLimit（VM 状态保持一致，可继续跑其它脚本，§19）。
     const std::size_t used = vm->mem_used_.load(std::memory_order_relaxed);
-    const std::size_t base = used >= osize ? used - osize : 0;
+    const std::size_t base = (ptr != nullptr && used >= osize) ? used - osize : used;
     if (base + nsize > vm->limits_.memory_bytes) {
         vm->alloc_fails_.fetch_add(1, std::memory_order_relaxed);
         return nullptr;
