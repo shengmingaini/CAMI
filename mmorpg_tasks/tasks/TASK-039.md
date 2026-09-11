@@ -4,7 +4,7 @@ NAME: Social System（组队/好友/公会/聊天/邮件）
 PHASE: Phase 7 · 社交系统
 MODULE: server/gamenode/social
 OWNER: Codex / WorkBuddy Agent 实施；@技术总监 二次验收；本地 MinGW MSYS2 g++ + vcpkg 编译验证
-STATUS: PENDING
+STATUS: DONE
 DEPENDENCIES: TASK-007, TASK-011, TASK-016, TASK-028
 ---
 
@@ -20,7 +20,7 @@ DEPENDENCIES: TASK-007, TASK-011, TASK-016, TASK-028
 | PHASE | Phase 7 · 社交系统 |
 | MODULE | `server/gamenode/social` |
 | OWNER | Codex / WorkBuddy Agent 实施；@技术总监 二次验收；本地 MinGW MSYS2 g++ + vcpkg 编译验证 |
-| STATUS | **PENDING** |
+| STATUS | **DONE** |
 | DEPENDENCIES | `TASK-007`, `TASK-011`, `TASK-016`, `TASK-028` |
 
 ---

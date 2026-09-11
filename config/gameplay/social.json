@@ -1,0 +1,6 @@
+{
+  "party_size_max": 5,
+  "guild_member_max": 100,
+  "mail_ttl_seconds": 604800,
+  "world_chat_enabled": true
+}
