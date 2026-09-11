@@ -1,0 +1,78 @@
+// protocol/proto/service/control_service.proto — TASK-040 §7 / §23
+//
+// ControlService gRPC 契约（控制面：节点管理 / 配置下发 / 健康 / 运维）。
+//
+// 说明：本 .proto 是跨进程传输契约。为与 TASK-010 Gateway Router 的节点目录（其
+// NodeId 为 uint32 数值空间，路由缓存按 NodeId 失效）直接对齐，此处 node_id 采用
+// 数值类型（uint64，C++ 内部以 uint32 承载），而非 §7 草图中的 string —— 这样离线
+// 协调时 ControlService 发布的 NodeDead 可直接命中 Gateway 的路由缓存，无需字符串↔数值映射。
+// 该偏差为跨模块协调一致性的刻意设计，见 server/control/docs/INTERFACE.md。
+
+syntax = "proto3";
+
+package mmo.control;
+
+option csharp_namespace = "Mmo.Control";
+option go_package = "mmo/control";
+
+// 节点角色（与 C++ ControlRole 对齐）。
+enum ControlRole {
+  CONTROL_ROLE_UNSPECIFIED = 0;
+  GAME_NODE  = 0;  // 实时游戏逻辑节点
+  GATEWAY    = 1;  // 网关（多实例，前置 LB 分流）
+  SCENE_NODE = 2;  // 场景承载节点
+}
+
+service ControlService {
+  rpc RegisterNode(RegisterNodeReq)   returns (RegisterNodeResp);    // GameNode/Gateway 上线注册
+  rpc Heartbeat(HeartbeatReq)         returns (HeartbeatResp);      // 健康维持，含负载
+  rpc PushConfig(PushConfigReq)       returns (PushConfigResp);     // 携带 config_version，节点比对后热加载
+  rpc QueryTopology(QueryTopologyReq) returns (QueryTopologyResp);  // 当前节点/路由拓扑（运维用）
+}
+
+message RegisterNodeReq {
+  uint64 node_id  = 1;
+  ControlRole role = 2;
+  string addr     = 3;
+  uint32 capacity = 4;  // 前置 LB 分流权重
+}
+message RegisterNodeResp {
+  bool   ok      = 1;
+  string message = 2;
+}
+
+message HeartbeatReq {
+  uint64 node_id      = 1;
+  uint32 load         = 2;  // 当前负载
+  uint32 player_count = 3;  // 在线玩家数
+  uint32 tick_p99_ms  = 4;  // p99 tick 延迟
+}
+message HeartbeatResp {
+  bool ok = 1;
+}
+
+message PushConfigReq {
+  uint64 config_version = 1;  // 必须严格大于节点当前版本（单调递增）
+  bytes  snapshot       = 2;  // 序列化后的配置字节
+}
+message PushConfigResp {
+  bool   ok               = 1;
+  uint64 current_version  = 2;
+}
+
+message QueryTopologyReq {}
+
+message NodeEntry {
+  uint64 node_id  = 1;
+  ControlRole role = 2;
+  string addr     = 3;
+  uint32 capacity = 4;
+  uint32 load     = 5;
+  uint32 player_count = 6;
+  uint32 tick_p99_ms   = 7;
+  bool   online   = 8;
+}
+message QueryTopologyResp {
+  repeated NodeEntry nodes          = 1;
+  uint64            config_version  = 2;
+}

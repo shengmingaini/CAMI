@@ -4,7 +4,7 @@ NAME: ControlService（控制面：节点管理/配置下发/健康/运维）
 PHASE: Phase 9 · 运维控制面
 MODULE: server/control
 OWNER: Codex / WorkBuddy Agent 实施；@技术总监 二次验收；本地 MinGW MSYS2 g++ + vcpkg 编译验证
-STATUS: PENDING
+STATUS: DONE
 DEPENDENCIES: TASK-003, TASK-006, TASK-010
 ---
 
@@ -20,7 +20,7 @@ DEPENDENCIES: TASK-003, TASK-006, TASK-010
 | PHASE | Phase 9 · 运维控制面 |
 | MODULE | `server/control` |
 | OWNER | Codex / WorkBuddy Agent 实施；@技术总监 二次验收；本地 MinGW MSYS2 g++ + vcpkg 编译验证 |
-| STATUS | **PENDING** |
+| STATUS | **DONE** |
 | DEPENDENCIES | `TASK-003`, `TASK-006`, `TASK-010` |
 
 ---

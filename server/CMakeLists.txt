@@ -6,3 +6,4 @@
 add_subdirectory(gateway)
 add_subdirectory(gamenode)
 add_subdirectory(dataservice)
+add_subdirectory(control)

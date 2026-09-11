@@ -1,0 +1,4 @@
+{
+  "heartbeat_timeout_ms": 15000,
+  "default_capacity": 1000
+}
