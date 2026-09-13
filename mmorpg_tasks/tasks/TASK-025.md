@@ -21,7 +21,7 @@ DEPENDENCIES: TASK-013, TASK-014, TASK-015, TASK-024
 | PHASE | Phase 5 · 战斗 |
 | MODULE | `benchmark/combat` |
 | OWNER | Codex / WorkBuddy Agent 实施；@技术总监 二次验收；本地 MinGW MSYS2 g++ + vcpkg 编译验证 |
-| STATUS | **PENDING** |
+| STATUS | **DONE** |
 | DEPENDENCIES | `TASK-013`, `TASK-014`, `TASK-015`, `TASK-024` |
 
 ---
