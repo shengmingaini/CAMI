@@ -1,0 +1,41 @@
+{
+  "Low": {
+    "texture_max_size": 512,
+    "anisotropic": 1,
+    "lod_bias": 1.0,
+    "shadow_quality": 0,
+    "max_visible_entities": 50,
+    "max_particles": 200,
+    "net_update_hz": 10,
+    "view_distance": 80.0,
+    "chunk_radius": 1,
+    "texture_budget_bytes": 268435456,
+    "mesh_budget_bytes": 134217728
+  },
+  "Medium": {
+    "texture_max_size": 1024,
+    "anisotropic": 4,
+    "lod_bias": 0.0,
+    "shadow_quality": 1,
+    "max_visible_entities": 150,
+    "max_particles": 1000,
+    "net_update_hz": 20,
+    "view_distance": 150.0,
+    "chunk_radius": 2,
+    "texture_budget_bytes": 536870912,
+    "mesh_budget_bytes": 268435456
+  },
+  "High": {
+    "texture_max_size": 2048,
+    "anisotropic": 16,
+    "lod_bias": 0.0,
+    "shadow_quality": 2,
+    "max_visible_entities": 300,
+    "max_particles": 3000,
+    "net_update_hz": 30,
+    "view_distance": 250.0,
+    "chunk_radius": 3,
+    "texture_budget_bytes": 1073741824,
+    "mesh_budget_bytes": 536870912
+  }
+}
