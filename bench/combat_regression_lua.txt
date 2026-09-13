@@ -1,0 +1,15 @@
+tick_avg_us=3002
+tick_p50_us=2973
+tick_p95_us=3313
+tick_p99_us=3760
+tick_max_us=4783
+lua_scripts_loaded=15
+lua_load_ok=1
+lua_load_ms=5.5187
+lua_skill_formula_ns=2166.45
+lua_cpu_percent=0.19857
+baseline_tick_p95_us=0
+baseline_tick_p99_us=0
+verdict_pass=1
+verdict_reason=ok
+lua_error=requires: 未注入 IReferenceRegistry，引用校验已跳过

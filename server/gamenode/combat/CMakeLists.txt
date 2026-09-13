@@ -144,14 +144,20 @@ if(MMORPG_BUILD_BENCHMARKS)
     #           assert_metric bench/combat.txt combat_phase_us_at_1k le 1200
     #           assert_metric bench/combat.txt alloc_per_combat_tick le 0
     # TASK-025：`--matrix` 模式委托 mmo::bench_combat（CombatBenchmark）跑 5×4 矩阵。
+    # TASK-041：`--lua-loaded` 模式委托 mmo::qa（E2EScenario）跑战斗回归 + Lua 探针；
+    #           mmo::script_gameplay 提供 TASK-033 GameplayScriptHost 与 Lua 运行时
+    #           （scripting/ 子树不依赖 MMORPG_ENABLE_LUA，lua=OFF 构建下依然链接 Lua）。
     add_executable(combat_bench benchmark/combat_bench.cpp)
     target_link_libraries(combat_bench PRIVATE
         mmo::gamenode_combat
         mmo::gamenode_aoi
         mmo::gamenode_movement
-        mmo::bench_combat)
+        mmo::bench_combat
+        mmo::qa
+        mmo::script_gameplay)
     target_include_directories(combat_bench PRIVATE
-        ${CMAKE_SOURCE_DIR}/engine/core/tests)
+        ${CMAKE_SOURCE_DIR}/engine/core/tests
+        ${CMAKE_SOURCE_DIR}/tools/qa)
     target_compile_options(combat_bench PRIVATE -Wno-pedantic)
     set_target_properties(combat_bench PROPERTIES RUNTIME_OUTPUT_DIRECTORY
         ${CMAKE_BINARY_DIR}/bin)

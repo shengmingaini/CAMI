@@ -35,7 +35,7 @@ endif()
 
 # ---- 顶层子目录：存在 CMakeLists.txt 才纳入（空骨架阶段安全） ----
 # benchmark 放最后：它消费 server/gamenode/* 的公开接口，需先完成那些子目录的目标定义。
-set(MMORPG_SUBDIRS engine server game database scripting protocol benchmark)
+set(MMORPG_SUBDIRS engine server game database scripting protocol benchmark tools)
 foreach(_sub IN LISTS MMORPG_SUBDIRS)
   if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${_sub}/CMakeLists.txt")
     add_subdirectory(${_sub})

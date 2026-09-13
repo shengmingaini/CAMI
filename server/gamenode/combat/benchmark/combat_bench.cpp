@@ -33,6 +33,9 @@
 // TASK-025：--matrix 模式委托 mmo::bench::CombatBenchmark 跑 4 规模 × 5 场景矩阵。
 #include "combat_benchmark.h"
 
+// TASK-041：--lua-loaded 回归模式复用 tools/qa 的 header-only 编排器（E2EScenario）。
+#include "e2e/e2e_runner.h"
+
 #include "mmo/core/bus/event_bus.h"
 #include "mmo/core/error/error_code.h"
 #include "mmo/core/memory/arena.h"
@@ -197,6 +200,22 @@ double RunPhase(Harness& h, std::size_t entities, double ratio, std::size_t roun
     return us;
 }
 
+// 从可执行文件位置向上找仓库根（含 config/gameplay/scripts.json 的目录）。
+std::filesystem::path FindRepoRootArgv(const char* argv0) {
+    std::error_code ec;
+    std::filesystem::path dir =
+        std::filesystem::absolute(std::filesystem::path(argv0), ec).parent_path();
+    for (int i = 0; i < 6 && !dir.empty(); ++i) {
+        if (std::filesystem::exists(dir / "config" / "gameplay" / "scripts.json", ec)) {
+            return dir;
+        }
+        const std::filesystem::path parent = dir.parent_path();
+        if (parent == dir) break;
+        dir = parent;
+    }
+    return std::filesystem::current_path(ec);
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -208,6 +227,7 @@ int main(int argc, char** argv) {
     double ratio = 0.5;
     std::size_t ticks = 2000;
     bool matrix = false;
+    bool lua_loaded = false;   // TASK-041：跨进程集成 + 战斗性能回归模式
     std::size_t duration = 60;
     std::size_t warmup = 5;
     std::string matrix_out = "bench/combat_matrix.json";
@@ -226,6 +246,73 @@ int main(int argc, char** argv) {
             matrix_out = argv[++i];
         else if (std::strcmp(argv[i], "--matrix") == 0)
             matrix = true;
+        else if (std::strcmp(argv[i], "--lua-loaded") == 0)
+            lua_loaded = true;
+    }
+
+    // TASK-041：--lua-loaded 模式（跨进程集成 + 战斗性能回归）。
+    // 进程内真实加载 TASK-033 全部 Lua 脚本 + 重跑 TASK-025 战斗性能矩阵 + Lua 探针，
+    // 落盘 bench/combat_regression_lua.txt（+ --out 指定的 .json）并施加阈值门禁。
+    // 退出码只取决于 tick 阈值门禁（tick_p95≤5000、tick_p99≤8000），与 Lua 是否可用无关：
+    // 沙箱（lua=OFF）构建下 Lua 可能不可用，其成败记于 .txt，不阻断 tick 门禁判定。
+    if (lua_loaded) {
+        mmo::qa::E2EConfig cfg;
+        cfg.real_infra = false;          // 沙箱：不触真实 gRPC/Redis/MySQL
+        cfg.matrix_full = matrix;        // --matrix 时跑完整 4×5；否则仅 1000/100pct 单场景
+        const auto repo = FindRepoRootArgv(argc > 0 ? argv[0] : ".");
+        cfg.repo_root = repo.string();
+        cfg.lua_manifest = (repo / "config" / "gameplay" / "scripts.json").string();
+        cfg.matrix_duration = static_cast<std::uint32_t>(duration);
+        cfg.matrix_warmup = static_cast<std::uint32_t>(warmup);
+        cfg.bench_out_json = matrix_out;
+        cfg.lua_iterations = 20000u;
+
+        mmo::qa::E2EScenario scenario;
+        auto run = scenario.Run(cfg);
+        if (!run) {
+            ErrorFmt("bench: lua-loaded E2E failed: %s\n",
+                     std::string(run.Err().Message()).c_str());
+            return 2;  // 内部错误（与 tick 门禁失败区分）
+        }
+        const auto rep = scenario.Report();
+
+        // .txt 路径与 --out 同源（.json → .txt），强制对齐 verify 断言文件名。
+        std::string txt_path = matrix_out;
+        if (txt_path.size() >= 5 && txt_path.substr(txt_path.size() - 5) == ".json")
+            txt_path.replace(txt_path.size() - 5, 5, ".txt");
+        else
+            txt_path += ".txt";
+
+        std::error_code ec;
+        std::filesystem::create_directories("bench", ec);
+        {
+            std::ofstream f(txt_path, std::ios::binary);
+            f << rep.ToText();
+        }
+        {
+            std::ofstream f(matrix_out, std::ios::binary);
+            f << "{\n";
+            f << "  \"tick_avg_us\": " << rep.tick_avg_us << ",\n";
+            f << "  \"tick_p50_us\": " << rep.tick_p50_us << ",\n";
+            f << "  \"tick_p95_us\": " << rep.tick_p95_us << ",\n";
+            f << "  \"tick_p99_us\": " << rep.tick_p99_us << ",\n";
+            f << "  \"tick_max_us\": " << rep.tick_max_us << ",\n";
+            f << "  \"lua_load_ok\": " << (rep.lua_load_ok ? 1 : 0) << ",\n";
+            f << "  \"lua_scripts_loaded\": " << rep.lua_scripts_loaded << ",\n";
+            f << "  \"lua_load_ms\": " << rep.lua_load_ms << ",\n";
+            f << "  \"lua_skill_formula_ns\": " << rep.lua_skill_formula_ns << ",\n";
+            f << "  \"lua_cpu_percent\": " << rep.lua_cpu_percent << "\n";
+            f << "}\n";
+        }
+
+        const bool gate = (rep.tick_p95_us <= 5000u) && (rep.tick_p99_us <= 8000u);
+        ErrorFmt("bench: lua-loaded regression: tick_p95=%llu tick_p99=%llu lua_ok=%d "
+                 "(lua_scripts=%zu lua_ms=%.1f skill_formula_ns=%.1f cpu_pct=%.2f)\n",
+                 static_cast<unsigned long long>(rep.tick_p95_us),
+                 static_cast<unsigned long long>(rep.tick_p99_us),
+                 rep.lua_load_ok ? 1 : 0, rep.lua_scripts_loaded, rep.lua_load_ms,
+                 rep.lua_skill_formula_ns, rep.lua_cpu_percent);
+        return gate ? 0 : 1;
     }
 
     // TASK-025：--matrix 跑完整「4 规模 × 5 场景 = 20 组」矩阵（§8 禁止抽样）。

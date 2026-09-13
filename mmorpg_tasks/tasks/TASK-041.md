@@ -4,7 +4,7 @@ NAME: 跨进程集成与战斗性能回归
 PHASE: Phase 8 · 集成与回归
 MODULE: tools/qa
 OWNER: Codex / WorkBuddy Agent 实施；@技术总监 二次验收；本地 MinGW MSYS2 g++ + vcpkg 编译验证
-STATUS: PENDING
+STATUS: DONE
 DEPENDENCIES: TASK-025, TASK-030, TASK-033
 ---
 
@@ -20,7 +20,7 @@ DEPENDENCIES: TASK-025, TASK-030, TASK-033
 | PHASE | Phase 8 · 集成与回归 |
 | MODULE | `tools/qa` |
 | OWNER | Codex / WorkBuddy Agent 实施；@技术总监 二次验收；本地 MinGW MSYS2 g++ + vcpkg 编译验证 |
-| STATUS | **PENDING** |
+| STATUS | **DONE** |
 | DEPENDENCIES | `TASK-025`, `TASK-030`, `TASK-033` |
 
 ---
