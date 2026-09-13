@@ -1,0 +1,15 @@
+fixed_fps=60
+duration_ms=8000
+wall_ms=8568
+ticks=479
+frames=32720387
+tick_p50_ms=16.6667
+tick_p95_ms=16.6669
+tick_p99_ms=16.6674
+tick_max_ms=25.6545
+frame_ms_p95=0.0003
+mem_bytes_client_base=11689984
+catchups=0
+overshoot=0
+tick_budget_ms=25
+verdict_pass=1
