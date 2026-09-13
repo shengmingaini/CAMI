@@ -1,0 +1,55 @@
+# deploy/k8s/03-mysql.yaml — MySQL（最终持久化数据库）
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mysql
+  namespace: mmorpg
+spec:
+  serviceName: mysql
+  replicas: 1
+  selector:
+    matchLabels: { app: mysql }
+  template:
+    metadata:
+      labels: { app: mysql }
+    spec:
+      containers:
+        - name: mysql
+          image: mysql:8.0
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: mmorpg-secrets, key: mysql-root-password }
+            - name: MYSQL_DATABASE
+              value: "mmorpg"
+          ports:
+            - containerPort: 3306
+          resources:
+            requests: { cpu: "500m", memory: "1Gi" }
+            limits:   { cpu: "2",    memory: "4Gi" }
+          readinessProbe:
+            tcpSocket: { port: 3306 }
+            initialDelaySeconds: 20
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket: { port: 3306 }
+            initialDelaySeconds: 30
+            periodSeconds: 15
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/mysql
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: mysql-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+  namespace: mmorpg
+spec:
+  selector: { app: mysql }
+  ports:
+    - port: 3306
+      targetPort: 3306

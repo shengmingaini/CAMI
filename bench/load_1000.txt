@@ -1,0 +1,13 @@
+ccu_level=1000
+tick_p50_ms=0.00129998
+tick_p95_ms=0.00519991
+tick_p99_ms=0.0221
+tick_max_ms=7.8734
+error_rate=0
+cpu_percent=10.687
+rss_mb=48.3086
+redis_ops=0
+mysql_qps=0
+net_mbps=15.9971
+actions_done=4686649
+verdict_pass=1

@@ -1,0 +1,8 @@
+# deploy/k8s/00-namespace.yaml — 独立命名空间，隔离 MMORPG 运行时
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: mmorpg
+  labels:
+    app.kubernetes.io/part-of: mmorpg
+    mmorpg.io/tier: runtime

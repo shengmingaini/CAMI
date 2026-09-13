@@ -1,0 +1,9 @@
+# deploy/docker/Dockerfile.gamenode — GameNode 容器镜像（实时逻辑）
+FROM ubuntu:22.04
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates libssl3 && rm -rf /var/lib/apt/lists/*
+WORKDIR /opt/mmorpg
+COPY build/Release/bin/gamenode /opt/mmorpg/gamenode
+COPY config /opt/mmorpg/config
+EXPOSE 9002
+ENTRYPOINT ["/opt/mmorpg/gamenode"]

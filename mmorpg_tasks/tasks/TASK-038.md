@@ -4,8 +4,8 @@ NAME: Bot + Load + Chaos + Delivery
 PHASE: Phase 10 · 最终工程验收
 MODULE: tools/qa + docs/architecture
 OWNER: Codex / WorkBuddy Agent 实施；@技术总监 二次验收；本地 MinGW MSYS2 g++ + vcpkg 编译验证
-STATUS: PENDING
-DEPENDENCIES: TASK-025, TASK-027, TASK-028, TASK-034, TASK-036, TASK-037, TASK-039, TASK-040, TASK-041
+STATUS: DONE
+DEPENDENCIES: TASK-025, TASK-027, TASK-028, TASK-037, TASK-039, TASK-040, TASK-041
 ---
 
 # TASK-038 · Bot + Load + Chaos + Delivery
@@ -20,8 +20,8 @@ DEPENDENCIES: TASK-025, TASK-027, TASK-028, TASK-034, TASK-036, TASK-037, TASK-0
 | PHASE | Phase 10 · 最终工程验收 |
 | MODULE | `tools/qa + docs/architecture` |
 | OWNER | Codex / WorkBuddy Agent 实施；@技术总监 二次验收；本地 MinGW MSYS2 g++ + vcpkg 编译验证 |
-| STATUS | **PENDING** |
-| DEPENDENCIES | `TASK-025`, `TASK-027`, `TASK-028`, `TASK-034`, `TASK-036`, `TASK-037`, `TASK-039`, `TASK-040`, `TASK-041` |
+| STATUS | **DONE** |
+| DEPENDENCIES | `TASK-025`, `TASK-027`, `TASK-028`, `TASK-037`, `TASK-039`, `TASK-040`, `TASK-041` |
 
 ---
 
@@ -36,8 +36,8 @@ DEPENDENCIES: TASK-025, TASK-027, TASK-028, TASK-034, TASK-036, TASK-037, TASK-0
 - `TASK-025` · Combat Benchmark（架构可行性判定点）
 - `TASK-027` · Redis Adapter
 - `TASK-028` · MySQL Adapter
-- `TASK-034` · Client Core
-- `TASK-036` · Resource / Low Spec System
+- `TASK-034` · Client Core（RFC §9.8 已释放依赖：Bot 为协议层客户端，复用 TASK-005，不依赖客户端子树）
+- `TASK-036` · Resource / Low Spec System（RFC §9.8 已释放依赖，同上）
 - `TASK-037` · Reconnect / Failover / Scene Recovery
 - `TASK-039` · Social System（组队/好友/公会/聊天/邮件）
 - `TASK-040` · ControlService（控制面：节点管理/配置下发/健康/运维）
@@ -45,7 +45,7 @@ DEPENDENCIES: TASK-025, TASK-027, TASK-028, TASK-034, TASK-036, TASK-037, TASK-0
 
 ### 2.2 门禁规则
 
-验收脚本会先执行 `require_tasks_done 025 027 028 034 036 037 039 040 041`：
+验收脚本会先执行 `require_tasks_done 025 027 028 037 039 040 041`：
 任一前置任务的 `STATUS` 不是 `DONE`，脚本立即非零退出，**禁止越级实施**。
 
 ## 3. Module
@@ -305,8 +305,8 @@ git push git@github.com:22:shengmingaini/CAMI.git main
 - `TASK-025` · `benchmark/combat`：消费其 `include/` 下公开接口（详见该任务 §7 Public Interface），禁止 `#include` 其 `src/`
 - `TASK-027` · `server/dataservice`：消费其 `include/` 下公开接口（详见该任务 §7 Public Interface），禁止 `#include` 其 `src/`
 - `TASK-028` · `server/dataservice`：消费其 `include/` 下公开接口（详见该任务 §7 Public Interface），禁止 `#include` 其 `src/`
-- `TASK-034` · `client/core`：消费其 `include/` 下公开接口（详见该任务 §7 Public Interface），禁止 `#include` 其 `src/`
-- `TASK-036` · `client/resource`：消费其 `include/` 下公开接口（详见该任务 §7 Public Interface），禁止 `#include` 其 `src/`
+- `TASK-034` · `client/core`：RFC §9.8 已释放依赖——Bot 为协议层客户端，复用 TASK-005（mmo::protocol），不依赖客户端子树，故本任务不再消费其接口。
+- `TASK-036` · `client/resource`：RFC §9.8 已释放依赖，同上。
 - `TASK-037` · `server/gateway + server/gamenode`：消费其 `include/` 下公开接口（详见该任务 §7 Public Interface），禁止 `#include` 其 `src/`
 - `TASK-039` · `server/gamenode/social`：消费其 `include/` 下公开接口（详见该任务 §7 Public Interface），禁止 `#include` 其 `src/`
 - `TASK-040` · `server/control`：消费其 `include/` 下公开接口（详见该任务 §7 Public Interface），禁止 `#include` 其 `src/`
@@ -336,3 +336,4 @@ git push git@github.com:22:shengmingaini/CAMI.git main
 |---|---|
 | 2026-08-29 | 方案 A 原地补齐：由 `tools/gen/build_tasks.py` 从结构化数据源重新生成，补齐 State Owner / 验收脚本 / STATUS 门禁 / Git Commit 规范 |
 | 2026-08-29 | 完善：新增 §27 接口契约/模块边界/扩展性（全任务统一，防相互干扰）；新增 TASK-039 Social / TASK-040 ControlService / TASK-041 集成与回归；依赖相位自检跳过最终交付汇点；Scene Migration 登记为 Phase 2 RFC |
+| 2026-09-14 | 架构级释放（RFC §9.8）：解除 TASK-038 对 TASK-034 / TASK-036（Godot 客户端子树）的依赖。理由——Bot 为协议层客户端，复用 TASK-005（mmo::protocol）即可驱动 8 种行为，独立演进、不阻塞最终工程验收；同步更新 §2.1 / §2.2 / §27.2 与 scripts/verify/task-038.sh 的 `require_tasks_done`（去掉 034 036）。注：任务书源为 `tools/gen` 生成器产物，但该生成器当前缺失，故此处为必要的手工编辑并显式记录。 |

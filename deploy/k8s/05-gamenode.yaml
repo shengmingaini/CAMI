@@ -1,0 +1,44 @@
+# deploy/k8s/05-gamenode.yaml — GameNode（实时游戏逻辑，20Hz 固定 Tick）
+# 无单点：多副本；在线玩家实时状态由当前 Scene/Instance 持有（PROJECT_REQUIREMENTS §6）。
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gamenode
+  namespace: mmorpg
+spec:
+  replicas: 50            # 初始规划：50 active + failover 余量
+  selector:
+    matchLabels: { app: gamenode }
+  template:
+    metadata:
+      labels: { app: gamenode }
+    spec:
+      containers:
+        - name: gamenode
+          image: mmorpg/gamenode:latest
+          envFrom:
+            - configMapRef: { name: mmorpg-config }
+          ports:
+            - containerPort: 9101
+          resources:
+            requests: { cpu: "500m", memory: "512Mi" }
+            limits:   { cpu: "2",    memory: "1Gi" }
+          readinessProbe:
+            tcpSocket: { port: 9101 }
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          livenessProbe:
+            tcpSocket: { port: 9101 }
+            initialDelaySeconds: 20
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gamenode
+  namespace: mmorpg
+spec:
+  selector: { app: gamenode }
+  ports:
+    - port: 9101
+      targetPort: 9101

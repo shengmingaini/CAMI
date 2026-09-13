@@ -1,0 +1,43 @@
+# deploy/k8s/02-redis.yaml — Redis（Session / Cache / Routing / Ranking / 临时数据）
+# 注意：Redis RDB 快照不得作为唯一故障恢复机制（PROJECT_REQUIREMENTS §17）。
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: redis
+  namespace: mmorpg
+spec:
+  serviceName: redis
+  replicas: 1
+  selector:
+    matchLabels: { app: redis }
+  template:
+    metadata:
+      labels: { app: redis }
+    spec:
+      containers:
+        - name: redis
+          image: redis:7-alpine
+          ports:
+            - containerPort: 6379
+          resources:
+            requests: { cpu: "250m", memory: "512Mi" }
+            limits:   { cpu: "1",    memory: "1Gi" }
+          readinessProbe:
+            tcpSocket: { port: 6379 }
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            tcpSocket: { port: 6379 }
+            initialDelaySeconds: 15
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: mmorpg
+spec:
+  selector: { app: redis }
+  ports:
+    - port: 6379
+      targetPort: 6379

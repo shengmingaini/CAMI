@@ -1,0 +1,56 @@
+# deploy/docker/docker-compose.yml — 本地一键冒烟（100 CCU 验证）
+# 用法：cd deploy/docker && docker compose up -d
+#       bin/bot_bench --bots 100 --duration 60 --gateway 127.0.0.1:9001
+
+services:
+  redis:
+    image: redis:7-alpine
+    ports: ["6379:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: mmo_root
+      MYSQL_DATABASE: mmorpg
+    ports: ["3306:3306"]
+    volumes: ["mysql_data:/var/lib/mysql"]
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-prootpass"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  gateway:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.gateway
+    depends_on: [redis, mysql]
+    ports: ["9001:9001"]
+    environment:
+      MMO_REDIS_URL: redis:6379
+      MMO_MYSQL_URL: mysql:3306
+
+  gamenode:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.gamenode
+    depends_on: [gateway, redis, mysql]
+    environment:
+      MMO_GATEWAY_ADDR: gateway:9001
+      MMO_REDIS_URL: redis:6379
+      MMO_MYSQL_URL: mysql:3306
+
+  control:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.control
+    depends_on: [gateway, gamenode]
+    ports: ["9100:9100"]
+
+volumes:
+  mysql_data:

@@ -1,0 +1,11 @@
+# deploy/docker/Dockerfile.control — ControlService 容器镜像
+# 与 Dockerfile.gateway / Dockerfile.gamenode 同构：多阶段骨架，真实二进制由
+# `cmake --build --target control` 产出后 COPY 进最终镜像。
+FROM ubuntu:22.04
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates libssl3 && rm -rf /var/lib/apt/lists/*
+WORKDIR /opt/mmorpg
+COPY build/Release/bin/control /opt/mmorpg/control
+COPY config /opt/mmorpg/config
+EXPOSE 9100
+ENTRYPOINT ["/opt/mmorpg/control"]

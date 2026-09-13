@@ -1,0 +1,16 @@
+# deploy/k8s/01-configmap.yaml — 运行时共享配置（端口、分片、热更策略）
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mmorpg-config
+  namespace: mmorpg
+data:
+  GATEWAY_LISTEN: "0.0.0.0:9001"
+  GAMENODE_GRPC: "0.0.0.0:9101"
+  CONTROL_LISTEN: "0.0.0.0:9100"
+  REDIS_ADDR: "redis:6379"
+  MYSQL_ADDR: "mysql:3306"
+  TICK_HZ: "20"
+  SHARD_COUNT: "8"            # 逻辑分片数（业务层不得写死，此处仅为部署默认值）
+  HOTRELOAD_SAFE_POINT: "true"
+  LOG_LEVEL: "info"
