@@ -1,0 +1,42 @@
+{
+  "backend": "D3D11",
+  "default_quality": "low",
+  "target_fps": 60,
+  "vsync": true,
+  "max_draw_calls": 300,
+  "shadow_quality": 0,
+  "budget_low": {
+    "draw_calls": 300,
+    "triangles": 300000,
+    "texture_memory_mb": 512,
+    "mesh_memory_mb": 256,
+    "shader_switches_per_frame": 50,
+    "ui_draw_calls": 20
+  },
+  "lod": {
+    "near_distance": 30.0,
+    "mid_distance": 80.0,
+    "near_factor": 1.0,
+    "mid_factor": 0.5,
+    "far_factor": 0.25
+  },
+  "culling": {
+    "enabled": true,
+    "method": "frustum_gribb_hartmann"
+  },
+  "batching": {
+    "by_material": true,
+    "static_instancing": true
+  },
+  "ui": {
+    "orthographic": true,
+    "atlas_batch": true,
+    "max_draw_calls": 20
+  },
+  "lighting": {
+    "directional_lights": 1,
+    "vertex_color": true,
+    "real_time_shadow": false,
+    "pbr": false
+  }
+}

@@ -9,3 +9,12 @@
 # GDExtension / Godot 场景接入在 TASK-035/036 阶段补齐。
 
 add_subdirectory(core)
+
+# TASK-035 Renderer（Headless 参考后端）：始终纳入。
+add_subdirectory(renderer)
+
+# TASK-036 Resource/LowSpec：由 036 实施者负责 client/resource/CMakeLists.txt；
+# 其就绪前用 EXISTS 守卫，避免本 client 树 configure 失败。
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/resource/CMakeLists.txt")
+    add_subdirectory(resource)
+endif()
