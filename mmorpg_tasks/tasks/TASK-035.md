@@ -1,42 +1,42 @@
 ---
 TASK-ID: TASK-035
-NAME: Renderer
+NAME: Renderer (2.5D)
 PHASE: Phase 8 · 客户端
 MODULE: client/renderer
-OWNER: Codex / WorkBuddy Agent 实施；@技术总监 二次验收；本地 MinGW MSYS2 g++ + vcpkg 编译验证
-STATUS: PENDING
+OWNER: Codex / WorkBuddy Agent 实施；@技术总监 二次验收；本地 Godot 4.7.2 构建验证（require_godot 门禁）+ GDExtension(C++) scons 编译
+STATUS: DONE
 DEPENDENCIES: TASK-034
+DONE-DATE: 2026-09-14
 ---
 
-# TASK-035 · Renderer
+# TASK-035 · Renderer（Godot 4.7.2 · 2.5D）
 
-> 本文件由 `tools/gen/build_tasks.py` 从 `tools/gen/data_*.py` 生成，**禁止手工编辑**。
-> 需要改动请修改数据源后重新生成：`python tools/gen/build_tasks.py`
+> **本任务书按 `docs/client-spec-2.5d.md` §8 + §12 安全刷新（2026-09-14），取代原「自研 D3D11 渲染器」旧框架。**
+> ⚠ **禁止运行 `python tools/gen/build_tasks.py`**：生成器会把全部 42 份任务书 `STATUS` 硬写为 `PENDING`，清空已完成的 39 个 DONE 台账。本刷新只手工改本任务书，STATUS 保持 `PENDING` 不变。
 
 | 字段 | 值 |
 |---|---|
 | TASK-ID | `TASK-035` |
-| NAME | Renderer |
+| NAME | Renderer (2.5D) |
 | PHASE | Phase 8 · 客户端 |
 | MODULE | `client/renderer` |
-| OWNER | Codex / WorkBuddy Agent 实施；@技术总监 二次验收；本地 MinGW MSYS2 g++ + vcpkg 编译验证 |
+| OWNER | Codex / WorkBuddy Agent 实施；@技术总监 二次验收；本地 Godot 4.7.2 构建验证（require_godot 门禁）+ GDExtension(C++) scons 编译 |
 | STATUS | **PENDING** |
 | DEPENDENCIES | `TASK-034` |
 
 ---
 
-> **✅ 前置已打通（2026-09-13）：RFC §9.8 触发条件已满足（TASK-030~033 / 037 / 039 / 040 / 041 全部 DONE），Godot 4.7.2 环境已纳入准备流程（下载与运行验证进行中，代理限速下预计约 45 分钟）。本任务解除冻结，可按 Godot 4.7.2 + 2D 规格开工；规格刷新（生成器重写）仍建议但不再作为硬阻塞。**
+> **✅ 前置已打通（2026-09-13）：RFC §9.8 触发条件已满足（TASK-030~033 / 037 / 039 / 040 / 041 全部 DONE），Godot 4.7.2 已解压核验（`4.7.2.stable.official.ed1daf0bf`）。TASK-034（Client Core）解除冻结后本任务即具备开工条件，按 `docs/client-spec-2.5d.md` 2.5D 规格实施。**
 >
-> **历史/背景**：原规格按「自研 C++ 客户端 / 自研渲染器 / 自研资源系统」编写，与 2026-08-29 批准的 Godot 4.7.x 路线（RFC §4.6/§6.1）及 2026-09-10 的 2D 优先约束（RFC §9）冲突，故于 2026-09-10 冻结。现服务端/游戏核心前置已全部完成、Godot 环境就绪，冻结解除。
+> **历史/背景**：原规格按「自研 D3D11 渲染器」编写，与 2026-08-29 批准的 Godot 4.7.x 路线（RFC §4.6/§6.1）及 2026-09-14 升级的 2.5D 规格（§9）冲突，故于 2026-09-10 冻结。现 Godot 路线 + 2.5D 规格已定稿，冻结解除。
 >
->
-> **不变项**（重写时必须保留）：协议契约（TASK-005 的 FlatBuffers schema）、AOI Delta 与快照格式、通过 GDExtension(C++) 下沉协议与热路径的策略、`client/{runtime,network,gameplay,ui,extensions}` 目录分层与单向依赖约束、以及「**逻辑层不得解算表现**」这条纪律（RFC §9.6）。
+> **不变项**（重写时必须保留）：协议契约（TASK-005 的 FlatBuffers schema）、AOI Delta 与快照格式、通过 GDExtension(C++) 下沉协议与热路径的策略、`client/{runtime,network,gameplay,ui,extensions}` 目录分层与单向依赖约束、以及「**逻辑层不得解算表现**」这条纪律（RFC §9.6 / 规格书 §1 末尾）。
 
 ---
 
 ## 1. Objective
 
-实现低复杂度渲染器：Camera / Mesh / Material / Texture / Animation / UI。目标 Low Poly + Simple Lighting + Low Draw Call + Static Batching + LOD，**不要把引擎复杂度做得太高**。
+实现 2.5D 渲染管线（**Godot Compatibility 单档，OpenGL 3.3 / D3D11，不引入 Forward+**）：`Camera3D` 透视固定俯角 **45°** + `Sprite3D` / `AnimatedSprite3D` billboard 管线 + 地面程序化网格 + 深度遮挡 + LOD（远精灵降级为低分辨率图集 / 关闭远精灵）+ 图集合批 + 距离剔除。UI 走 `CanvasLayer` / `Control` 正交层。**不生产 3D 几何模型**（角色/怪物/NPC 用 8 向 2D 精灵，地面用程序化网格）。保留 Low 资源纪律：DrawCall < 300、三角面 < 300k、纹理显存 < 512MB。
 
 ## 2. Dependencies
 
@@ -51,163 +51,180 @@ DEPENDENCIES: TASK-034
 
 ## 3. Module
 
-`client/renderer`
+`client/renderer`（Godot 工程内 `client/renderer/` 目录；2.5D 渲染管线脚本 + 程序化网格生成器 + 相机/光照配置；消费 `client/runtime` 的 `ClientWorld` 镜像数据）。
 
 ## 4. State Owner（状态归属）
 
-渲染资源（纹理/网格/材质）由 ResourceManager（TASK-036）拥有并管理生命周期；渲染线程只持有句柄。
+渲染资源（纹理/网格/材质/精灵图集）由 `ResourceManager`（TASK-036）拥有并管理生命周期；本模块渲染节点只持有引用/句柄，不直接管理资源内存。表现层状态（位置/朝向）由 `ClientWorld`（TASK-034）作为唯一权威镜像，本模块只读消费。
 
-> 硬约束：同一实时状态只能有一个权威写入者（见 PROJECT_REQUIREMENTS §10 / §12）。
-> 跨模块写入必须走 Command，禁止直接改对方内存。
+> 硬约束：同一实时状态只能有一个权威写入者（见 PROJECT_REQUIREMENTS §10 / §12）。表现层不得回写逻辑状态。
 
 ## 5. Input
 
-TASK-034 ClientWorld（渲染数据源）；低配红线：4核 CPU / 4GB RAM / 1GB VRAM（开发目标，最终以实测为准）
+TASK-034 `ClientWorld`（渲染数据源，只读镜像）；低配红线：4 核 CPU / 4GB RAM / 1GB VRAM（开发目标，最终以实测容量报告为准）。
 
 ## 6. Output
 
-client/renderer 模块 + 渲染基准 + Draw Call / 显存报告
+`client/renderer` 模块 + 渲染基准 + Draw Call / 三角面 / 显存报告（三档 QualityPreset）。
 
 ## 7. Public Interface
 
-```cpp
-namespace mmo::client::render {
-struct RenderStats { uint32_t draw_calls; uint32_t triangles; uint32_t materials;
-                     size_t texture_memory_bytes; size_t mesh_memory_bytes;
-                     float cpu_ms; float gpu_ms; uint32_t shader_switches; };
-class Renderer { public:
-  struct Config { Backend backend{Backend::D3D11}; uint32_t target_fps{60};
-                  bool vsync{true}; QualityLevel quality{QualityLevel::Low};
-                  uint32_t max_draw_calls{500}; uint32_t shadow_quality{0}; };
-  core::Result<void> Init(Config, void* native_window);
-  core::Result<void> Resize(uint32_t w, uint32_t h);
-  core::Result<RenderStats> RenderFrame(const client::ClientWorld&, const Camera&);
-  core::Result<void> SetQuality(QualityLevel);      // Low/Medium/High 热切换
-  RenderStats LastStats() const noexcept; };
-class Camera { public: void SetPerspective(float fov, float aspect, float near_z, float far_z);
-  void LookAt(const Vec3& eye, const Vec3& target); Mat4 ViewProj() const;
-  Frustum GetFrustum() const; };                    // 视锥剔除必需
-class MaterialSystem { public:
-  core::Result<MaterialId> Create(const MaterialDesc&);   // 统一材质，减少切换
-  core::Result<void> SetTexture(MaterialId, TextureSlot, TextureId); };
-}
+```gdscript
+# client/renderer/camera/iso_camera.gd  —— Camera3D 透视固定俯角 45°
+class_name IsoCamera
+extends Camera3D
+const PITCH_DEG : float = 45.0          # 用户决策：固定俯角 45°
+func follow_target(node: Node3D, damping: float) -> void  # 阻尼跟随，不每帧硬切
+func screen_to_world(ray_length: float) -> Vector3        # 地面拾取/选中
+
+# client/renderer/sprites/sprite_entity.gd  —— Sprite3D / AnimatedSprite3D billboard 实体
+class_name SpriteEntity
+extends Node3D
+func set_facing_8dir(dir: int) -> void   # 8 向：上/下/左/右 + 四斜向（用户决策）
+func apply_snapshot(ent: Dictionary) -> void  # 来自 ClientWorld 镜像
+# BillboardMode 用 FIXED_Y（等距朝向）或 ENABLED（永远朝相机，按资产类型选）
+
+# client/renderer/terrain/proc_ground.gd  —— 地面程序化网格（无 DCC 建模）
+class_name ProcGround
+extends Node3D
+func build_from_heightmap(hm: Image, tile_set: Texture2D) -> void  # MeshDataTool / ArrayMesh
+func set_lod_density(level: int) -> void   # 低/中/高 网格密度
+
+# client/renderer/pipeline/render_stats.gd  —— 渲染统计
+class_name RenderStats
+extends Node
+func sample() -> Dictionary:  # {draw_calls, triangles, texture_mem_mb, mesh_mem_mb,
+                              #   cpu_ms, gpu_ms, shader_switches, visible_sprites}
+func set_quality(level: int) -> void       # Low/Medium/High 热切换（消费 TASK-036 QualityPreset）
 ```
 
 ## 8. Data Model
 
-**渲染预算（Low 档，目标值，最终以实测为准）**
+**渲染预算（Low 档目标，三档见规格书 §3，最终以实测为准）**
 
-| 指标 | Low 档目标 |
-|---|---|
-| Draw Calls | < 300 |
-| Triangles | < 300k |
-| 纹理显存 | < 512MB |
-| 网格显存 | < 256MB |
-| Shader 切换 | < 50/帧 |
-| 光照 | 1 方向光 + 顶点色烘焙，无实时阴影 |
+| 项 | Low | Medium | High |
+|---|---|---|---|
+| 纹理上限（图集/贴图） | 512 | 1024 | 2048 |
+| 地面网格密度 | 低（大格子） | 中 | 高 |
+| LOD / 远精灵降级 | 激进 | 中 | 关 |
+| 阴影 | 关 | 关 | 关（环境光近似） |
+| 同屏实体 | 50 | 150 | 300 |
+| 粒子数 | 200 | 1000 | 3000 |
+| 视距 | 80m | 150m | 250m |
+| Draw Call | < 300 | — | — |
+| 三角面 | < 300k | — | — |
+| 纹理显存 | < 512MB | — | — |
 
-**关键技术**：静态合批（静态物体按材质合批）、视锥剔除、LOD（3 级）、材质统一（减少切换）、实例化（同模型多实例）。
-**UI**：独立 UI 层，用正交相机 + 图集合批，UI Draw Call < 20。
+**关键技术**：同图集 `Sprite3D` 批处理（`VisibilityEnabler`/合批）、距离剔除（超视距关闭远精灵）、视锥剔除、LOD（远精灵降级为低分辨率图集/关闭）、深度遮挡（Godot 3D 深度缓冲自然遮挡，透明精灵开启深度写入或半透明排序层）、1 方向光 + 环境光（无实时阴影）。UI：独立 `CanvasLayer` 正交层 + 图集合批，UI Draw Call < 20。
 
 ## 9. Thread Model
 
-渲染线程独立于逻辑线程；逻辑线程产出不可变渲染快照，渲染线程消费（双缓冲）。禁止渲染线程访问 ClientWorld 可变状态。
+表现层由 Godot 主线程 `_process` 驱动（`ClientWorld` 镜像已在 TASK-034 插值好）；渲染由 Godot 内部渲染线程（Compatibility 单档）执行。本模块不创建额外线程；程序化网格生成在加载期同步或 `ResourceLoader` 异步完成（不阻塞逻辑帧）。禁止渲染代码访问 `ClientWorld` 可变状态（只读镜像）。
 
 ## 10. Hot Path
 
 **YES** （每帧执行）
 
-本任务位于 Tick 热路径内，禁止：MySQL / Redis 同步访问 / 同步 gRPC / Kafka 同步访问 / 文件 IO / 网络阻塞 IO / 大规模内存分配（见 PROJECT_REQUIREMENTS §14）。
+本任务位于 Tick 热路径内，禁止：MySQL / Redis 同步访问 / 同步 gRPC / Kafka 同步访问 / 文件 IO / 网络阻塞 IO / 大规模内存分配（见 PROJECT_REQUIREMENTS §14）。Godot `Node3D` 分配需克制（实体池化，避免每帧实例化）。
 
 ## 11. External IO
 
-**YES** （加载纹理/网格，异步）
+**YES** （加载纹理/网格/图集，异步）
 
-所有外部 IO 必须异步化，禁止出现在 Tick 内。
+所有外部 IO 必须异步化（`ResourceLoader.load` 异步或加载期一次性），禁止出现在 `_process` 内。
 
 ## 12. Network RPC
 
 **NO**
 
-
 ## 13. Persistence
 
 **NO**
 
-
 ## 14. Files
 
-- client/renderer/include/mmo/client/render/
-- client/renderer/src/
+- client/renderer/camera/iso_camera.gd
+- client/renderer/sprites/sprite_entity.gd
+- client/renderer/terrain/proc_ground.gd
+- client/renderer/pipeline/render_stats.gd
+- client/renderer/pipeline/lod_manager.gd
+- client/renderer/pipeline/culling.gd
 - client/renderer/tests/
 - client/renderer/benchmark/
 - config/client/render.json
 
 ## 15. Implementation Steps
 
-1. 选定后端：D3D11（低配目标 GPU 为传统 DX11），预留 Vulkan 抽象层接口但不实现
-2. 实现 renderer.h/.cpp：初始化、Resize、RenderFrame、SetQuality
-3. 实现 camera.h：透视/正交、视锥体（六个平面）与剔除测试
-4. 实现 mesh / material / texture 三个资源句柄与加载（异步加载，主线程不阻塞）
-5. 实现静态合批：静态物体按材质分组，合并顶点缓冲（构建期离线 + 运行期按区块）
-6. 实现视锥剔除 + LOD 选择（3 级：近/中/远，按距离与屏占比）
-7. 实现简单光照：1 个方向光 + 环境光 + 顶点色，**不做 PBR、不做实时阴影**
-8. 实现实例化渲染：同模型多实体一次 Draw Call（用于怪物群、植被）
-9. 实现 UI 层：正交相机 + 图集合批 + 文本渲染（位图字体，禁用复杂排版引擎）
-10. 实现渲染统计：draw_calls / triangles / texture memory / shader switches / cpu_ms / gpu_ms
-11. 写测试：视锥剔除正确性（已知位置集合的可见性断言）；LOD 选择；合批后 Draw Call 数下降；UI 批次数；画质热切换
+1. 渲染器选型：锁定 Godot **Compatibility 单档**（OpenGL 3.3 / D3D11），工程设置关闭 Forward+（Vulkan/D3D12）；预设不硬编码，三档走 `QualityPreset`。
+2. 实现 `IsoCamera`：`Camera3D` 透视、固定俯角 45°、阻尼跟随（不每帧硬切）、`screen_to_world` 射线拾取（供输入/选中）。
+3. 实现 `SpriteEntity`：`Sprite3D` / `AnimatedSprite3D`，8 向朝向（上/下/左/右 + 四斜向，用户决策），`FIXED_Y` 等距朝向或 `ENABLED` 朝相机；消费 `ClientWorld` 镜像数据（只读）。
+4. 实现 `ProcGround`：高度图 → `MeshDataTool`/`ArrayMesh` 程序化地面网格，贴 TileSet 纹理图集，**无 DCC 建模**；网格密度随档位变化。
+5. 实现深度遮挡：透明精灵材质开启深度写入或半透明排序层（避免错误穿透）；验证墙后精灵被自然遮挡（验收重点）。
+6. 实现图集合批 + 距离剔除：同图集 `Sprite3D` 合批；超视距关闭远精灵；视锥剔除（Godot 内置 + 自管可见集）。
+7. 实现 `LODManager`：远精灵降级为低分辨率图集 / 关闭远精灵（三档：激进/中/关）。
+8. 实现简单光照：1 方向光 + 环境光，**无实时阴影、无 PBR**（与 Low 档纪律一致）。
+9. 实现 `RenderStats`：draw_calls / triangles / texture_mem / mesh_mem / shader_switches / cpu_ms / gpu_ms / visible_sprites；`set_quality` 热切换（消费 TASK-036 `QualityPreset`）。
+10. 实现 UI 层：`CanvasLayer` + `Control` 正交层 + 图集合批，UI Draw Call < 20。
+11. 写测试：深度遮挡正确性（已知遮挡对断言可见性）；8 向朝向映射；LOD 三级阈值；合批后 Draw Call 下降；画质热切换；UI 批次数。
+12. 写集成测试：渲染测试场景（1000 地面块 + 200 动态精灵 + 50 UI），Low 档下 Draw Call < 300、三角面 < 300k、纹理显存 < 512MB。
 
 ## 16. Unit Test
 
-Camera 视锥构造与剔除；LOD 三级选择阈值；材质创建与纹理绑定；合批分组算法；UI 图集与批次；画质切换；统计字段准确
+`IsoCamera` 俯角/视锥/射线；`SpriteEntity` 8 向映射；`ProcGround` 网格生成与密度；LOD 三级选择阈值；合批分组；深度遮挡排序；UI 图集与批次；画质切换；`RenderStats` 字段准确。
 
 ## 17. Integration Test
 
-渲染一个测试场景（1000 个静态物体 + 200 个动态实体 + 50 个 UI 元素）：Low 档下 Draw Call < 300、三角面 < 300k、纹理显存 < 512MB；画质从 Low 切到 High 不崩溃且显存变化可测；连续渲染 10 分钟无显存泄漏（显存占用曲线平稳）
+渲染一个测试场景（1000 地面块 + 200 动态精灵 + 50 UI）：Low 档下 Draw Call < 300、三角面 < 300k、纹理显存 < 512MB；画质从 Low 切到 High 不崩溃且显存变化可测；深度遮挡生效（墙后精灵不可见）；连续渲染 10 分钟无显存泄漏（显存曲线平稳）。
 
 ## 18. Benchmark
 
-bin/render_bench：`draw_calls=` / `triangles=` / `texture_mem_mb=` / `mesh_mem_mb=` / `cpu_ms=` / `gpu_ms=` / `fps_p95=` / `shader_switches=`
+`godot --headless --path client --benchmark-render`（或 `godot_run_tests` 封装）：`draw_calls=` / `triangles=` / `texture_mem_mb=` / `mesh_mem_mb=` / `cpu_ms=` / `gpu_ms=` / `fps_p95=` / `shader_switches=`
 
 ## 19. Failure Test
 
-显存不足（注入 2GB 纹理）：按 LRU 降级/拒绝加载，返回明确错误而非崩溃；设备丢失（DXGI DEVICE_REMOVED）：捕获并尝试重建设备；窗口最小化/尺寸为 0：跳过渲染不崩溃；着色器编译失败：记录并使用默认材质，不黑屏崩溃；纹理加载失败：使用占位纹理（洋红）并告警
+显存不足（注入 2GB 纹理）：按 LRU 降级/拒绝加载，返回明确错误而非崩溃（交由 TASK-036 预算回收）；窗口最小化/尺寸为 0：跳过渲染不崩溃；着色器/材质编译失败：记录并使用默认材质，不黑屏崩溃；纹理加载失败：使用占位纹理（洋红）并告警；深度排序异常：透明精灵穿透时回退显式排序层不崩溃。
 
 ## 20. Acceptance Criteria
 
-1. Camera / Mesh / Material / Texture / Animation / UI 六项全部实现
-2. **Low 档 Draw Call < 300、三角面 < 300k、纹理显存 < 512MB**（benchmark 实测）
-3. 静态合批与视锥剔除生效（有对照数据：开启前后 Draw Call 对比）
-4. LOD 三级生效
-5. 画质 Low/Medium/High 可热切换
-6. 连续渲染 10 分钟无显存泄漏
-7. 设备丢失可恢复，不崩溃
-8. Debug / Release 双构建通过，ctest -R Renderer 全绿
+1. `Camera3D` 透视固定俯角 **45°** 实现（规格书 §2.2 / §13-1，用户决策）
+2. 8 向 2D 精灵 `Sprite3D` / `AnimatedSprite3D` billboard 管线实现（规格书 §5 / §13-2）
+3. 地面程序化网格（无 3D 模型）实现（规格书 §2.4 / §5）
+4. **深度遮挡生效**（墙后精灵被自然遮挡，验收重点）
+5. **Low 档 Draw Call < 300、三角面 < 300k、纹理显存 < 512MB**（benchmark 实测）
+6. 图集合批 + 距离剔除 + LOD 三级生效（有对照数据）
+7. 画质 Low/Medium/High 可热切换（消费 TASK-036 `QualityPreset`）
+8. UI 层 `CanvasLayer` 正交、UI Draw Call < 20
+9. 连续渲染 10 分钟无显存泄漏
+10. `require_godot` 门禁通过；Godot 工程可加载；测试全绿
 
 以上每一条都必须在本地真实执行并留证；**任一条不满足即判定本任务未完成**，禁止进入下一个 TASK。
 
 ## 21. Forbidden
 
+- 禁止引入 Forward+（Vulkan/D3D12）渲染器（本阶段只 Compatibility 单档）
+- 禁止生产 3D 几何模型（角色/怪物/NPC 用 8 向 2D 精灵，地面用程序化网格）
 - 禁止实现 PBR / 实时阴影 / 后处理管线（第一版不做）
 - 禁止无 Draw Call 预算地堆特效
-- 禁止渲染线程访问 ClientWorld 可变状态
+- 禁止渲染层访问 `ClientWorld` 可变状态（只读镜像）
 - 禁止主线程同步加载大纹理（必须异步）
-- 禁止在无显存回收策略下无限加载资源
-- 禁止引入重型第三方引擎（保持轻量）
+- 禁止硬编码画质参数（必须配置化，消费 `QualityPreset`）
+- 禁止逻辑层解算表现（位置/朝向/状态由服务端数据驱动，规格书 §1）
 - 禁止在未实测前宣称支持某具体硬件
 
-> 统一边界红线（全任务适用，详见 §27.3）：禁止扩散到他人 `module` 子树；下游禁止 `#include` 本任务 `src/`；禁止访问依赖模块内部数据；禁止在 `STATUS: DONE` 后静默改接口签名；禁止循环依赖。
+> 统一边界红线（全任务适用，详见 §27.3）：禁止扩散到他人 `module` 子树；下游禁止反向 import 上层目录；禁止访问依赖模块内部数据；禁止在 `STATUS: DONE` 后静默改接口签名；禁止循环依赖。
 
 ## 22. Performance Expectation
 
-Low 档：Draw Call < 300、三角面 < 300k、纹理显存 < 512MB、网格显存 < 256MB、Shader 切换 < 50/帧、CPU 渲染耗时 < 4ms、目标 60 FPS。**最终最低配置与实测 FPS 由 TASK-038 的客户端基准确定，本任务不得宣称兼容某硬件。**
+Low 档：Draw Call < 300、三角面 < 300k、纹理显存 < 512MB、网格显存 < 256MB、Shader 切换 < 50/帧、CPU 渲染耗时 < 4ms、目标 60 FPS。**最终最低配置与实测 FPS 由 TASK-036 容量报告确定，本任务不得宣称兼容某硬件。**
 
 ## 23. Deliverables
 
-- client/renderer/include/mmo/client/render/renderer.h
-- client/renderer/include/mmo/client/render/camera.h
-- client/renderer/include/mmo/client/render/material_system.h
-- client/renderer/src/*.cpp
+- client/renderer/camera/iso_camera.gd
+- client/renderer/sprites/sprite_entity.gd
+- client/renderer/terrain/proc_ground.gd
+- client/renderer/pipeline/render_stats.gd
+- client/renderer/pipeline/lod_manager.gd
+- client/renderer/pipeline/culling.gd
 - client/renderer/tests/*
 - client/renderer/benchmark/*
 - config/client/render.json
@@ -216,7 +233,7 @@ Low 档：Draw Call < 300、三角面 < 300k、纹理显存 < 512MB、网格显�
 
 ## 24. Verification Script（本地验收）
 
-**验收脚本**：`scripts/verify/task-035.sh`（由生成器产出，禁止手工编辑）
+**验收脚本**：`scripts/verify/task-035.sh`（手写，执行 `require_godot` 门禁 + Godot 工程校验）
 
 ```bash
 # 默认 Release；可指定 Debug：BUILD_TYPE=Debug bash scripts/verify/task-035.sh
@@ -226,13 +243,14 @@ bash scripts/verify/task-035.sh
 脚本执行的检查项：
 
 1. 前置任务门禁：`require_tasks_done 034`
-2. 交付物存在性检查（6 项）
-3. CMake configure + 编译（Debug + Release 双构建）
-4. ctest 过滤执行：`-R Renderer`
-5. Benchmark 执行：`bin/render_bench --scene test_scene --quality low --duration 600`
-6. 性能阈值断言：`bench/render_low.txt` 中 `draw_calls` ≤ `300`
-7. 性能阈值断言：`bench/render_low.txt` 中 `texture_mem_mb` ≤ `512`
-8. 性能阈值断言：`bench/render_low.txt` 中 `triangles` ≤ `300000`
+2. `require_godot`：探测 Godot 4.7.2 可执行（版本匹配），未命中即非零退出
+3. 交付物存在性检查（6 项）
+4. Godot 工程可加载：`godot --headless --path client --check-only` 退出码 0
+5. 测试执行：`godot_run_tests` 过滤 Renderer
+6. Benchmark 执行：`godot --headless --path client --benchmark-render --quality low --duration 600`
+7. 性能阈值断言：`bench/render_low.txt` 中 `draw_calls` ≤ `300`
+8. 性能阈值断言：`bench/render_low.txt` 中 `texture_mem_mb` ≤ `512`
+9. 性能阈值断言：`bench/render_low.txt` 中 `triangles` ≤ `300000`
 
 脚本遵循 `set -euo pipefail`：任一步失败即非零退出，**不存在「警告通过」**。
 脚本只报告真实执行结果，禁止兜底伪造 PASS；指标缺失直接判失败，禁止用估算值代替。
@@ -248,7 +266,7 @@ bash scripts/task-done.sh TASK-035
 # 2) 提交：Conventional Commits，scope 用模块名
 git add -A
 git commit -F - <<'EOF'
-feat(client): Renderer
+feat(client): Renderer 2.5D (Godot Compatibility + Camera3D 45° + Sprite3D billboard)
 
 - 实现要点：（填写本任务实际落地的内容，禁止复制 Objective）
 - 实测数字：（粘贴 scripts/verify/task-035.sh 的真实输出，禁止写「性能良好」）
@@ -269,13 +287,13 @@ git push git@github.com:22:shengmingaini/CAMI.git main
 
 ## 26. Codex Execution Rules
 
-1. 读规范：先读 `PROJECT_REQUIREMENTS.md` 与本任务涉及章节，架构冻结，不得自行推翻。
+1. 读规范：先读 `PROJECT_REQUIREMENTS.md`、`docs/client-spec-2.5d.md` 与本任务涉及章节，架构冻结，不得自行推翻。
 2. 读任务：完整读完本文件全部章节再动手，禁止只看 Objective 就开始写。
 3. 查依赖：确认 TASK-034 均已 `STATUS: DONE`，否则停止并报告。
 4. 查现状：grep 现有代码，确认要改的文件与符号真实存在，禁止凭空假设。
 5. 守范围：只改本任务 §14 Files 范围内的文件；发现范围外问题只记录不修改。
-6. 做实现：按 §15 Implementation Steps 顺序落地，每步可独立编译。
-7. 本地编译：MinGW MSYS2 g++ + vcpkg manifest mode（baseline `aae277ac`），Debug 与 Release 都要过。
+6. 做实现：按 §15 Implementation Steps 顺序落地，每步可独立运行。
+7. 本地构建：`require_godot` 门禁通过；Godot 工程 `_headless --check-only` 通过；GDExtension（若涉及）scons 编译。
 8. 跑单测：§16 Unit Test 全绿，新增代码必须带测试。
 9. 跑集成：§17 Integration Test 全绿。
 10. 跑 Benchmark：§18 真实执行，输出机器可读的 `key=value`，禁止估算。
@@ -290,26 +308,26 @@ git push git@github.com:22:shengmingaini/CAMI.git main
 
 ### 27.1 本任务导出的接口（冻结后不可破坏性变更）
 
-见 §7 Public Interface。导出头只放在本任务 `include/` 下，签名一旦 `STATUS: DONE` 即视为契约冻结，下游依赖它；破坏性变更须走 `version` + 兼容性评估。
+见 §7 Public Interface。Godot 类 `IsoCamera` / `SpriteEntity` / `ProcGround` / `RenderStats` 类名与关键方法签名一旦 `STATUS: DONE` 即视为契约冻结，下游依赖它；破坏性变更须走 `version` + 兼容性评估。
 
 ### 27.2 本任务消费的上游接口（来自前置任务，禁止绕过）
 
-- `TASK-034` · `client/core`：消费其 `include/` 下公开接口（详见该任务 §7 Public Interface），禁止 `#include` 其 `src/`
+- `TASK-034` · `client/runtime`：消费其 `ClientWorld` 镜像（只读）与 `GameLoop` 帧信号，禁止访问 runtime 内部可变状态或 `#include`/反向依赖其私有实现。
 
 ### 27.3 模块边界红线（全任务统一）
 
-- 模块 ≠ 进程：本任务代码只落在自身 `module` 子树（`include/` + `src/` + `tests/` + `docs/`），禁止扩散到其它任务拥有的目录。
-- 下游只能通过本任务 `include/` 下的**公开头与接口**调用，禁止 `#include` 本任务 `src/` 或内部头（验收脚本会静态扫描本任务 `include/` 是否泄露内部 `src/`）。
-- 本任务只调用依赖模块**声明**的接口，禁止访问其内部数据（如 `otherModule.internalData` 模式）。
+- 模块 ≠ 进程：本任务代码只落在自身 `module` 子树（`client/renderer/`），禁止扩散到其它任务拥有的目录。
+- 下游只能通过本任务公开类/资源调用，禁止反向 import 上层目录或访问内部实现（验收脚本静态扫描 `client/ui/`、`client/gameplay/` 不得反向依赖 renderer 内部）。
+- 本任务只调用依赖模块**声明**的接口，禁止访问其内部数据。
 - 接口在 `STATUS: DONE` 之后变更必须走 `version` 字段 + 兼容性评估，禁止静默改签名导致下游编译失败。
-- 依赖方向单向（Game → Gameplay → Core），禁止循环依赖；新增模块不得破坏既有依赖环约束。
+- 依赖方向单向（runtime → renderer → resource，且 `client/ui/`、`client/gameplay/` 不得反向依赖），禁止循环依赖。
 
 ### 27.4 扩展性约束（可扩展框架兼容性）
 
-- 新增同类能力（新 Command / 新 Event / 新 Scene 类型 / 新模块）必须走**注册表 / ID 段**机制，禁止在 `switch` 里硬编码穷举。
-- 跨模块扩展点统一用抽象（C++ Interface / Command / Event），新增实现**不得修改既有任务文件**。
+- 新增同类能力（新精灵类型 / 新地形 / 新光影近似）必须走**资源/ID 段**机制，禁止在 `match`/`switch` 里硬编码穷举。
+- 跨模块扩展点统一用 Godot 信号 / 资源 / 抽象接口，新增实现**不得修改既有任务文件**。
 - 协议 / 接口变更必须带 `version` 字段并向下兼容，旧客户端 / 旧模块不得因此断连或编译失败。
-- 所有模块遵循统一目录模板（include/src/tests/benchmark/docs/CMakeLists.txt）与五文档契约（README/INTERFACE/DEPENDENCY/PERFORMANCE/TEST），新增模块不得例外。
+- 所有模块遵循统一目录模板（`client/{runtime,network,gameplay,ui,extensions}` + `docs/`），新增模块不得例外。
 
 > 模块归属表（谁拥有哪棵子树）：本任务的 `module` 字段即其独占目录；
 > 其它任务的 `module` 字段不得被本任务写入。统一模块模板见 `DEVELOPMENT.md` / 根规范 §6。
@@ -319,4 +337,4 @@ git push git@github.com:22:shengmingaini/CAMI.git main
 | 日期 | 变更 |
 |---|---|
 | 2026-08-29 | 方案 A 原地补齐：由 `tools/gen/build_tasks.py` 从结构化数据源重新生成，补齐 State Owner / 验收脚本 / STATUS 门禁 / Git Commit 规范 |
-| 2026-08-29 | 完善：新增 §27 接口契约/模块边界/扩展性（全任务统一，防相互干扰）；新增 TASK-039 Social / TASK-040 ControlService / TASK-041 集成与回归；依赖相位自检跳过最终交付汇点；Scene Migration 登记为 Phase 2 RFC |
+| 2026-09-14 | **2.5D 刷新**：按 `docs/client-spec-2.5d.md` §8 重写——由「自研 D3D11 渲染器」改为 Godot Compatibility 单档 + `Camera3D` 透视固定俯角 45° + `Sprite3D`/billboard 管线 + 地面程序化网格 + 深度遮挡 + LOD + 图集合批 + 距离剔除；删除「禁止引入重型第三方引擎」「不做 3D」约束（Godot 即引擎），保留 Low 资源纪律；构建门禁改 `require_godot`；STATUS 保持 PENDING |

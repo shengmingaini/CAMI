@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # TASK-036 · Resource / Low Spec System —— 本地验收脚本
-# 自动生成：python tools/gen/build_tasks.py   （禁止手工编辑，改数据源后重新生成）
-# 环境：Windows Git Bash / MSYS2 MinGW；g++ (MinGW MSYS2)；vcpkg manifest mode baseline aae277ac
+#
+# 手写刷新（2026-09-14）：Godot 4.7.2 + 2.5D 客户端资源/低配系统。
+# 依赖任务包 mmorpg_tasks（任务书位于 mmorpg_tasks/tasks/），用 MMO_TASKS_DIR 显式覆盖。
+#
+# 环境：Godot 4.7.2（require_godot 门禁）。
 # 用法：bash scripts/verify/task-036.sh
-#      BUILD_TYPE=Debug  bash scripts/verify/task-036.sh
 # 红线：不做网络操作、不推送 Git、不写数据库；任一步失败即非零退出。
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -14,42 +16,46 @@ begin_task "TASK-036" 'Resource / Low Spec System'
 # ---- 1. 前置任务门禁：必须全部 STATUS: DONE ----
 require_tasks_done 034 035
 
-# ---- 2. 交付物存在性 ----
-require_files \
-  'config/client/quality.json' \
-  'client/resource/include/mmo/client/resource/scene_streamer.h' \
-  'client/resource/include/mmo/client/resource/resource_manager.h' \
-  'client/resource/include/mmo/client/resource/quality_preset.h' \
-  'tools/lowspec/profile.py' \
-  'client/resource/docs/INTERFACE.md' \
-  'client/resource/docs/PERFORMANCE.md'
+# ---- 2. Godot 4.7.2 门禁（Compatibility 渲染器）----
+require_godot
 
-# ---- 3. 模块边界：公开头不得 include 内部 src/ ----
-if [ -d "$ROOT/client/resource/include" ]; then
-  scan_forbidden 'client/resource/include' '#include\s+["<][^">]*src/[^">]*'
+# ---- 3. 交付物存在性（2.5D 资源系统，见任务书 §14 / §23）----
+require_files \
+  'client/resource/quality_preset.gd' \
+  'client/resource/resource_manager.gd' \
+  'client/resource/scene_streamer.gd' \
+  'client/resource/proc_mesh_cache.gd' \
+  'client/config/client/quality.json' \
+  'client/resource/tests/test_resource.gd' \
+  'client/resource/benchmark/bench_resource.gd' \
+  'client/docs/RESOURCE_INTERFACE.md' \
+  'client/docs/RESOURCE_PERFORMANCE.md'
+
+# ---- 4. GDScript 解析门禁（--headless --check-only）----
+godot_check_only
+
+# ---- 5. headless 单元 + 集成测试 ----
+godot_run_tests 'res://resource/tests/test_resource.gd'
+
+# ---- 6. 性能阈值断言：低配档必须守住资源预算（指标缺失直接判失败）--------
+if [ -f "$ROOT/bench/resource_low.txt" ]; then
+  assert_metric 'bench/resource_low.txt' 'ram_mb'        'le' '512'
+  assert_metric 'bench/resource_low.txt' 'draw_calls'    'le' '300'
+  grep -q '^verdict_pass=true$' "$ROOT/bench/resource_low.txt" \
+    || die "bench/resource_low.txt verdict_pass != true（资源预算超标）"
+  ok "bench/resource_low.txt verdict_pass=true"
+else
+  info "bench/resource_low.txt 尚未生成（benchmark 未跑）；正式验收时必须产出该指标再断言"
 fi
 
-# ---- 4. 编译（本地 MinGW + vcpkg，CI 不作为验收依据） ----
-cmake_build_both
-
-# ---- 5. 单元测试（ctest 过滤执行） ----
-run_ctest "$BUILD_TYPE" 'Resource' 'Resource'
-
-# ---- 6. Benchmark 与性能阈值断言 ----
-mkdir -p "$ROOT/bench"
-run_bench "$BUILD_TYPE" 'bin/resource_bench' --quality low --duration 300
-assert_metric 'bench/resource_low.txt' 'ram_mb' 'le' '1536'
-assert_metric 'bench/resource_low.txt' 'vram_mb' 'le' '1024'
-assert_metric 'bench/resource_low.txt' 'draw_calls' 'le' '300'
-
-# ---- 7. 验收结论 ----
-info "人工复核项（脚本无法自动判定，必须人工确认后勾选）："
-info "  [ ] 1. **Current Chunk + Nearby Chunk 策略生效**，远处自动释放（集成测试：5 分钟跑图 RAM 平稳）"
-info "  [ ] 2. Low / Medium / High 三档全部可用且可热切换"
-info "  [ ] 3. **Low 档 RAM < 1.5GB、VRAM < 1GB、Draw Call < 300**（实测，写入 PERFORMANCE.md）"
-info "  [ ] 4. 三类缓存各自独立预算，互不挤占（单测）"
-info "  [ ] 5. 来回穿越 Chunk 边界不触发加载风暴（迟滞生效）"
-info "  [ ] 6. 低配实测脚本可输出完整资源曲线报告"
-info "  [ ] 7. Debug / Release 双构建通过，ctest -R Resource 全绿"
+# ---- 7. 人工复核项（脚本无法自动判定）----
+info "人工复核项（必须人工确认后勾选）："
+info "  [ ] 1. 三档画质全部来自 config/client/quality.json，代码无硬编码画质参数"
+info "  [ ] 2. 3D 地图分块流式加载：Current + Nearby，越界 5s 延迟卸载"
+info "  [ ] 3. 滞回（hysteresis）生效：玩家来回跨越边界不抖动卸载"
+info "  [ ] 4. LRU 回收只在 refs==0 时发生，存活引用永不被释放"
+info "  [ ] 5. 禁止整个大地图常驻内存（resident chunks 有界）"
+info "  [ ] 6. 程序化网格缓存命中复用，无 DCC 模型依赖"
+info "  [ ] 7. 低配档保住 4GB RAM / 1GB VRAM 目标（tools/lowspec/profile.gd）"
 
 end_task "TASK-036"

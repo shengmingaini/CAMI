@@ -1,0 +1,11 @@
+# TASK-035 renderer benchmark quality=medium frames=600
+draw_calls=202
+triangles=2422
+texture_mem_mb=4.0000
+mesh_mem_mb=0.0404
+cpu_ms=0.0630
+gpu_ms=0.0000
+fps_p95=15873.0156
+shader_switches=3
+visible_sprites=200
+verdict_pass=true

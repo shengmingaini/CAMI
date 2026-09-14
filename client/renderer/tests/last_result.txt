@@ -1,0 +1,3 @@
+renderer_tests:
+checks=26
+RESULT=PASSED

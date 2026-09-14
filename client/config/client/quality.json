@@ -1,0 +1,50 @@
+{
+  "presets": {
+    "low": {
+      "texture_cap": 512,
+      "ground_density_level": 0,
+      "lod_aggressive": true,
+      "view_dist": 80.0,
+      "chunk_radius": 1,
+      "texture_budget_mb": 256,
+      "mesh_budget_mb": 128,
+      "triangle_budget": 300000,
+      "atlas_res": 512,
+      "same_screen_entities": 50,
+      "particles": 200,
+      "net_rate": 10,
+      "shadow": false
+    },
+    "medium": {
+      "texture_cap": 1024,
+      "ground_density_level": 1,
+      "lod_aggressive": false,
+      "view_dist": 150.0,
+      "chunk_radius": 2,
+      "texture_budget_mb": 512,
+      "mesh_budget_mb": 256,
+      "triangle_budget": 600000,
+      "atlas_res": 1024,
+      "same_screen_entities": 150,
+      "particles": 1000,
+      "net_rate": 20,
+      "shadow": false
+    },
+    "high": {
+      "texture_cap": 2048,
+      "ground_density_level": 2,
+      "lod_aggressive": false,
+      "view_dist": 250.0,
+      "chunk_radius": 3,
+      "texture_budget_mb": 1024,
+      "mesh_budget_mb": 512,
+      "triangle_budget": 1200000,
+      "atlas_res": 2048,
+      "same_screen_entities": 300,
+      "particles": 3000,
+      "net_rate": 30,
+      "shadow": false
+    }
+  },
+  "levels": ["low", "medium", "high"]
+}

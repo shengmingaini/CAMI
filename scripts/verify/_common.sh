@@ -258,3 +258,68 @@ require_port_open() {
     die "端口 $p 未占用（期望有真实实例在监听，如 Redis/MariaDB）。先启动实例再验收。"
   fi
 }
+
+# ---- Godot 门禁（2026-09-14 新增，docs/client-spec-2.5d.md §10）----------
+# 客户端走 Godot 路线后新增。Compatibility 渲染器只需 OpenGL 3.3 / D3D11，
+# 不要求 Vulkan，因此门禁只校验可执行与版本号。
+GODOT_EXPECTED_VERSION="${GODOT_EXPECTED_VERSION:-4.7.2}"
+# 本机已解压核验的默认路径（4.7.2.stable.official.ed1daf0bf）
+GODOT_DEFAULT_BIN="${GODOT_DEFAULT_BIN:-F:/AI/tools/godot/4.7.2/Godot_v4.7.2-stable_win64.exe}"
+CLIENT_DIR="${CLIENT_DIR:-client}"
+
+require_godot() {
+  local godot_bin="${GODOT_BIN:-}"
+  if [ -z "$godot_bin" ]; then
+    if command -v godot >/dev/null 2>&1; then
+      godot_bin="$(command -v godot)"
+    elif [ -x "$GODOT_DEFAULT_BIN" ]; then
+      godot_bin="$GODOT_DEFAULT_BIN"
+    fi
+  fi
+  [ -n "$godot_bin" ] && [ -x "$godot_bin" ] \
+    || die "require_godot：未找到 Godot 可执行文件（设置 GODOT_BIN 或安装 ${GODOT_EXPECTED_VERSION}）"
+  local version
+  version="$("$godot_bin" --version 2>/dev/null | head -n 1 || true)"
+  [ -n "$version" ] || die "require_godot：无法从 $godot_bin 获取版本号"
+  case "$version" in
+    *"$GODOT_EXPECTED_VERSION"*)
+      export GODOT_BIN="$godot_bin"
+      ok "require_godot：OK $godot_bin ($version)"
+      return 0
+      ;;
+    *)
+      die "require_godot：期望 ${GODOT_EXPECTED_VERSION}，实际 '$version'（$godot_bin）"
+      ;;
+  esac
+}
+
+# 解析 GDScript / 校验工程可加载（不做运行期断言）
+godot_check_only() {
+  require_godot
+  step "godot --headless --path $CLIENT_DIR --check-only"
+  "$GODOT_BIN" --headless --path "$CLIENT_DIR" --check-only \
+    || die "Godot 工程解析失败（$CLIENT_DIR）"
+  ok "Godot 工程解析通过：$CLIENT_DIR"
+}
+
+# headless 单元测试：参数为 res:// 下的测试脚本
+godot_run_tests() {
+  local script="${1:-res://runtime/tests/test_client_core.gd}"
+  require_godot
+  step "godot --headless --path $CLIENT_DIR --script $script"
+  "$GODOT_BIN" --headless --path "$CLIENT_DIR" --script "$script" \
+    || die "Godot 单元测试失败：$script"
+  ok "Godot 单元测试通过：$script"
+}
+
+# Windows 64 位导出（Compatibility 单档，不依赖 Vulkan）
+godot_build_win64() {
+  local out="${1:-build/client/cami_client.exe}"
+  require_godot
+  mkdir -p "$(dirname "$out")"
+  step "godot 导出 Windows Desktop -> $out"
+  "$GODOT_BIN" --headless --path "$CLIENT_DIR" \
+    --export-release "Windows Desktop" "$out" \
+    || die "Godot 导出失败：$out"
+  ok "Godot 导出完成：$out"
+}

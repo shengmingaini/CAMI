@@ -1,0 +1,11 @@
+detected_ram_mb=15654
+chosen_preset=high
+chosen_level=2
+vram_budget_mb=1536
+texture_cap=2048
+atlas_res=2048
+chunk_radius=3
+triangle_budget=1200000
+shadow=false
+fits_low_target=true
+verdict_pass=true

@@ -1,0 +1,38 @@
+{
+  "low": {
+    "view_distance": 80,
+    "ground_density": 8,
+    "lod_aggressive": true,
+    "shadow": false,
+    "max_entities": 50,
+    "particles": 200,
+    "lod1_frac": 0.5,
+    "lod2_frac": 0.8,
+    "atlas_resolution": 512,
+    "batch_sprites": true
+  },
+  "medium": {
+    "view_distance": 150,
+    "ground_density": 16,
+    "lod_aggressive": false,
+    "shadow": false,
+    "max_entities": 150,
+    "particles": 1000,
+    "lod1_frac": 0.6,
+    "lod2_frac": 0.85,
+    "atlas_resolution": 1024,
+    "batch_sprites": true
+  },
+  "high": {
+    "view_distance": 250,
+    "ground_density": 32,
+    "lod_aggressive": false,
+    "shadow": false,
+    "max_entities": 300,
+    "particles": 3000,
+    "lod1_frac": 0.7,
+    "lod2_frac": 0.9,
+    "atlas_resolution": 2048,
+    "batch_sprites": false
+  }
+}

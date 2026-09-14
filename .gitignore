@@ -53,3 +53,16 @@ NUL
 
 # 临时验证脚手架（一次性 .cpp/.o/.exe 探针，非游戏源码）
 .tmp_gate/
+
+# Godot 编辑器导入缓存（打开时自动重建）
+client/.godot/
+
+# godot-cpp 是第三方依赖（独立 git 仓库），不作为嵌套仓库提交
+client/extensions/protocol_codec/godot-cpp/
+
+# 验证运行产物目录（977/295 个文件，非源码）
+.verify_041/
+.verify_res/
+
+# 巨幅轮转基准日志（58MB+，重跑即生成）
+bench/log_bench.log*

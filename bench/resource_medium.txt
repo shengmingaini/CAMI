@@ -1,0 +1,14 @@
+quality=medium
+duration=600
+ram_mb=481.406250
+vram_mb=481.406250
+texture_mem_mb=480.000000
+mesh_mem_mb=1.406250
+draw_calls=200
+load_ms_p95=0.000000
+chunks_loaded=28.913333
+cache_hit_rate=0.733333
+chunks_unloaded=30
+texture_count=120
+mesh_count=80
+verdict_pass=true

@@ -1,0 +1,82 @@
+#!/usr/bin/env python
+# TASK-034 · GDExtension build for protocol_codec (Godot 4.7.2)
+#
+# Toolchain (verified present on this machine 2026-09-14):
+#   - MSYS2 MinGW-w64 g++ 16.1.0   (C:/msys64/mingw64)
+#   - protobuf / flatbuffers headers (C:/msys64/mingw64)
+#   - CAMI protocol static lib      (build/lib/libmmo_protocol.a, TASK-005)
+#   - godot-cpp                     (./godot-cpp, cloned via mirror)
+#   - scons 4.11.1                  (workbuddy python venv)
+#
+# Usage (MSYS2 bash or PowerShell with MinGW on PATH):
+#   scons platform=windows use_mingw=yes target=template_debug   godot_cpp=./godot-cpp
+#   scons platform=windows use_mingw=yes target=template_release godot_cpp=./godot-cpp
+
+import os
+
+cwd = Dir(".").abspath
+# SConstruct lives at client/extensions/protocol_codec -> repo root is 3 levels up.
+repo_root = Dir("../../..").abspath
+
+godot_cpp_dir = ARGUMENTS.get("godot_cpp", os.path.join(cwd, "godot-cpp"))
+msys2 = ARGUMENTS.get("msys2", "C:/msys64")
+
+env = Environment(tools=["default"], PLATFORM="")
+# NOTE: godot-cpp's SConscript keeps a reference to the Environment it is given,
+# so anything appended to `env` from here on also lands in godot-cpp's build
+# signature. That is why these lines must not change lightly: editing them (or
+# moving them behind a Clone) invalidates all ~1040 godot-cpp objects and
+# triggers a full rebuild. Option-specific flags that must NOT leak into
+# godot-cpp are passed as per-target overrides further below instead.
+env = SConscript(os.path.join(godot_cpp_dir, "SConstruct"), {"env": env})
+
+# ---- CAMI protocol module (TASK-005) -------------------------------------
+env.Append(CPPPATH=[
+    os.path.join(repo_root, "protocol", "include"),
+    os.path.join(repo_root, "engine", "core", "include"),
+    os.path.join(msys2, "mingw64", "include"),   # protobuf / flatbuffers headers
+])
+# libmmo_protocol.a lives in build/lib (NOT build/protocol - that only has .obj).
+env.Append(LIBPATH=[
+    os.path.join(repo_root, "build", "lib"),
+    os.path.join(msys2, "mingw64", "lib"),
+])
+# Order matters for static linking: dependents before their dependencies.
+# mmo_protocol pulls in mmo::core::Error (libmmo_core_error.a), which must be
+# listed AFTER it for GNU ld to resolve.
+env.Append(LIBS=["mmo_protocol", "mmo_core_error", "protobuf"])
+
+env.Append(CPPPATH=["src"])
+
+sources = Glob("src/*.cpp")
+target = ARGUMENTS.get("target", "template_debug")
+
+# ---- AOI snapshot support (per-target override, see note above) ------------
+# These apply to protocol_codec's own objects ONLY. Appending them to the shared
+# `env` would invalidate every godot-cpp object and force a full rebuild.
+gen_cpp = os.path.join(repo_root, "protocol", "flatbuffers", "generated", "cpp")
+cppdefines = list(env.get("CPPDEFINES", []))
+cpppath = list(env.get("CPPPATH", [])) + [gen_cpp]
+if ARGUMENTS.get("aoi_snapshot", "1") == "1":
+    # aoi_generated.h is produced by:
+    #   flatc --cpp -I protocol/flatbuffers -I protocol/flatbuffers/schema \
+    #         -o protocol/flatbuffers/generated/cpp protocol/flatbuffers/aoi.fbs
+    if not os.path.exists(os.path.join(gen_cpp, "aoi_generated.h")):
+        raise UserError(
+            "aoi_generated.h missing - run: flatc --cpp -I protocol/flatbuffers "
+            "-I protocol/flatbuffers/schema -o protocol/flatbuffers/generated/cpp "
+            "protocol/flatbuffers/aoi.fbs")
+    cppdefines.append("MMO_PROTOCOL_HAS_AOI_SNAPSHOT")
+
+if env["platform"] == "macos":
+    library = env.SharedLibrary(
+        "bin/libprotocol_codec.{}.{}.framework/libprotocol_codec.{}.{}".format(
+            env["platform"], target, env["platform"], target), source=sources,
+        CPPDEFINES=cppdefines, CPPPATH=cpppath)
+else:
+    library = env.SharedLibrary(
+        "bin/libprotocol_codec.{}.{}.{}{}".format(
+            env["platform"], target, env["arch"], env["SHLIBSUFFIX"]), source=sources,
+        CPPDEFINES=cppdefines, CPPPATH=cpppath)
+
+Default(library)

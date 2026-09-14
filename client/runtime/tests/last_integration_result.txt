@@ -1,0 +1,4 @@
+client_integration_tests:
+checks=5
+snapshots=1
+RESULT=PASSED

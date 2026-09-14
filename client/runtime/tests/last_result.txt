@@ -1,0 +1,3 @@
+client_core_tests:
+checks=14
+RESULT=PASSED

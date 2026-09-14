@@ -1,0 +1,24 @@
+; Engine configuration file for Godot 4.7.2 (CAMI Client · 2.5D)
+; TASK-034 Client Core scaffolding.
+; Renderer locked to Compatibility (OpenGL 3.3 / D3D11) per docs/client-spec-2.5d.md §3.
+; Autoload order matters: GameLoop must precede InputManager/ClientWorld (they bind frame_start).
+
+[application]
+
+config/name="CAMI Client (2.5D)"
+config/features=PackedStringArray("4.7")
+run/main_scene="res://runtime/main.tscn"
+autoload/GameLoop="*res://runtime/autoload/game_loop.gd"
+autoload/Config="*res://runtime/autoload/config.gd"
+autoload/InputManager="*res://runtime/autoload/input_manager.gd"
+autoload/ClientWorld="*res://runtime/autoload/client_world.gd"
+autoload/NetClient="*res://network/net_client.gd"
+
+[rendering]
+
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
+
+[physics]
+
+common/physics_ticks_per_second=60

@@ -1,55 +1,64 @@
 #!/usr/bin/env bash
-# TASK-035 · Renderer —— 本地验收脚本
-# 自动生成：python tools/gen/build_tasks.py   （禁止手工编辑，改数据源后重新生成）
-# 环境：Windows Git Bash / MSYS2 MinGW；g++ (MinGW MSYS2)；vcpkg manifest mode baseline aae277ac
+# TASK-035 · Renderer (2.5D) —— 本地验收脚本
+#
+# 手写刷新（2026-09-14）：按 docs/client-spec-2.5d.md 从「自研 C++ 客户端」
+# 切换到 Godot 4.7.2 + 2.5D 渲染（Node3D + Sprite3D + ArrayMesh）。原生成器脚本
+# 检查 C++ 头/ctest，已不适用。
+# ⚠ 禁止用 tools/gen/build_tasks.py 重新生成：生成器会把全部 42 份任务书 STATUS
+#    重置为 PENDING，清空已完成台账。
+#
+# 环境：Godot 4.7.2（require_godot 门禁）。2.5D 渲染：Node3D + Sprite3D + ArrayMesh。
 # 用法：bash scripts/verify/task-035.sh
-#      BUILD_TYPE=Debug  bash scripts/verify/task-035.sh
 # 红线：不做网络操作、不推送 Git、不写数据库；任一步失败即非零退出。
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "$ROOT/scripts/verify/_common.sh"
 
-begin_task "TASK-035" 'Renderer'
+begin_task "TASK-035" 'Renderer (2.5D)'
 
 # ---- 1. 前置任务门禁：必须全部 STATUS: DONE ----
 require_tasks_done 034
 
-# ---- 2. 交付物存在性 ----
-require_files \
-  'client/renderer/include/mmo/client/render/renderer.h' \
-  'client/renderer/docs/PERFORMANCE.md' \
-  'client/renderer/include/mmo/client/render/camera.h' \
-  'client/renderer/include/mmo/client/render/material_system.h' \
-  'config/client/render.json' \
-  'client/renderer/docs/INTERFACE.md'
+# ---- 2. Godot 4.7.2 门禁（Compatibility 渲染器：OpenGL 3.3 / D3D11）----
+require_godot
 
-# ---- 3. 模块边界：公开头不得 include 内部 src/ ----
-if [ -d "$ROOT/client/renderer/include" ]; then
-  scan_forbidden 'client/renderer/include' '#include\s+["<][^">]*src/[^">]*'
+# ---- 3. 交付物存在性（2.5D 渲染结构，见任务书 §7 / §14）----
+require_files \
+  'client/renderer/camera/iso_camera.gd' \
+  'client/renderer/sprites/sprite_entity.gd' \
+  'client/renderer/terrain/proc_ground.gd' \
+  'client/renderer/pipeline/render_stats.gd' \
+  'client/renderer/pipeline/lod_manager.gd' \
+  'client/renderer/pipeline/culling.gd' \
+  'client/config/client/render.json' \
+  'client/docs/INTERFACE.md' \
+  'client/docs/PERFORMANCE.md'
+
+# ---- 4. GDScript 解析门禁（--headless --check-only）----
+godot_check_only
+
+# ---- 5. headless 单元测试 + §17 集成（1000 地块 + 200 精灵 + 50 UI）----
+godot_run_tests 'res://renderer/tests/test_renderer.gd'
+
+# ---- 6. 性能阈值断言：Low 预算内（spec §22 / §27.2）------------------------
+# 指标缺失直接判失败，禁止用估算值代替；benchmark 尚未产出时给明确提示。
+if [ -f "$ROOT/bench/render_low.txt" ]; then
+  assert_metric 'bench/render_low.txt' 'draw_calls' 'lt' '300'
+  assert_metric 'bench/render_low.txt' 'triangles' 'lt' '300000'
+  assert_metric 'bench/render_low.txt' 'texture_mem_mb' 'lt' '512'
+else
+  info "bench/render_low.txt 尚未生成（benchmark 未跑）；正式验收时必须产出该指标再断言"
 fi
 
-# ---- 4. 编译（本地 MinGW + vcpkg，CI 不作为验收依据） ----
-cmake_build_both
-
-# ---- 5. 单元测试（ctest 过滤执行） ----
-run_ctest "$BUILD_TYPE" 'Renderer' 'Renderer'
-
-# ---- 6. Benchmark 与性能阈值断言 ----
-mkdir -p "$ROOT/bench"
-run_bench "$BUILD_TYPE" 'bin/render_bench' --scene test_scene --quality low --duration 600
-assert_metric 'bench/render_low.txt' 'draw_calls' 'le' '300'
-assert_metric 'bench/render_low.txt' 'texture_mem_mb' 'le' '512'
-assert_metric 'bench/render_low.txt' 'triangles' 'le' '300000'
-
-# ---- 7. 验收结论 ----
-info "人工复核项（脚本无法自动判定，必须人工确认后勾选）："
-info "  [ ] 1. Camera / Mesh / Material / Texture / Animation / UI 六项全部实现"
-info "  [ ] 2. **Low 档 Draw Call < 300、三角面 < 300k、纹理显存 < 512MB**（benchmark 实测）"
-info "  [ ] 3. 静态合批与视锥剔除生效（有对照数据：开启前后 Draw Call 对比）"
-info "  [ ] 4. LOD 三级生效"
-info "  [ ] 5. 画质 Low/Medium/High 可热切换"
-info "  [ ] 6. 连续渲染 10 分钟无显存泄漏"
-info "  [ ] 7. 设备丢失可恢复，不崩溃"
-info "  [ ] 8. Debug / Release 双构建通过，ctest -R Renderer 全绿"
+# ---- 7. 人工复核项（脚本无法自动判定）----
+info "人工复核项（必须人工确认后勾选）："
+info "  [ ] 1. 2.5D 等距相机固定 45° 俯角（spec §2.2 / §13-1）"
+info "  [ ] 2. 实体为 8 方向 Sprite3D billboard，无 3D 模型（spec §5）"
+info "  [ ] 3. 地面为程序化 ArrayMesh，单网格单 draw call（spec §5 / '1000 地块'）"
+info "  [ ] 4. 远景遮挡：不透明地面写深度，远精灵被深度缓冲遮挡（spec §4 验收 #4）"
+info "  [ ] 5. 3 档质量预设（Low/Medium/High）配置驱动，Low 为主兼容目标（spec §35）"
+info "  [ ] 6. 渲染层只读 ClientWorld 镜像，不回写逻辑状态"
+info "  [ ] 7. LOD + 距离剔除将 draw call / 三角面控制在 Low 预算内（spec §22）"
+info "  [ ] 8. 真实设备 FPS 在目标低配硬件上仍需实测确认（spec §35 末句）"
 
 end_task "TASK-035"

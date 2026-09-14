@@ -1,0 +1,17 @@
+[configuration]
+
+entry_symbol = "protocol_codec_init"
+compatibility_minimum = "4.7"
+reloadable = true
+
+[libraries]
+
+windows.debug.x86_64 = "res://extensions/protocol_codec/bin/libprotocol_codec.windows.template_debug.x86_64.dll"
+windows.release.x86_64 = "res://extensions/protocol_codec/bin/libprotocol_codec.windows.template_release.x86_64.dll"
+linux.debug.x86_64 = "res://extensions/protocol_codec/bin/libprotocol_codec.linux.template_debug.x86_64.so"
+linux.release.x86_64 = "res://extensions/protocol_codec/bin/libprotocol_codec.linux.template_release.x86_64.so"
+
+[dependencies]
+
+windows.debug.x86_64 = {}
+windows.release.x86_64 = {}

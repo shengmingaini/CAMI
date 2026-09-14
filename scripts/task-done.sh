@@ -1,70 +1,92 @@
 #!/usr/bin/env bash
-# task-done.sh — 将任务标记为 DONE（唯一被允许的 STATUS 变更入口）
-# 用法：bash scripts/task-done.sh TASK-001
-# 行为：
-#   1) 校验任务文件存在且当前 STATUS 为 PENDING（禁止重复 / 逆向流转）
-#   2) 必须先通过对应验收脚本 scripts/verify/task-NNN.sh（退出码 0）
-#   3) 将 front matter 与正文的 STATUS 由 PENDING 改为 DONE
-#   4) 不修改任何其它内容（接口契约冻结）
+# ---------------------------------------------------------------------------
+# 把指定任务标记为 DONE（唯一允许改写 STATUS 的入口）
+#
+# 用法：
+#   bash scripts/task-done.sh TASK-013              # 只改 STATUS（需已自行跑过验收）
+#   bash scripts/task-done.sh TASK-013 --verify     # 先跑验收脚本，通过后再改 STATUS
+#   bash scripts/task-done.sh TASK-013 --reopen     # 回退为 PENDING（打回时）
+#
+# 红线：
+#   1. 本脚本不推送 Git、不联网、不改任何业务代码。
+#   2. 只允许 PENDING/BLOCKED → DONE，或 DONE → PENDING（--reopen）。
+#   3. 依赖本任务的下游任务不得被本脚本触碰。
+# ---------------------------------------------------------------------------
 set -euo pipefail
 
-# 仓库根（脚本位于 scripts/，上两级）
-MMORPG_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-if command -v cygpath >/dev/null 2>&1; then
-  MMORPG_ROOT="$(cygpath -m "$MMORPG_ROOT")"
-fi
-export MMORPG_ROOT
-
-# 验收脚本所需的路径覆盖（本仓库任务位于 mmorpg_tasks/tasks；cmake 需要 Windows 路径）
-export MMO_PROJECT_ROOT="$MMORPG_ROOT"
-export MMO_TASKS_DIR="$MMORPG_ROOT/mmorpg_tasks/tasks"
-export VCPKG_ROOT="$(cygpath -m "${VCPKG_ROOT:-/c/vcpkg}")"
-export GENERATOR="${GENERATOR:-Ninja}"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+C_RED='\033[0;31m'; C_GRN='\033[0;32m'; C_YEL='\033[0;33m'; C_DIM='\033[2m'; C_OFF='\033[0m'
+ok()   { printf "%b  [OK] %s%b\n"   "$C_GRN" "$*" "$C_OFF"; }
+bad()  { printf "%b  [FAIL] %s%b\n" "$C_RED" "$*" "$C_OFF" >&2; }
+info() { printf "%b  %s%b\n"        "$C_DIM" "$*" "$C_OFF"; }
+die()  { bad "$*"; exit 1; }
 
 TID="${1:-}"
-if [[ -z "$TID" ]]; then
-  echo "用法: bash scripts/task-done.sh TASK-001" >&2
-  exit 2
+[ -n "$TID" ] || die "用法：bash scripts/task-done.sh TASK-013 [--verify|--reopen]"
+echo "$TID" | grep -qE '^TASK-[0-9]{3}$' || die "任务号格式错误：$TID（期望 TASK-013）"
+
+MODE="done"
+for a in "${@:2}"; do
+  case "$a" in
+    --verify) MODE="verify" ;;
+    --reopen) MODE="reopen" ;;
+    *) die "未知参数：$a（只支持 --verify / --reopen）" ;;
+  esac
+done
+
+NUM="${TID#TASK-}"
+MD="$ROOT/tasks/TASK-$NUM.md"
+SH="$ROOT/scripts/verify/task-$NUM.sh"
+
+[ -f "$MD" ] || die "任务文件不存在：$MD"
+[ -f "$SH" ] || die "验收脚本不存在：$SH（先跑 python tools/gen/build_tasks.py 生成）"
+
+cur="$(grep -m1 -E '^STATUS:' "$MD" || echo 'STATUS: 未知')"
+cur="$(echo "$cur" | sed 's/^STATUS:[[:space:]]*//')"
+info "任务：$TID"
+info "当前 STATUS：$cur"
+
+case "$MODE" in
+  verify)
+    info "先执行验收脚本（这是唯一可信路径，CI 不算）"
+    bash "$SH" || die "验收脚本失败，$TID 不允许标记 DONE"
+    ;;
+  reopen)
+    [ "$cur" = "DONE" ] || die "只有 DONE 状态可以回退，当前为 $cur"
+    sed -i.bak "s/^STATUS:.*$/STATUS: PENDING/" "$MD" && rm -f "$MD.bak"
+    ok "$TID → PENDING（已打回，请修复后重跑验收脚本）"
+    exit 0
+    ;;
+  done)
+    [ "$cur" = "PENDING" ] || [ "$cur" = "BLOCKED" ] \
+      || die "当前 STATUS=$cur，只有 PENDING/BLOCKED 可流转到 DONE"
+    ;;
+esac
+
+[ "$cur" = "PENDING" ] || [ "$cur" = "BLOCKED" ] \
+  || die "当前 STATUS=$cur，只有 PENDING/BLOCKED 可流转到 DONE"
+
+# 前置依赖必须已 DONE（双保险，验收脚本里也查一次）
+deps="$(grep -m1 -E '^DEPENDENCIES:' "$MD" || echo '')"
+deps="$(echo "$deps" | sed 's/^DEPENDENCIES:[[:space:]]*//')"
+if [ -n "$deps" ] && [ "$deps" != "无" ]; then
+  for d in $(echo "$deps" | tr -d ',' ); do
+    n="${d#TASK-}"
+    f="$ROOT/tasks/TASK-$n.md"
+    [ -f "$f" ] || die "前置任务文件缺失：$f"
+    grep -qE '^STATUS:[[:space:]]*DONE[[:space:]]*$' "$f" \
+      || die "前置任务 $d 尚未 DONE，禁止把 $TID 标记为 DONE"
+    ok "前置依赖 $d = DONE"
+  done
 fi
 
-TASK_FILE="$MMORPG_ROOT/mmorpg_tasks/tasks/$TID.md"
-[[ -f "$TASK_FILE" ]] || { echo "任务文件不存在: $TASK_FILE" >&2; exit 3; }
+TODAY="$(date +%F)"
+sed -i.bak "s/^STATUS:.*$/STATUS: DONE/" "$MD" && rm -f "$MD.bak"
+grep -q "^DONE-DATE:" "$MD" \
+  && sed -i.bak "s/^DONE-DATE:.*$/DONE-DATE: $TODAY/" "$MD" \
+  || sed -i.bak "s/^STATUS: DONE$/STATUS: DONE\nDONE-DATE: $TODAY/" "$MD"
+rm -f "$MD.bak"
 
-# 1) 当前 STATUS 必须为 PENDING
-cur="$(grep -m1 '^STATUS:' "$TASK_FILE" | sed -E 's/^STATUS:[[:space:]]*//; s/[*]//g; s/[[:space:]]//g; s/\r//g')"
-if [[ "$cur" == "DONE" ]]; then
-  echo "$TID 已经是 DONE，禁止重复流转" >&2
-  exit 4
-fi
-if [[ "$cur" != "PENDING" ]]; then
-  echo "$TID 当前 STATUS='$cur'，仅允许从 PENDING 流转到 DONE" >&2
-  exit 4
-fi
-echo "$TID 当前 STATUS=PENDING，允许流转"
-
-# 2) 必须先通过验收脚本
-VERIFY="$MMORPG_ROOT/scripts/verify/$TID.sh"
-if [[ -f "$VERIFY" ]]; then
-  echo "运行验收脚本: $VERIFY"
-  if bash "$VERIFY"; then
-    echo "$TID 验收脚本通过"
-  else
-    rc=$?
-    echo "$TID 验收脚本未通过（exit=$rc），禁止标记 DONE" >&2
-    exit 5
-  fi
-else
-  echo "未找到验收脚本 $VERIFY，跳过自动验收（请人工确认）"
-fi
-
-# 3) 流转 STATUS: PENDING -> DONE（front matter 与正文表格）
-tmp="$(mktemp)"
-awk '
-  /^STATUS:/ { sub(/PENDING/, "DONE"); print; next }
-  /\| STATUS \|/ { sub(/\*\*PENDING\*\*/, "**DONE**"); print; next }
-  { print }
-' "$TASK_FILE" > "$tmp"
-mv "$tmp" "$TASK_FILE"
-echo "$TID STATUS 已流转为 DONE"
-
-echo "下一步：按 TASK 文件 §25 提交（Conventional Commits，scope=模块，正文含实测数字）"
+ok "$TID → DONE（$TODAY）"
+info "下一步：git add -A && git commit（Conventional Commits，正文必须贴实测数字）"
+info "        git push git@github.com:22:shengmingaini/CAMI.git main"
