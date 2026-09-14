@@ -1,12 +1,11 @@
 # deploy/docker/Dockerfile.gateway — Gateway 容器镜像
-FROM mcr.microsoft.com/vcpkg/base:ubuntu-22.04 AS build
-# 该仓库使用 MinGW/MSYS2 本地构建；容器镜像为交付占位，真实构建在 CI 中以 vcpkg 缓存完成。
-# 此处给出多阶段骨架，实际二进制由 `cmake --build --target gateway` 产出后 COPY 进来。
+# 二进制由 `cmake --build build --target gateway` 产出至 build/bin/gateway（Ninja 单配置树，无 Release/ 子目录）。
 FROM ubuntu:22.04
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates libssl3 && rm -rf /var/lib/apt/lists/*
 WORKDIR /opt/mmorpg
-COPY build/Release/bin/gateway /opt/mmorpg/gateway
+COPY build/bin/gateway /opt/mmorpg/gateway
 COPY config /opt/mmorpg/config
-EXPOSE 9001
+# 端口对齐 config/network.json 的 network.gateway_port = 9000
+EXPOSE 9000
 ENTRYPOINT ["/opt/mmorpg/gateway"]

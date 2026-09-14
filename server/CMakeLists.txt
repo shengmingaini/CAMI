@@ -7,3 +7,5 @@ add_subdirectory(gateway)
 add_subdirectory(gamenode)
 add_subdirectory(dataservice)
 add_subdirectory(control)
+# 进程组合层：四进程 daemon 入口（deploy/docker 引用的二进制由此产出）
+add_subdirectory(daemon)

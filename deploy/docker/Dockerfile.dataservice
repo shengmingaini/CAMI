@@ -1,0 +1,11 @@
+# deploy/docker/Dockerfile.dataservice — DataService 容器镜像
+# 二进制由 `cmake --build build --target dataservice` 产出至 build/bin/dataservice。
+# 默认以内存实现启动（无外部依赖）；Redis/MySQL 由 MMO_REDIS_URL / MMO_MYSQL_URL
+# 部署注入（TASK-027/028 适配层替换内存实现，接口不变）。
+FROM ubuntu:22.04
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates libssl3 && rm -rf /var/lib/apt/lists/*
+WORKDIR /opt/mmorpg
+COPY build/bin/dataservice /opt/mmorpg/dataservice
+COPY config /opt/mmorpg/config
+ENTRYPOINT ["/opt/mmorpg/dataservice"]

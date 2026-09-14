@@ -1,6 +1,8 @@
 # deploy/docker/docker-compose.yml — 本地一键冒烟（100 CCU 验证）
 # 用法：cd deploy/docker && docker compose up -d
-#       bin/bot_bench --bots 100 --duration 60 --gateway 127.0.0.1:9001
+#       bin/bot_bench --bots 100 --duration 60 --gateway 127.0.0.1:9000
+#
+# 端口对齐 config/network.json（network.gateway_port = 9000）。
 
 services:
   redis:
@@ -25,12 +27,31 @@ services:
       timeout: 3s
       retries: 10
 
+  dataservice:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.dataservice
+    depends_on:
+      redis:
+        condition: service_healthy
+      mysql:
+        condition: service_healthy
+    environment:
+      MMO_REDIS_URL: redis:6379
+      MMO_MYSQL_URL: mysql:3306
+
+  control:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.control
+    depends_on: [dataservice]
+
   gateway:
     build:
       context: ../..
       dockerfile: deploy/docker/Dockerfile.gateway
-    depends_on: [redis, mysql]
-    ports: ["9001:9001"]
+    depends_on: [dataservice, control]
+    ports: ["9000:9000"]
     environment:
       MMO_REDIS_URL: redis:6379
       MMO_MYSQL_URL: mysql:3306
@@ -39,18 +60,11 @@ services:
     build:
       context: ../..
       dockerfile: deploy/docker/Dockerfile.gamenode
-    depends_on: [gateway, redis, mysql]
+    depends_on: [gateway, dataservice, control]
     environment:
-      MMO_GATEWAY_ADDR: gateway:9001
+      MMO_GATEWAY_ADDR: gateway:9000
       MMO_REDIS_URL: redis:6379
       MMO_MYSQL_URL: mysql:3306
-
-  control:
-    build:
-      context: ../..
-      dockerfile: deploy/docker/Dockerfile.control
-    depends_on: [gateway, gamenode]
-    ports: ["9100:9100"]
 
 volumes:
   mysql_data:

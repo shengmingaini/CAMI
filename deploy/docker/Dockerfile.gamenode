@@ -1,9 +1,10 @@
 # deploy/docker/Dockerfile.gamenode — GameNode 容器镜像（实时逻辑）
+# 二进制由 `cmake --build build --target gamenode` 产出至 build/bin/gamenode。
 FROM ubuntu:22.04
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates libssl3 && rm -rf /var/lib/apt/lists/*
 WORKDIR /opt/mmorpg
-COPY build/Release/bin/gamenode /opt/mmorpg/gamenode
+COPY build/bin/gamenode /opt/mmorpg/gamenode
 COPY config /opt/mmorpg/config
-EXPOSE 9002
+# GameNode 第一版为纯计算进程（Tick 驱动），暂无对外监听端口
 ENTRYPOINT ["/opt/mmorpg/gamenode"]
