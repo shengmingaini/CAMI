@@ -122,7 +122,7 @@ int main(int argc, char** argv) {
         return args.help ? 0 : 1;
     }
 
-    InitLoggerOrWarn("gamenode");
+    InitLoggerOrWarn("gamenode", args.log_file, args.console);
     InstallSignalHandlers();
 
     LoadConfigOrWarn(args.config_dir);

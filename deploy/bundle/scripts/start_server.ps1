@@ -1,45 +1,47 @@
 ﻿# scripts/start_server.ps1 — 单进程一键启动（推荐：开发/测试/小规模部署）
 # 用法：powershell -ExecutionPolicy Bypass -File scripts\start_server.ps1
 #
-# 与 start_all.ps1 的区别：本脚本只启动一个 mmorpg_server.exe，
-# 进程内含全部四个角色（dataservice/control/gamenode/gateway 各占一线程），
-# Ctrl+C 或 stop_server.ps1 一键优雅全停。多机扩展部署用 start_all.ps1。
+# 说明：只启动一个 mmorpg_server.exe，进程内含全部四个角色
+# （dataservice / control / gamenode / gateway 各占一线程），
+# stop_server.ps1 或 Ctrl+C 可停止。多机扩展部署改用 start_all.ps1。
+#
+# 启动方式说明（重要）：
+#   用 WMI Win32_Process.Create 而非 .NET Process.Start —— 后者会让被拉起的
+#   服务器继承宿主 shell 的 stdout 句柄，导致「启动脚本已退出但调用方管道不关」
+#   的假死（CI/自动化里表现为命令永不返回）。WMI 创建的是完全脱离的进程。
+#   日志因此改由服务器进程自己写文件（--log-file），不再依赖宿主 stdout。
 
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 
 New-Item -ItemType Directory -Force -Path "$root\logs", "$root\run" | Out-Null
 
-$psi = New-Object System.Diagnostics.ProcessStartInfo
-$psi.FileName = "$root\bin\mmorpg_server.exe"
-$psi.WorkingDirectory = $root
-$psi.UseShellExecute = $false
-$psi.CreateNoWindow = $true
-$psi.RedirectStandardOutput = $true
-$psi.RedirectStandardError = $true
-$proc = [System.Diagnostics.Process]::Start($psi)
+$exe = "$root\bin\mmorpg_server.exe"
+$log = "$root\logs\server.log"
+$cmdLine = "`"$exe`" --config `"$root\config`" --log-file `"$log`" --no-console"
 
-# 异步收日志（事件订阅写文件），避免管道缓冲写满卡死子进程
-Register-ObjectEvent -InputObject $proc -EventName OutputDataReceived -Action {
-    if ($EventArgs.Data) { Add-Content -Path $Event.MessageData -Value $EventArgs.Data }
-} -MessageData "$root\logs\server.log" | Out-Null
-Register-ObjectEvent -InputObject $proc -EventName ErrorDataReceived -Action {
-    if ($EventArgs.Data) { Add-Content -Path $Event.MessageData -Value $EventArgs.Data }
-} -MessageData "$root\logs\server.err.log" | Out-Null
-$proc.BeginOutputReadLine()
-$proc.BeginErrorReadLine()
+$res = Invoke-CimMethod -ClassName Win32_Process -MethodName Create `
+    -Arguments @{ CommandLine = $cmdLine; CurrentDirectory = $root }
 
-Set-Content -Path "$root\run\server.pid" -Value $proc.Id
-Start-Sleep -Milliseconds 800
-
-if ($proc.HasExited) {
-    Write-Host "ERROR: mmorpg_server exited immediately (code=$($proc.ExitCode)) - check logs\server.log"
+if ($res.ReturnValue -ne 0) {
+    Write-Host "ERROR: failed to start mmorpg_server (WMI ReturnValue=$($res.ReturnValue))"
     exit 1
 }
 
-Write-Host "started mmorpg_server pid=$($proc.Id)"
-Write-Host "roles: dataservice + control + gamenode + gateway (single process)"
-Write-Host "gateway listening on port from config\network.json (default 9000)"
-Write-Host "logs: logs\server.log"
-Write-Host "stop: powershell -File scripts\stop_server.ps1"
+$procId = $res.ProcessId
+Set-Content -Path "$root\run\server.pid" -Value $procId
+
+# 给它一点时间绑定端口；启动失败（如端口占用）会立刻退出
+Start-Sleep -Milliseconds 900
+$proc = Get-Process -Id $procId -ErrorAction SilentlyContinue
+if (-not $proc) {
+    Write-Host "ERROR: mmorpg_server (pid=$procId) exited immediately - check $log"
+    exit 1
+}
+
+Write-Host "started mmorpg_server pid=$procId"
+Write-Host "roles:   dataservice + control + gamenode + gateway (single process)"
+Write-Host "gateway: listening on port from config\network.json (default 9000)"
+Write-Host "log:     logs\server.log"
+Write-Host "stop:    powershell -File scripts\stop_server.ps1"
 exit 0

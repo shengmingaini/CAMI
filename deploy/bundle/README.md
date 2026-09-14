@@ -48,11 +48,29 @@ powershell -ExecutionPolicy Bypass -File scripts\stop_server.ps1   # ③ 停止
 
 ```
 bin\mmorpg_server.exe [--config <dir>] [--host <ip>] [--port <n>] [--run-for <sec>]
+                      [--log-file <path>] [--no-console]
 ```
 - `--run-for N`：N 秒后全部角色优雅退出（测试用）；缺省长驻
-- `Ctrl+C` / `taskkill`（不带 /f）：优雅退出（冲刷日志与脏队列）
+- `--log-file <path>`：**进程自己**把日志写到文件（后台刷盘线程），不依赖启动它的
+  shell 是否还活着；文件按 64MB × 5 个轮转
+- `--no-console`：关闭控制台输出，配合 `--log-file` 用于后台运行
+- `Ctrl+C` / `SIGTERM`：优雅退出（冲刷日志与脏队列）
 - 日志级别：`config\app.json` 的 `service.log_level`（info/debug/…）
 - 单独调某个角色也可直接跑对应 exe（如 `bin\gateway.exe --port 9000`）
+
+### 启动脚本为什么用 WMI 拉进程
+
+`start_server.ps1` / `start_all.ps1` 用 `Win32_Process.Create`（WMI）而不是
+`Process.Start` / `Start-Process`：后者会让被拉起的服务器**继承宿主 shell 的 stdout
+句柄**，于是「脚本早已退出、调用方却还在等管道关闭」，在 CI/自动化里表现为命令永不
+返回。WMI 创建的是完全脱离宿主的进程，日志改由 `--log-file` 自行落盘。
+
+> 因此：脚本方式启动的服务器日志在 `logs\server.log`（不是 stdout）；
+> 想看实时输出，直接手动跑 `bin\mmorpg_server.exe`（不带 `--no-console`）。
+
+`stop_server.ps1` / `stop_all.ps1` 通过 `run\*.pid` 定位进程后 `taskkill` 结束。
+Windows 下无法从外部给控制台进程发 Ctrl+C，因此脚本停止是**强制结束**；
+需要「优雅退出」（冲刷日志、脏队列落盘）请手动运行并在窗口按 `Ctrl+C`。
 
 ## 端口与配置
 

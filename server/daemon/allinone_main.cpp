@@ -64,7 +64,7 @@ int main(int argc, char** argv) {
         return args.help ? 0 : 1;
     }
 
-    InitLoggerOrWarn("mmorpg_server");
+    InitLoggerOrWarn("mmorpg_server", args.log_file, args.console);
     InstallSignalHandlers();
 
     // 进程壳统一做一次配置加载 + 日志级别应用（RunXxx 内的 LoadConfigOrWarn 幂等）。

@@ -55,6 +55,8 @@ struct Args {
     std::string host;        // 覆盖 network.gateway_host（空 = 用配置）
     std::uint16_t port{0};   // 覆盖 network.gateway_port（0 = 用配置）
     int run_for_sec{0};      // >0：运行 N 秒后优雅退出（本地冒烟）
+    std::string log_file;    // 非空：日志由进程自己落文件（脱离宿主控制台/管道）
+    bool console{true};      // 配合 --log-file 使用：--no-console 关闭控制台输出
     bool help{false};
 };
 
@@ -64,7 +66,10 @@ inline void PrintUsage(const char* prog) {
         "  --config <dir>  JSON config directory (default: config)\n"
         "  --host <ip>     listen address override (config: network.gateway_host)\n"
         "  --port <n>      listen port override (config: network.gateway_port)\n"
-        "  --run-for <sec> graceful exit after N seconds (local smoke test)\n",
+        "  --run-for <sec> graceful exit after N seconds (local smoke test)\n"
+        "  --log-file <p>  also write logs to file <p> (written by the process itself,\n"
+        "                  so it survives after the launching shell exits)\n"
+        "  --no-console    disable console output (use with --log-file)\n",
         prog != nullptr ? prog : "daemon");
 }
 
@@ -95,6 +100,14 @@ inline bool ParseArgs(int argc, char** argv, Args* out) {
             out->port = static_cast<std::uint16_t>(v);
             continue;
         }
+        if (arg == "--log-file" && i + 1 < argc) {
+            out->log_file = argv[++i];
+            continue;
+        }
+        if (arg == "--no-console") {
+            out->console = false;
+            continue;
+        }
         return false;  // 未知参数
     }
     return true;
@@ -121,9 +134,15 @@ inline void LoadConfigOrWarn(const std::string& dir) {
 }
 
 /// 先按默认级别启动日志（LoadConfig 之前就要能记录）。
-inline void InitLoggerOrWarn(const char* service) {
+/// log_file 非空时进程自己落文件（后台刷盘线程），不再依赖宿主 shell 的 stdout，
+/// 因此由启动脚本脱离式拉起后日志依然完整。
+inline void InitLoggerOrWarn(const char* service, const std::string& log_file = std::string(),
+                             bool console = true) {
     core::LoggerConfig cfg;
     cfg.service = service;
+    cfg.console = console;
+    cfg.console_color = console;
+    cfg.file_path = log_file;
     const auto r = core::Logger::Init(cfg);
     if (!r.HasValue()) {
         std::fprintf(stderr, "logger init failed: %s\n", r.Err().ToString().c_str());
