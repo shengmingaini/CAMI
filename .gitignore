@@ -34,6 +34,7 @@ vcpkg/downloads/
 # 日志 / 临时
 *.log
 *.tmp
+*.bak
 .DS_Store
 
 # 本地运行时数据（Redis/MariaDB 数据目录，不入库）
@@ -59,6 +60,12 @@ client/.godot/
 
 # godot-cpp 是第三方依赖（独立 git 仓库），不作为嵌套仓库提交
 client/extensions/protocol_codec/godot-cpp/
+
+# scons 构建缓存与残留对象
+.sconsign.dblite
+*.o.stale
+*.stale
+**/.sconsign.dblite
 
 # 验证运行产物目录（977/295 个文件，非源码）
 .verify_041/
