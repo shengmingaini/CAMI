@@ -8,7 +8,8 @@
 // 自证链路（启动时一次，证明 Load/Save/Flush 全链可用）：
 //   Save("smoke:1", v1) → Load 命中缓存 → Flush 落 Store → Invalidate → Load 回源。
 //
-// 主循环（main 线程独占，§9）：周期 Flush（脏队列 write-behind）+ 5s 摘要。
+// 主循环（调用线程独占，§9）：周期 Flush（脏队列 write-behind）+ 5s 摘要。
+// 双形态：独立进程 main() / All-in-One 线程调 RunDataService(args)。
 // 红线：本进程是唯一允许触碰存储的进程（GameNode 禁直连，§33）。
 
 #include <chrono>
@@ -24,7 +25,7 @@
 
 #include "daemon_common.h"
 
-namespace {
+namespace mmo::daemon {
 
 using mmo::core::DurationMs;
 using mmo::core::MonotonicClock;
@@ -55,23 +56,11 @@ void SmokeReadWrite(d::DataService& svc) {
                  loaded.Value()->payload, loaded.Value()->version);
 }
 
-}  // namespace
-
-int main(int argc, char** argv) {
-    using namespace mmo::daemon;
-    namespace core = mmo::core;  // daemon_common.h 内引用 core:: 类型，main 里同样需要该别名
-
-    Args args;
-    if (!ParseArgs(argc, argv, &args) || args.help) {
-        PrintUsage(argc > 0 ? argv[0] : "dataservice");
-        return args.help ? 0 : 1;
-    }
-
-    InitLoggerOrWarn("dataservice");
-    InstallSignalHandlers();
+/// DataService 主体（进程 main 与 All-in-One 共用）。返回 0 = 优雅退出。
+int RunDataService(const Args& args) {
+    namespace core = mmo::core;
 
     LoadConfigOrWarn(args.config_dir);
-    ApplyLogLevelFromConfig();
 
     MMO_LOG_INFO("dataservice: starting (config v{})", core::ConfigManager::Version());
 
@@ -118,7 +107,33 @@ int main(int argc, char** argv) {
                      r.HasValue() ? 1 : 0);
     }
     MMO_LOG_INFO("dataservice: shutting down (store_entries={})", store.size());
-    core::Logger::Flush();
-    core::Logger::Shutdown();
     return 0;
 }
+
+}  // namespace mmo::daemon
+
+// 独立进程入口（All-in-One 链接本文件时用 MMO_DAEMON_AS_LIBRARY 排除）
+#ifndef MMO_DAEMON_AS_LIBRARY
+int main(int argc, char** argv) {
+    using namespace mmo::daemon;
+    namespace core = mmo::core;
+
+    Args args;
+    if (!ParseArgs(argc, argv, &args) || args.help) {
+        PrintUsage(argc > 0 ? argv[0] : "dataservice");
+        return args.help ? 0 : 1;
+    }
+
+    InitLoggerOrWarn("dataservice");
+    InstallSignalHandlers();
+
+    LoadConfigOrWarn(args.config_dir);
+    ApplyLogLevelFromConfig();
+
+    const int rc = RunDataService(args);
+
+    core::Logger::Flush();
+    core::Logger::Shutdown();
+    return rc;
+}
+#endif  // MMO_DAEMON_AS_LIBRARY

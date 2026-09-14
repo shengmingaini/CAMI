@@ -55,6 +55,12 @@ foreach ($name in @("dataservice", "control", "gamenode")) {
     Write-Host "PASS $name (exit=0)"
 }
 
+Write-Host "=== 1b. all-in-one (mmorpg_server) smoke ==="
+$aioCode = Start-Daemon "$root\bin\mmorpg_server.exe" @("--run-for", "3") `
+    "$root\logs\smoke_allinone.log" "$root\logs\smoke_allinone.err.log" -Wait
+if ($aioCode -ne 0) { Write-Host "FAIL mmorpg_server exit=$aioCode"; exit 1 }
+Write-Host "PASS mmorpg_server (exit=0)"
+
 Write-Host "=== 2. gateway end-to-end (auth + heartbeat) ==="
 $gw = Start-Daemon "$root\bin\gateway.exe" @("--run-for", "15") `
     "$root\logs\smoke_gateway.log" "$root\logs\smoke_gateway.err.log"

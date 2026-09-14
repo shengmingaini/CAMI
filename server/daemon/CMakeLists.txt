@@ -68,8 +68,42 @@ target_link_libraries(control PRIVATE
     mmo::dataservice)
 mmorpg_add_warnings(control)
 
+# ---- mmorpg_server：All-in-One 单进程（开发/小规模形态；四角色各占一线程）----
+# 与四个单进程 exe 复用同一份 RunXxx 实现：同一批源文件以 MMO_DAEMON_AS_LIBRARY
+# 重编译一份 obj（剔除各自 main()），再链接 allinone_main.cpp 的 main。
+add_executable(mmorpg_server allinone_main.cpp
+    gateway_main.cpp gamenode_main.cpp dataservice_main.cpp control_main.cpp)
+target_compile_definitions(mmorpg_server PRIVATE MMO_DAEMON_AS_LIBRARY)
+foreach(_main IN ITEMS gateway_main gamenode_main dataservice_main control_main)
+    set_source_files_properties(${_main}.cpp PROPERTIES
+        SKIP_PRECOMPILE_HEADERS ON)
+endforeach()
+target_link_libraries(mmorpg_server PRIVATE
+    mmo::daemon_common
+    mmo::gateway_session
+    mmo::gateway_router
+    mmo::gateway_resilience
+    mmo::net
+    mmo::gamenode_entity
+    mmo::gamenode_scene
+    mmo::gamenode_sched
+    mmo::gamenode_aoi
+    mmo::gamenode_movement
+    mmo::gamenode_role
+    mmo::gamenode_inventory
+    mmo::gamenode_ai
+    mmo::gamenode_quest
+    mmo::gamenode_world
+    mmo::gamenode_combat
+    mmo::gamenode_economy
+    mmo::social
+    mmo::scene_recovery
+    mmo::dataservice
+    mmo::control)
+mmorpg_add_warnings(mmorpg_server)
+
 # 统一输出到 build/bin（与 test/bench 一致，Dockerfile 按此路径 COPY）
-foreach(_d IN ITEMS gateway gamenode dataservice control)
+foreach(_d IN ITEMS gateway gamenode dataservice control mmorpg_server)
     set_target_properties(${_d} PROPERTIES RUNTIME_OUTPUT_DIRECTORY
         ${CMAKE_BINARY_DIR}/bin)
 endforeach()

@@ -1,6 +1,6 @@
 // server/daemon/gateway_main.cpp — Gateway 进程入口（TASK-009/010/037 的进程组合层）
 //
-// 职责（§3）：网络连接 / Session / 心跳 / 路由。本入口把：
+// 职责（§3）：网络连接 / Session / 心跳 / 路由。本文件把：
 //   - TASK-008 INetworkTransport（TCP listen + Poll 事件流；Recv 侧已剥 4B 长度前缀，
 //     Received 事件 data 即一条完整应用帧 —— 上层**不得**再做帧组装）
 //   - TASK-009 SessionManager（六状态机 + 心跳 + 断线挂起）
@@ -13,7 +13,12 @@
 //     signature = player_id * 0x9E3779B97F4A7C15 ^ (nonce + 1)（与 StubAuthProvider 一致）；
 //   其它任意非空帧 = 心跳（刷新 last_heartbeat）。
 //
-// 主循环（main 线程独占驱动，§9 / §21，无任何自建线程）：
+// 双形态：
+//   - 独立进程：本文件 main()（四进程部署形态）
+//   - All-in-One：RunGateway(args) 被 allinone_main.cpp 在独立线程调用
+//     （单进程开发/小规模形态）。**两个形态不同时运行**，避免端口冲突。
+//
+// 主循环（调用线程独占驱动，§9 / §21）：
 //   Poll(50ms) → 逐事件（Connected→OnConnected / Disconnected→OnDisconnected /
 //   Received→鉴权或心跳）→ SessionManager.Tick(now) → EventBus.Drain(2ms) → 5s 摘要。
 
@@ -31,7 +36,7 @@
 
 #include "daemon_common.h"
 
-namespace {
+namespace mmo::daemon {
 
 using mmo::core::DurationMs;
 using mmo::core::ErrorCode;
@@ -79,23 +84,14 @@ std::optional<gw::SessionId> FindSessionByConn(gw::InMemorySessionStore& store,
     return std::nullopt;
 }
 
-}  // namespace
-
-int main(int argc, char** argv) {
+/// Gateway 主体（进程 main 与 All-in-One 共用）。
+/// 返回 0 = 优雅退出；非 0 = 启动失败（如端口占用）。
+int RunGateway(const Args& args) {
     using namespace mmo::daemon;
-    namespace core = mmo::core;  // daemon_common.h 内引用 core:: 类型，main 里同样需要该别名
+    namespace core = mmo::core;  // daemon_common.h 内引用 core:: 类型，此处同样需要该别名
 
-    Args args;
-    if (!ParseArgs(argc, argv, &args) || args.help) {
-        PrintUsage(argc > 0 ? argv[0] : "gateway");
-        return args.help ? 0 : 1;
-    }
-
-    InitLoggerOrWarn("gateway");
-    InstallSignalHandlers();
-
+    // 配置可能已由进程壳加载过（幂等：重复 LoadDir 仅合并同键）。
     LoadConfigOrWarn(args.config_dir);
-    ApplyLogLevelFromConfig();
 
     // ---- 监听参数：CLI 覆盖 > 配置 > 默认 ----
     const std::string host =
@@ -117,7 +113,6 @@ int main(int argc, char** argv) {
     const auto listened = transport->Listen(host, port);
     if (!listened.HasValue()) {
         MMO_LOG_FATAL("gateway: listen {}:{} failed ({})", host, port, listened.Err().ToString());
-        core::Logger::Shutdown();
         return 1;
     }
     MMO_LOG_INFO("gateway: listening on {}:{} (config v{})", host, port,
@@ -208,10 +203,36 @@ int main(int argc, char** argv) {
         }
     }
 
-    // ---- 优雅退出：停监听排空连接 → flush 日志 ----
+    // ---- 退出：停监听排空连接（日志 flush 由进程壳统一做）----
     MMO_LOG_INFO("gateway: shutting down (conns={})", transport->ConnectionCount());
     (void)transport->Stop();
-    core::Logger::Flush();
-    core::Logger::Shutdown();
     return 0;
 }
+
+}  // namespace mmo::daemon
+
+// 独立进程入口（All-in-One 链接本文件时用 MMO_DAEMON_AS_LIBRARY 排除）
+#ifndef MMO_DAEMON_AS_LIBRARY
+int main(int argc, char** argv) {
+    using namespace mmo::daemon;
+    namespace core = mmo::core;
+
+    Args args;
+    if (!ParseArgs(argc, argv, &args) || args.help) {
+        PrintUsage(argc > 0 ? argv[0] : "gateway");
+        return args.help ? 0 : 1;
+    }
+
+    InitLoggerOrWarn("gateway");
+    InstallSignalHandlers();
+
+    LoadConfigOrWarn(args.config_dir);
+    ApplyLogLevelFromConfig();
+
+    const int rc = RunGateway(args);
+
+    core::Logger::Flush();
+    core::Logger::Shutdown();
+    return rc;
+}
+#endif  // MMO_DAEMON_AS_LIBRARY

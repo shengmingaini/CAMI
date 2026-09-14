@@ -1,49 +1,58 @@
 # CAMI 服务器端 · Windows 部署包
 
-> 版本：2026-09-14（基于 42 任务全 DONE 的模块层 + server/daemon 进程层）
+> 版本：2026-09-14（42 任务全 DONE 模块层 + server/daemon 进程层）
 > 目标平台：Windows x64（10/11、Server 2016+）。**零依赖**——MinGW 运行时 DLL 已随包附带。
+
+## 两种运行形态
+
+| 形态 | 启动 | 适用 |
+|------|------|------|
+| **单进程（推荐）** | `scripts\start_server.ps1` | 开发、测试、单机部署。一个 `mmorpg_server.exe` 内含全部四个角色，一键启停 |
+| 四进程（扩展） | `scripts\start_all.ps1` | 多机/多实例横向扩展（5 万 CCU 目标形态），各角色独立启停、可分机器部署 |
+
+两种形态**代码完全相同**（同一份角色实现），只差进程组装方式；不要同时运行（端口冲突）。
 
 ## 包结构
 
 ```
-bin\                      5 个 exe + 3 个 MinGW 运行时 DLL（自包含）
-  gateway.exe             入口网关：TCP 监听、Session 生命周期、鉴权、心跳
-  gamenode.exe            游戏节点：20Hz 固定 Tick（Scene/AOI/Combat…14 模块已链接）
-  dataservice.exe         数据服务：cache-aside 读 + write-behind 写（内存实现）
-  control.exe             控制面：节点注册表、心跳超时、配置下发
-  gateway_smoke_client.exe 端到端自检客户端（验证工具）
+bin\                      6 个 exe + 3 个 MinGW 运行时 DLL（自包含）
+  mmorpg_server.exe       ★ All-in-One：单进程跑全部四角色（推荐入口）
+  gateway.exe             入口网关（四进程形态）
+  gamenode.exe            游戏节点：20Hz Tick（四进程形态）
+  dataservice.exe         数据服务（四进程形态）
+  control.exe             控制面（四进程形态）
+  gateway_smoke_client.exe 端到端自检客户端
   libstdc++-6.dll / libgcc_s_seh-1.dll / libwinpthread-1.dll
-config\
-  network.json            gateway_host / gateway_port（默认 127.0.0.1:9000）
-  tick.json               tick.hz（默认 20）
-  app.json                service.name / log_level
-  control\control.json    心跳超时 / 默认容量
+config\                   network / tick / app / control 四份 JSON 配置
 scripts\
-  start_all.ps1           一键启动（依赖序：dataservice→control→gamenode→gateway）
-  stop_all.ps1            一键优雅停止（逆序）
-  smoke.ps1               自检：4 进程冒烟 + gateway 鉴权/心跳 e2e
+  start_server.ps1        ★ 单进程一键启动（配对 stop_server.ps1）
+  stop_server.ps1         单进程优雅停止
+  start_all.ps1           四进程一键启动（配对 stop_all.ps1）
+  stop_all.ps1            四进程优雅停止（逆序）
+  smoke.ps1               自检：4 daemon 冒烟 + All-in-One 冒烟 + gateway e2e
 logs\  run\              （运行时自动创建）日志与 pid
 ```
 
 ## 快速开始（3 条命令）
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts\smoke.ps1      # ① 自检（约 15 秒）
-powershell -ExecutionPolicy Bypass -File scripts\start_all.ps1  # ② 启动
-powershell -ExecutionPolicy Bypass -File scripts\stop_all.ps1   # ③ 停止
+powershell -ExecutionPolicy Bypass -File scripts\smoke.ps1         # ① 自检（约 30 秒）
+powershell -ExecutionPolicy Bypass -File scripts\start_server.ps1  # ② 单进程启动
+powershell -ExecutionPolicy Bypass -File scripts\stop_server.ps1   # ③ 停止
 ```
 
 启动后：gateway 监听 `config\network.json` 的 `gateway_port`（默认 9000）；
-日志在 `logs\<proc>.log`；联机客户端连 `127.0.0.1:9000`。
+日志在 `logs\server.log`；联机客户端连 `127.0.0.1:9000`。
 
-## 单进程运行 / 常用参数
+## 单进程手动运行 / 常用参数
 
 ```
-bin\gateway.exe [--config <dir>] [--host <ip>] [--port <n>] [--run-for <sec>]
+bin\mmorpg_server.exe [--config <dir>] [--host <ip>] [--port <n>] [--run-for <sec>]
 ```
-- `--run-for N`：N 秒后优雅退出（测试用）；缺省长驻
-- `Ctrl+C` / `taskkill`（不带 /f）：触发优雅退出（冲刷日志与脏队列）
+- `--run-for N`：N 秒后全部角色优雅退出（测试用）；缺省长驻
+- `Ctrl+C` / `taskkill`（不带 /f）：优雅退出（冲刷日志与脏队列）
 - 日志级别：`config\app.json` 的 `service.log_level`（info/debug/…）
+- 单独调某个角色也可直接跑对应 exe（如 `bin\gateway.exe --port 9000`）
 
 ## 端口与配置
 
@@ -80,6 +89,10 @@ Redis/MySQL 适配层（TASK-027/028）已随源码就绪，配置注入后替�
 
 ## 验证记录（本包实出）
 
-- 4 进程 `--run-for 2` 冒烟：全部 exit 0；gamenode 2s = 40 ticks（20Hz 精准）。
-- gateway e2e：TCP 连接 → 鉴权通过（auth_ok=1）→ 心跳 3 帧 → 断开后会话进 Suspended。
+- 单进程 All-in-One：5 秒运行 = gamenode 精准 100 ticks（20Hz、0 overruns），
+  四角色线程 tid=2/3/4/5 并行、全部 code=0 优雅退出。
+- gateway e2e（对 All-in-One 与独立 gateway 双验证）：TCP 连接 → 鉴权 auth_ok=1 →
+  心跳 3 帧 → 断开后会话进 Suspended。
+- 四进程形态回归：各 `--run-for 2` 全部 exit 0。
+- 干净 PATH（仅 System32）直接启动成功 → DLL 自包含成立。
 - 详见源码仓库 `server/daemon/README.md`。

@@ -4,10 +4,11 @@
 // IDataStore（内存实现，非空时持久化节点表与配置）。控制面无游戏实时状态（§21）。
 //
 // 第一版进程行为：
-//   - 启动即注册自身（role=ControlService 复用 GameNode 数值空间的 0 号位）
+//   - 启动即注册自身（0 号节点，供拓扑可见）
 //   - 主循环：周期心跳（1s）+ ControlService.Tick（15s 无心跳判离线，§15.6）
 //   - 5s 拓扑摘要（在线节点数）
 //
+// 双形态：独立进程 main() / All-in-One 线程调 RunControl(args)。
 // 红线：配置下发带版本单调递增（§21）；单写者维护节点表（服务内部自持）。
 
 #include <chrono>
@@ -22,26 +23,15 @@
 
 #include "daemon_common.h"
 
-namespace {
+namespace mmo::daemon {
 
 using mmo::core::DurationMs;
 using mmo::core::MonotonicClock;
 namespace ctl = mmo::control;
 
-}  // namespace
-
-int main(int argc, char** argv) {
-    using namespace mmo::daemon;
-    namespace core = mmo::core;  // daemon_common.h 内引用 core:: 类型，main 里同样需要该别名
-
-    Args args;
-    if (!ParseArgs(argc, argv, &args) || args.help) {
-        PrintUsage(argc > 0 ? argv[0] : "control");
-        return args.help ? 0 : 1;
-    }
-
-    InitLoggerOrWarn("control");
-    InstallSignalHandlers();
+/// ControlService 主体（进程 main 与 All-in-One 共用）。返回 0 = 优雅退出。
+int RunControl(const Args& args) {
+    namespace core = mmo::core;
 
     LoadConfigOrWarn(args.config_dir);
     // control 专属配置在子目录（config/control/control.json），LoadDir 非递归 → 显式加载。
@@ -49,14 +39,13 @@ int main(int argc, char** argv) {
         MMO_LOG_WARN("control: optional config dir '{}/control' not loaded ({})", args.config_dir,
                      r.Err().ToString());
     }
-    ApplyLogLevelFromConfig();
 
     const auto heartbeat_timeout = DurationMs(CfgOr<std::uint32_t>("heartbeat_timeout_ms", 15000));
 
     MMO_LOG_INFO("control: starting (heartbeat_timeout={}ms config v{})",
                  heartbeat_timeout.count(), core::ConfigManager::Version());
 
-    mmo::core::EventBus bus;
+    core::EventBus bus;
     mmo::data::InMemoryStore store;  // 持久化实现由部署注入（接口 IDataStore，§27.4）
     ctl::ControlService control(bus, &store, ctl::Options{heartbeat_timeout, 1000});
 
@@ -102,7 +91,38 @@ int main(int argc, char** argv) {
     // 优雅退出：主动注销（触发路由失效协调，§15.4）。
     (void)control.UnregisterNode(0);
     MMO_LOG_INFO("control: shutting down (beats={})", beats);
-    core::Logger::Flush();
-    core::Logger::Shutdown();
     return 0;
 }
+
+}  // namespace mmo::daemon
+
+// 独立进程入口（All-in-One 链接本文件时用 MMO_DAEMON_AS_LIBRARY 排除）
+#ifndef MMO_DAEMON_AS_LIBRARY
+int main(int argc, char** argv) {
+    using namespace mmo::daemon;
+    namespace core = mmo::core;
+
+    Args args;
+    if (!ParseArgs(argc, argv, &args) || args.help) {
+        PrintUsage(argc > 0 ? argv[0] : "control");
+        return args.help ? 0 : 1;
+    }
+
+    InitLoggerOrWarn("control");
+    InstallSignalHandlers();
+
+    LoadConfigOrWarn(args.config_dir);
+    // control 专属配置在子目录，LoadDir 非递归 → 显式加载。
+    if (const auto r = core::ConfigManager::LoadDir(args.config_dir + "/control"); !r.HasValue()) {
+        MMO_LOG_WARN("control: optional config dir '{}/control' not loaded ({})", args.config_dir,
+                     r.Err().ToString());
+    }
+    ApplyLogLevelFromConfig();
+
+    const int rc = RunControl(args);
+
+    core::Logger::Flush();
+    core::Logger::Shutdown();
+    return rc;
+}
+#endif  // MMO_DAEMON_AS_LIBRARY
