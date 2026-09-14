@@ -47,7 +47,8 @@ Result<std::shared_ptr<grpc::Channel>> GrpcChannelPool::Get(std::string_view tar
         (void)ch->WaitForConnected(std::chrono::system_clock::now() + std::chrono::milliseconds{100});
     }
     auto out = ch;
-    e.next = (e.next + 1) % per_target_;
+    // % 的操作数是 size_t，结果回落给 uint32_t 必须显式转换（-Wconversion）
+    e.next = static_cast<uint32_t>((e.next + 1) % per_target_);
     return Result<std::shared_ptr<grpc::Channel>>::Ok(std::move(out));
 }
 

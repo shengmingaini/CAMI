@@ -175,6 +175,9 @@ core::Result<std::uint32_t> BuffSystem::Apply(role::CharacterId target,
                                               std::uint32_t buff_id,
                                               role::CharacterId source, core::TraceID trace,
                                               core::SteadyTime now) {
+    // trace 在本路径不落事件（BuffApplied 事件体无 trace 字段，见 combat_events.h），
+    // 显式丢弃以免 -Wunused-parameter。
+    (void)trace;
     const BuffDef* d = defs_.Find(buff_id);
     if (d == nullptr) return Fail<std::uint32_t>(ErrorCode::NOT_FOUND, "unknown buff id");
     role::Character* c = roles_.Find(target);
@@ -182,16 +185,18 @@ core::Result<std::uint32_t> BuffSystem::Apply(role::CharacterId target,
 
     auto& vec = by_char_[target];
 
-    // 已有同 id 实例？
-    int exist_idx = -1;
+    // 已有同 id 实例？（下标统一用 size_t：早先用 int + -1 哨兵，每次下标访问都会
+    // 触发 int→size_type 的 -Wsign-conversion。）
+    constexpr std::size_t kNoIndex = static_cast<std::size_t>(-1);
+    std::size_t exist_idx = kNoIndex;
     for (std::size_t i = 0; i < vec.size(); ++i) {
         if (vec[i].def->id == buff_id) {
-            exist_idx = static_cast<int>(i);
+            exist_idx = i;
             break;
         }
     }
 
-    if (exist_idx >= 0) {
+    if (exist_idx != kNoIndex) {
         switch (d->stack_rule) {
             case StackRule::None:
                 vec[exist_idx].expire_at =
@@ -210,7 +215,8 @@ core::Result<std::uint32_t> BuffSystem::Apply(role::CharacterId target,
                 for (const auto& inst : vec)
                     if (inst.def->id == buff_id) ++cnt;
                 if (cnt >= d->max_stacks) {
-                    vec.erase(vec.begin() + exist_idx);  // swap-free erase（保持顺序）
+                    // iterator + n 的形参是 ptrdiff_t，size_t 需显式转换
+                    vec.erase(vec.begin() + static_cast<std::ptrdiff_t>(exist_idx));
                     RecomputeFromBuff(c);
                     RecomputeControlMask(target);
                 }
@@ -396,7 +402,9 @@ void BuffSystem::OnDeath(role::CharacterId target, core::TraceID trace) {
             ev.target = EntityOf(target);
             ev.buff_id = inst.def->id;
             ev.reason = static_cast<std::uint8_t>(RemoveReason::Death);
-            ev.stacks = inst.stacks;
+            // 事件字段是 uint8_t、实例层数是 uint16_t：饱和截断，避免静默回绕
+            // （层数 >255 时上报 255，而不是 layers&0xFF）
+            ev.stacks = static_cast<std::uint8_t>(std::min<std::uint16_t>(inst.stacks, 255));
             ev.trace = trace;
             (void)bus_->Publish(ev);
         }

@@ -117,7 +117,7 @@ bool PollUntil(std::unique_ptr<INetworkTransport>& t, TransportEvent::Kind k,
     std::vector<TransportEvent> out;
     for (int i = 0; i < rounds; ++i) {
         out.clear();
-        t->Poll(std::chrono::milliseconds(20), out);
+        (void)t->Poll(std::chrono::milliseconds(20), out);
         for (auto& ev : out) {
             collected.push_back(ev);
             if (ev.kind == k) {
@@ -242,7 +242,7 @@ void TestEchoRoundTrip() {
     bool saw_drained = false;
     for (int round = 0; round < 5 && !saw_drained; ++round) {
         events.clear();
-        t->Poll(std::chrono::milliseconds(20), events);
+        (void)t->Poll(std::chrono::milliseconds(20), events);
         for (auto& ev : events) {
             if (ev.kind == TransportEvent::Kind::SendDrained && ev.conn_id == cid) {
                 saw_drained = true;
@@ -270,7 +270,7 @@ void TestEchoRoundTrip() {
     bool saw_disc = false;
     for (int round = 0; round < 10 && !saw_disc; ++round) {
         events.clear();
-        t->Poll(std::chrono::milliseconds(20), events);
+        (void)t->Poll(std::chrono::milliseconds(20), events);
         for (auto& ev : events) {
             if (ev.kind == TransportEvent::Kind::Disconnected && ev.conn_id == cid) {
                 saw_disc = true;
@@ -313,7 +313,7 @@ void TestStickyHalfPackets() {
     bool contents_ok = true;
     for (int round = 0; round < 20 && got < 3; ++round) {
         events.clear();
-        t->Poll(std::chrono::milliseconds(20), events);
+        (void)t->Poll(std::chrono::milliseconds(20), events);
         for (auto& ev : events) {
             if (ev.kind == TransportEvent::Kind::Received) {
                 if (got == 0) {
@@ -338,7 +338,7 @@ void TestStickyHalfPackets() {
     CHECK(c.SendAll(pbig.data(), 7), "send half packet (7 of 14)");
     // 中途 Poll 不应 emit（半包保留在缓冲）
     events.clear();
-    t->Poll(std::chrono::milliseconds(50), events);
+    (void)t->Poll(std::chrono::milliseconds(50), events);
     bool early_emit = false;
     for (auto& ev : events) {
         if (ev.kind == TransportEvent::Kind::Received) {
@@ -351,7 +351,7 @@ void TestStickyHalfPackets() {
     bool got_big = false;
     for (int round = 0; round < 10 && !got_big; ++round) {
         events.clear();
-        t->Poll(std::chrono::milliseconds(20), events);
+        (void)t->Poll(std::chrono::milliseconds(20), events);
         for (auto& ev : events) {
             if (ev.kind == TransportEvent::Kind::Received) {
                 got_big = (ev.data.size() == 10 && ev.data[9] == 10);
@@ -389,7 +389,7 @@ void TestBigPacket1MB() {
         std::vector<TransportEvent> out;
         for (int round = 0; round < 200 && !got_1mb.load(std::memory_order_relaxed); ++round) {
             out.clear();
-            t->Poll(std::chrono::milliseconds(20), out);
+            (void)t->Poll(std::chrono::milliseconds(20), out);
             for (auto& ev : out) {
                 if (ev.kind == TransportEvent::Kind::Received &&
                     ev.data.size() == kPayload) {
@@ -430,7 +430,7 @@ void TestDisconnectRecycle() {
     bool saw_disconn = false;
     for (int round = 0; round < 20 && !saw_disconn; ++round) {
         events.clear();
-        t->Poll(std::chrono::milliseconds(20), events);
+        (void)t->Poll(std::chrono::milliseconds(20), events);
         for (auto& ev : events) {
             if (ev.kind == TransportEvent::Kind::Disconnected) {
                 saw_disconn = true;
@@ -510,7 +510,7 @@ void TestMaxConnReject() {
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
     std::vector<TransportEvent> tmp;
     for (int round = 0; round < 5; ++round) {
-        t->Poll(std::chrono::milliseconds(20), tmp);
+        (void)t->Poll(std::chrono::milliseconds(20), tmp);
     }
     CHECK(t->ConnectionCount() == 2, "still 2 after reject");
     CHECK(t->Stats().error_count >= 1, "reject counted in error_count");
@@ -534,7 +534,7 @@ void TestIdleTimeout() {
     bool saw_conn_count_zero = false;
     for (int round = 0; round < 100 && !saw_timeout; ++round) {
         events.clear();
-        t->Poll(std::chrono::milliseconds(50), events);
+        (void)t->Poll(std::chrono::milliseconds(50), events);
         for (auto& ev : events) {
             if (ev.kind == TransportEvent::Kind::Disconnected &&
                 ev.error.Code() == mmo::core::ErrorCode::TIMEOUT) {
@@ -580,7 +580,7 @@ void TestOversizedPacketReject() {
     bool saw_disc = false;
     for (int round = 0; round < 10 && !saw_disc; ++round) {
         events.clear();
-        t->Poll(std::chrono::milliseconds(20), events);
+        (void)t->Poll(std::chrono::milliseconds(20), events);
         for (auto& ev : events) {
             if (ev.kind == TransportEvent::Kind::Disconnected && ev.conn_id == cid) {
                 saw_disc = true;
@@ -615,7 +615,7 @@ void TestAbruptDisconnectRST() {
     bool saw_disc = false;
     for (int round = 0; round < 20 && !saw_disc; ++round) {
         events.clear();
-        t->Poll(std::chrono::milliseconds(20), events);
+        (void)t->Poll(std::chrono::milliseconds(20), events);
         for (auto& ev : events) {
             if (ev.kind == TransportEvent::Kind::Disconnected) {
                 saw_disc = true;

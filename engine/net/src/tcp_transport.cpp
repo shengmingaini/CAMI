@@ -59,8 +59,12 @@ bool WouldBlock() noexcept {
 
 void SetNonBlocking(SocketHandle fd) noexcept {
 #if defined(_WIN32)
+    // FIONBIO 是 0x8004667E（unsigned long），ioctlsocket 的形参却是 long：
+    // 直接传会触发 -Wsign-conversion（2147772030 → -2147195266）。显式 static_cast
+    // 表明「就是要按位传这个值」，而不是漏写了类型。
+    constexpr long kFionbio = static_cast<long>(FIONBIO);
     u_long mode = 1;
-    ::ioctlsocket(static_cast<SOCKET>(fd), FIONBIO, &mode);
+    ::ioctlsocket(static_cast<SOCKET>(fd), kFionbio, &mode);
 #else
     const int flags = ::fcntl(static_cast<int>(fd), F_GETFL, 0);
     ::fcntl(static_cast<int>(fd), F_SETFL, flags | O_NONBLOCK);

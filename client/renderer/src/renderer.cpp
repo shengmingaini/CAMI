@@ -161,6 +161,9 @@ core::Result<RenderStats> Renderer::RenderFrame(mmo::client::ClientWorld& world,
     for (std::uint32_t i = 0; i < s.draw_calls; ++i) {
         sink += static_cast<std::uint64_t>(i) * 2654435761u + s.triangles;
     }
+    // sink 的作用就是「吃掉循环结果、阻止整段被优化掉」，这里显式标记已消费
+    // （volatile 保证循环不会被删，但 GCC 仍会因未再读取而报 -Wunused-but-set-variable）
+    (void)sink;
     const double g1 = SteadyMs();
     s.gpu_ms = static_cast<float>(g1 - g0);
 

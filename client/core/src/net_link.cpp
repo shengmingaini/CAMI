@@ -91,7 +91,13 @@ core::Result<void> NetLink::Connect(std::string_view addr,
         s = ::socket(ai->ai_family, ai->ai_socktype, ai->ai_protocol);
         if (s == kBad) continue;
 #ifdef _WIN32
-        u_long mode = 1; ioctlsocket(s, FIONBIO, &mode);
+        // FIONBIO 是 0x8004667E（unsigned long）而 ioctlsocket 形参是 long：
+        // 直接传会触发 -Wsign-conversion。显式 static_cast 表示「按位传值」是有意的。
+        constexpr long kFionbio = static_cast<long>(FIONBIO);
+        {
+            u_long mode = 1;
+            ioctlsocket(s, kFionbio, &mode);
+        }
 #else
         fcntl(s, F_SETFL, O_NONBLOCK);
 #endif
@@ -117,7 +123,10 @@ core::Result<void> NetLink::Connect(std::string_view addr,
         }
         if (connected) {
 #ifdef _WIN32
-            u_long mode = 0; ioctlsocket(s, FIONBIO, &mode);
+            {
+                u_long mode = 0;
+                ioctlsocket(s, kFionbio, &mode);
+            }
 #else
             fcntl(s, F_SETFL, 0);
 #endif
