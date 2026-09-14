@@ -91,9 +91,13 @@ core::Result<void> ClientLink::Connect(std::string_view addr, std::uint32_t conn
         s = ::socket(ai->ai_family, ai->ai_socktype, ai->ai_protocol);
         if (s == kBad) continue;
 #ifdef _WIN32
-        // 非阻塞 connect 实现超时
+        // 非阻塞 connect 实现超时。
+        // FIONBIO=0x8004667E 是无符号常量，而 ioctlsocket 形参是 long：
+        // 直接传会触发 -Wsign-conversion（值被"变成"负数，虽在 Windows 上行为正确但告警刺眼），
+        // 这里显式转换一次，既消警也表明是有意为之。
+        constexpr long kFionbio = static_cast<long>(FIONBIO);
         u_long mode = 1;
-        ioctlsocket(s, FIONBIO, &mode);
+        ioctlsocket(s, kFionbio, &mode);
 #else
         fcntl(s, F_SETFL, O_NONBLOCK);
 #endif
@@ -119,7 +123,7 @@ core::Result<void> ClientLink::Connect(std::string_view addr, std::uint32_t conn
         }
         if (connected) {
 #ifdef _WIN32
-            u_long mode = 0; ioctlsocket(s, FIONBIO, &mode);
+            mode = 0; ioctlsocket(s, kFionbio, &mode);  // 复用外层 mode，避免遮蔽（-Wshadow）
 #else
             fcntl(s, F_SETFL, 0);
 #endif

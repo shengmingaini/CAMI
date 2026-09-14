@@ -76,6 +76,7 @@ int RunDataService(const Args& args) {
     core::SteadyTime last_summary = MonotonicClock::Point();
 
     while (!g_stop.load(std::memory_order_relaxed) && !DeadlineReached(deadline)) {
+        PollStopFile(args.stop_file);
         const auto now = MonotonicClock::Point();
 
         // write-behind 定期冲刷（2s；脏队列有内容才冲）

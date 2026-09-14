@@ -166,13 +166,13 @@ void test_stats() {
     InMemoryCache cache;
     InMemoryStore store;
     DataService ds(cache, store);
-    ds.Save(MakeRec("k", 1));
-    ds.Load("k");
-    ds.Load("k");
-    ds.Load("missing");
+    (void)ds.Save(MakeRec("k", 1));
+    (void)ds.Load("k");
+    (void)ds.Load("k");
+    (void)ds.Load("missing");
     auto st = ds.Stats();
     CHECK(st.hit_rate > 0.5);                        // 2 hits / 3
-    ds.Flush();
+    (void)ds.Flush();
     CHECK(ds.Stats().flush_count >= 1);
 }
 

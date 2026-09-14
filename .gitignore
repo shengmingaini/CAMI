@@ -74,3 +74,6 @@ client/extensions/protocol_codec/godot-cpp/
 # 巨幅轮转基准日志（58MB+，重跑即生成）
 bench/log_bench.log*
 /cami-server-*.zip
+
+# 会话内临时脚手架：下划线开头的产物（构建/测试/校验的中间输出，用完即弃）
+/_*

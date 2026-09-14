@@ -36,7 +36,14 @@ cd CAMI            # 工作目录需含 config/
 ```
 
 公共参数：`--config <dir>`（默认 `config`）/ `--host` / `--port` / `--run-for <sec>`
-（到时优雅退出，冒烟用）/ `--help`。信号 SIGINT/SIGTERM/SIGBREAK → 优雅退出。
+（到时优雅退出，冒烟用）/ `--log-file <path>` / `--no-console` / `--stop-file <path>`
+/ `--help`。信号 SIGINT/SIGTERM/SIGBREAK → 优雅退出。
+
+`--stop-file <path>` 是 Windows 专用的**哨兵文件停止通道**：主循环每 500ms 检查该
+路径，文件一出现就置停止位、删掉文件、退出循环（先删后停，残留哨兵不会把下一次
+启动立刻停掉）。Windows 无法从外部给「已脱离宿主的控制台进程」发信号，
+`taskkill`（不带 `/f`）对控制台进程也不会停，因此部署脚本用它请求优雅停止
+（`deploy/bundle/scripts/stop_server.ps1`），15 秒未退才 `taskkill /f` 兜底。
 
 ## 进程行为摘要
 

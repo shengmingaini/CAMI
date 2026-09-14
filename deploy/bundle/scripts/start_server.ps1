@@ -18,7 +18,11 @@ New-Item -ItemType Directory -Force -Path "$root\logs", "$root\run" | Out-Null
 
 $exe = "$root\bin\mmorpg_server.exe"
 $log = "$root\logs\server.log"
-$cmdLine = "`"$exe`" --config `"$root\config`" --log-file `"$log`" --no-console"
+$stopFile = "$root\run\stop.signal"
+# 启动前先清掉上一次可能残留的哨兵，否则服务器一起来就会被它立刻停掉
+if (Test-Path $stopFile) { Remove-Item $stopFile -Force -ErrorAction SilentlyContinue }
+# --stop-file：Windows 无跨进程信号，stop_server.ps1 靠「touch 该文件」请求优雅退出
+$cmdLine = "`"$exe`" --config `"$root\config`" --log-file `"$log`" --no-console --stop-file `"$stopFile`""
 
 $res = Invoke-CimMethod -ClassName Win32_Process -MethodName Create `
     -Arguments @{ CommandLine = $cmdLine; CurrentDirectory = $root }
@@ -43,5 +47,5 @@ Write-Host "started mmorpg_server pid=$procId"
 Write-Host "roles:   dataservice + control + gamenode + gateway (single process)"
 Write-Host "gateway: listening on port from config\network.json (default 9000)"
 Write-Host "log:     logs\server.log"
-Write-Host "stop:    powershell -File scripts\stop_server.ps1"
+Write-Host "stop:    powershell -File scripts\stop_server.ps1  (graceful via run\stop.signal)"
 exit 0

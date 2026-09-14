@@ -56,9 +56,11 @@ int main(int argc, char** argv) {
             "mmorpg_server — All-in-One 单进程服务器（开发/小规模形态）\n"
             "\n"
             "usage: %s [--config <dir>] [--host <ip>] [--port <n>] [--run-for <sec>] [--help]\n"
+            "       [--log-file <p>] [--no-console] [--stop-file <p>]\n"
             "\n"
             "  单进程内运行全部四个角色：dataservice → control → gamenode → gateway。\n"
-            "  Ctrl+C / taskkill 触发全部角色优雅退出（冲刷日志与脏队列）。\n"
+            "  Ctrl+C 触发全部角色优雅退出（冲刷日志与脏队列）。\n"
+            "  Windows 下脚本停止请用 --stop-file <p>：文件一出现即优雅退出（无跨进程信号）。\n"
             "  横向扩展请改用四进程形态（gateway/gamenode/dataservice/control.exe）。\n",
             argc > 0 ? argv[0] : "mmorpg_server");
         return args.help ? 0 : 1;
@@ -92,8 +94,10 @@ int main(int argc, char** argv) {
         MMO_LOG_INFO("mmorpg_server: role '{}' started", r.name);
     }
 
-    // 主线程等待退出信号（g_stop 由信号处理器置位；--run-for 由各角色自判）。
+    // 主线程等待退出信号（g_stop 由信号处理器或 --stop-file 哨兵置位；
+    // --run-for 由各角色自判）。
     while (!g_stop.load(std::memory_order_relaxed)) {
+        PollStopFile(args.stop_file);
         bool all_done = true;
         for (const RoleThread& r : roles) {
             if (r.exit_code < 0) {

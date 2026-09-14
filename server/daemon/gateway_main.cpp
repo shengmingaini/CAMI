@@ -127,6 +127,7 @@ int RunGateway(const Args& args) {
     std::uint64_t auth_ok = 0;
 
     while (!g_stop.load(std::memory_order_relaxed) && !DeadlineReached(deadline)) {
+        PollStopFile(args.stop_file);
         // 1. 网络 IO（50ms 预算；ev.data 已是剥好前缀的完整应用帧）
         events.clear();
         const auto polled = transport->Poll(DurationMs(50), events);

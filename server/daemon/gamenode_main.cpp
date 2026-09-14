@@ -62,6 +62,7 @@ int RunGameNode(const Args& args) {
     std::uint64_t tick_max_us = 0;
 
     while (!g_stop.load(std::memory_order_relaxed) && !DeadlineReached(deadline)) {
+        PollStopFile(args.stop_file);
         const auto now = MonotonicClock::Point();
 
         if (now >= next_tick) {

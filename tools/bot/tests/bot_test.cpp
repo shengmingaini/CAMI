@@ -57,7 +57,7 @@ int main() {
     // T02：BotScript 解析与循环（loop=3 → 24 个动作）
     {
         MockGateway gw;
-        gw.Start(0);
+        (void)gw.Start(0);
         Bot bot;
         BotScript script;
         script.actions = {BotAction::Login, BotAction::Move};
@@ -71,13 +71,13 @@ int main() {
     // T03：Trade 带 transaction_id / idempotency_key 透传不报错
     {
         MockGateway gw;
-        gw.Start(0);
+        (void)gw.Start(0);
         Bot bot;
         BotScript script;
         script.actions = {BotAction::Trade};
         script.delays.assign(1, DurationMs{0});
         script.loop = 1;
-        bot.Run(script, GWAddr(gw));
+        (void)bot.Run(script, GWAddr(gw));
         CHECK(bot.Stats().errors == 0, "T03_trade_idempotency_no_error");
     }
 
@@ -100,7 +100,7 @@ int main() {
         BotFarm farm;
         BotConfig cfg;
         cfg.sim_mode = true;
-        farm.Spawn(8, cfg);
+        (void)farm.Spawn(8, cfg);
         auto ra = farm.RunUntil(DurationMs{400});
         AggregateStats agg = ra.Value();
         const bool finite = std::isfinite(agg.tick_p50_ms) &&

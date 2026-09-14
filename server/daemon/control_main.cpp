@@ -61,6 +61,7 @@ int RunControl(const Args& args) {
     std::uint64_t beats = 0;
 
     while (!g_stop.load(std::memory_order_relaxed) && !DeadlineReached(deadline)) {
+        PollStopFile(args.stop_file);
         const auto now = MonotonicClock::Point();
 
         // 周期心跳（1s）：上报自身负载占位 0。

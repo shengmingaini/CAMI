@@ -17,7 +17,10 @@ function Start-Daemon {
     param([string]$Name)
     $exe = "$root\bin\$Name.exe"
     $log = "$root\logs\$Name.log"
-    $cmdLine = "`"$exe`" --config `"$root\config`" --log-file `"$log`" --no-console"
+    $stopFile = "$root\run\$Name.stop.signal"
+    if (Test-Path $stopFile) { Remove-Item $stopFile -Force -ErrorAction SilentlyContinue }
+    # --stop-file：Windows 无跨进程信号，stop_all.ps1 靠 touch 各自哨兵请求优雅退出
+    $cmdLine = "`"$exe`" --config `"$root\config`" --log-file `"$log`" --no-console --stop-file `"$stopFile`""
     $res = Invoke-CimMethod -ClassName Win32_Process -MethodName Create `
         -Arguments @{ CommandLine = $cmdLine; CurrentDirectory = $root }
     if ($res.ReturnValue -ne 0) {

@@ -48,12 +48,15 @@ powershell -ExecutionPolicy Bypass -File scripts\stop_server.ps1   # ③ 停止
 
 ```
 bin\mmorpg_server.exe [--config <dir>] [--host <ip>] [--port <n>] [--run-for <sec>]
-                      [--log-file <path>] [--no-console]
+                      [--log-file <path>] [--no-console] [--stop-file <path>]
 ```
 - `--run-for N`：N 秒后全部角色优雅退出（测试用）；缺省长驻
 - `--log-file <path>`：**进程自己**把日志写到文件（后台刷盘线程），不依赖启动它的
   shell 是否还活着；文件按 64MB × 5 个轮转
 - `--no-console`：关闭控制台输出，配合 `--log-file` 用于后台运行
+- `--stop-file <path>`：哨兵文件通道——文件一出现即优雅退出，并**先删掉该文件**
+  （避免残留哨兵把下一次启动立刻停掉）。Windows 无法从外部给脱离宿主的控制台
+  进程发信号，这是脚本请求优雅停止的唯一通道
 - `Ctrl+C` / `SIGTERM`：优雅退出（冲刷日志与脏队列）
 - 日志级别：`config\app.json` 的 `service.log_level`（info/debug/…）
 - 单独调某个角色也可直接跑对应 exe（如 `bin\gateway.exe --port 9000`）
@@ -68,9 +71,19 @@ bin\mmorpg_server.exe [--config <dir>] [--host <ip>] [--port <n>] [--run-for <se
 > 因此：脚本方式启动的服务器日志在 `logs\server.log`（不是 stdout）；
 > 想看实时输出，直接手动跑 `bin\mmorpg_server.exe`（不带 `--no-console`）。
 
-`stop_server.ps1` / `stop_all.ps1` 通过 `run\*.pid` 定位进程后 `taskkill` 结束。
-Windows 下无法从外部给控制台进程发 Ctrl+C，因此脚本停止是**强制结束**；
-需要「优雅退出」（冲刷日志、脏队列落盘）请手动运行并在窗口按 `Ctrl+C`。
+### 脚本是怎么「优雅停止」的
+
+Windows 无法从外部给**已脱离宿主的控制台进程**发 Ctrl+C/SIGTERM，`taskkill`
+（不带 `/f`）对控制台进程实际不会停——所以脚本不能靠信号。这里走两级：
+
+1. **优雅**：`stop_*.ps1` 先按 `run\*.pid` 定位进程（并校验进程名，防止过期 pid
+   误杀复用同一 PID 的无关进程），然后 touch 哨兵文件
+   （单进程 `run\stop.signal`；四进程 `run\<name>.stop.signal`）。
+   服务器主循环每 500ms 检查一次，发现即置停止位、删除哨兵、四角色线程自退
+   （dataservice 落盘后再关）。实测 0.9 秒内全部 `code=0` 退出。
+2. **兜底**：超过 15 秒（四进程 10 秒）仍未退，才 `taskkill /f`。
+
+手动运行时不必用脚本：直接在窗口按 `Ctrl+C` 即优雅退出。
 
 ## 端口与配置
 
@@ -112,5 +125,7 @@ Redis/MySQL 适配层（TASK-027/028）已随源码就绪，配置注入后替�
 - gateway e2e（对 All-in-One 与独立 gateway 双验证）：TCP 连接 → 鉴权 auth_ok=1 →
   心跳 3 帧 → 断开后会话进 Suspended。
 - 四进程形态回归：各 `--run-for 2` 全部 exit 0。
+- 优雅停止：脚本 touch 哨兵 → 0.9 秒内四角色全部 `code=0` 退出，
+  日志末行 `all-in-one shut down`，dataservice 先 `shutting down (store_entries=1)` 落盘。
 - 干净 PATH（仅 System32）直接启动成功 → DLL 自包含成立。
 - 详见源码仓库 `server/daemon/README.md`。

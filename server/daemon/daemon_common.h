@@ -25,7 +25,9 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <filesystem>
 #include <string>
+#include <system_error>
 
 #include "mmo/core/bus/event_bus.h"
 #include "mmo/core/config/config_manager.h"
@@ -57,6 +59,7 @@ struct Args {
     int run_for_sec{0};      // >0：运行 N 秒后优雅退出（本地冒烟）
     std::string log_file;    // 非空：日志由进程自己落文件（脱离宿主控制台/管道）
     bool console{true};      // 配合 --log-file 使用：--no-console 关闭控制台输出
+    std::string stop_file;   // 非空：该文件一出现即优雅退出（Windows 无跨进程信号）
     bool help{false};
 };
 
@@ -69,7 +72,10 @@ inline void PrintUsage(const char* prog) {
         "  --run-for <sec> graceful exit after N seconds (local smoke test)\n"
         "  --log-file <p>  also write logs to file <p> (written by the process itself,\n"
         "                  so it survives after the launching shell exits)\n"
-        "  --no-console    disable console output (use with --log-file)\n",
+        "  --no-console    disable console output (use with --log-file)\n"
+        "  --stop-file <p> graceful exit as soon as file <p> appears (the file is\n"
+        "                  deleted before stopping; Windows has no cross-process\n"
+        "                  SIGTERM, so scripts stop the server by touching this)\n",
         prog != nullptr ? prog : "daemon");
 }
 
@@ -108,7 +114,17 @@ inline bool ParseArgs(int argc, char** argv, Args* out) {
             out->console = false;
             continue;
         }
+        if (arg == "--stop-file" && i + 1 < argc) {
+            out->stop_file = argv[++i];
+            continue;
+        }
         return false;  // 未知参数
+    }
+    // 只关控制台却不给日志文件 = 日志被静默丢弃，属于典型误用，必须显式提醒。
+    if (!out->console && out->log_file.empty()) {
+        std::fprintf(stderr,
+                     "warning: --no-console without --log-file: all log output will be "
+                     "discarded (add --log-file <path>)\n");
     }
     return true;
 }
@@ -169,6 +185,43 @@ inline core::SteadyTime RunDeadline(int run_for_sec) {
 /// 是否到达运行截止时刻。
 inline bool DeadlineReached(core::SteadyTime deadline) {
     return core::MonotonicClock::Point() >= deadline;
+}
+
+/// 哨兵文件优雅停止（Windows 专用通道）。
+///
+/// 背景：Windows 无法从外部给「已脱离宿主的控制台进程」发 SIGTERM/Ctrl+C，
+/// taskkill（不带 /f）对控制台进程只发 WM_CLOSE、实际不会停。于是运维脚本只能
+/// 强杀 —— 而强杀会丢掉 dataservice 尚未落盘的脏数据。这里补一条跨平台通道：
+/// 主循环每 500ms 看一眼 --stop-file 指定的路径，文件一出现就置 g_stop 并删除
+/// 该文件（先删再退，避免下次启动被上一次的残留哨兵立刻停掉）。
+///
+/// 返回 true 表示已请求停止（等价于 g_stop 置位）。
+inline bool PollStopFile(const std::string& path) {
+    if (path.empty()) {
+        return false;
+    }
+    if (g_stop.load(std::memory_order_relaxed)) {
+        return true;
+    }
+    // 节流：gamenode 主循环每毫秒级转一圈，不做状态检查就等于每拍一次 stat() 系统调用。
+    static std::atomic<std::int64_t> next_check_ms{0};
+    const auto now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                            std::chrono::steady_clock::now().time_since_epoch())
+                            .count();
+    if (now_ms < next_check_ms.load(std::memory_order_relaxed)) {
+        return false;
+    }
+    next_check_ms.store(now_ms + 500, std::memory_order_relaxed);
+
+    std::error_code ec;
+    if (!std::filesystem::exists(path, ec)) {
+        return false;
+    }
+    std::filesystem::remove(path, ec);  // 先删：残留哨兵会让下一次启动立刻退出
+    if (!g_stop.exchange(true, std::memory_order_relaxed)) {
+        MMO_LOG_INFO("daemon: stop file '{}' detected, graceful shutdown", path);
+    }
+    return true;
 }
 
 }  // namespace mmo::daemon

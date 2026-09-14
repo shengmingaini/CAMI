@@ -236,7 +236,7 @@ void test_combat_flags() {
     auto now = core::MonotonicClock::Point();
     auto a = h.Spawn(1, 1000);
     auto b = h.Spawn(2, 1000);
-    h.combat.Update(h.Ctx(now));  // 建立 now_
+    (void)h.combat.Update(h.Ctx(now));  // 建立 now_
     CHECK(h.combat.EnterCombat(a, b, 1).HasValue());
     CHECK(h.combat.HasFlag(a, CombatFlag::InCombat));
     CHECK(h.combat.HasFlag(b, CombatFlag::InCombat));  // 互殴
@@ -252,7 +252,7 @@ void test_threat_accumulate() {
     auto now = core::MonotonicClock::Point();
     auto tank = h.Spawn(1, 5000);                  // Player
     auto mob = h.Spawn(2, 3000, 0, 0, EntityType::Monster);  // Monster：否则 SingleTarget 互殴同类型→InvalidTarget
-    h.combat.Update(h.Ctx(now));
+    (void)h.combat.Update(h.Ctx(now));
     CHECK(h.combat.EnterCombat(tank, mob, 1).HasValue());
     CHECK(h.combat.EnterCombat(mob, tank, 1).HasValue());
     // tank 打 mob：伤害事件 → 仇恨表累加（§8 事件驱动）
@@ -262,8 +262,8 @@ void test_threat_accumulate() {
     CHECK(h.combat.Stats().threat_updates > 0);
     // 第二个来源也累积（平局取首个，Top 仍为 tank）
     auto dps = h.Spawn(3, 3000);  // Player
-    h.combat.Update(h.Ctx(now));
-    h.combat.EnterCombat(dps, mob, 1);
+    (void)h.combat.Update(h.Ctx(now));
+    (void)h.combat.EnterCombat(dps, mob, 1);
     h.Cast(dps, 1001, mob, now);
     CHECK(h.combat.ThreatTop(mob) == std::optional<EntityId>(tank));
     CHECK(h.combat.Stats().threat_updates >= 2);
@@ -289,13 +289,13 @@ void test_leave_combat_timeout() {
     auto t0 = core::MonotonicClock::Point();
     auto a = h.Spawn(1, 1000);
     auto b = h.Spawn(2, 1000);
-    h.combat.Update(h.Ctx(t0));
+    (void)h.combat.Update(h.Ctx(t0));
     CHECK(h.combat.EnterCombat(a, b, 1).HasValue());
     // 5.9s 后仍在战斗
-    h.combat.Update(h.Ctx(t0 + std::chrono::milliseconds(5900)));
+    (void)h.combat.Update(h.Ctx(t0 + std::chrono::milliseconds(5900)));
     CHECK(h.combat.HasFlag(a, CombatFlag::InCombat));
     // 6.1s 后脱战
-    h.combat.Update(h.Ctx(t0 + std::chrono::milliseconds(6100)));
+    (void)h.combat.Update(h.Ctx(t0 + std::chrono::milliseconds(6100)));
     CHECK(!h.combat.HasFlag(a, CombatFlag::InCombat));
     CHECK(!h.combat.HasFlag(b, CombatFlag::InCombat));
     CHECK(h.combat.Stats().leave_timeout >= 1);
@@ -309,8 +309,8 @@ void test_interrupt() {
     auto now = core::MonotonicClock::Point();
     auto a = h.Spawn(1, 2000);
     auto b = h.Spawn(2, 2000, 0, 0, EntityType::Monster);  // 受击方须异类型才能被单体技能选中
-    h.combat.Update(h.Ctx(now));
-    h.combat.EnterCombat(a, b, 1);
+    (void)h.combat.Update(h.Ctx(now));
+    (void)h.combat.EnterCombat(a, b, 1);
     // 起手一个读条技能（cast_time>0，id 1005 ChanneledBlast）→ 进入 Casting 状态
     std::size_t before = h.skill_interrupted;
     h.Cast(a, 1005, b, now);
@@ -329,17 +329,17 @@ void test_control_buff_links() {
     auto now = core::MonotonicClock::Point();
     auto a = h.Spawn(1, 2000);
     auto b = h.Spawn(2, 2000);
-    h.combat.Update(h.Ctx(now));
-    h.combat.EnterCombat(a, b, 1);
+    (void)h.combat.Update(h.Ctx(now));
+    (void)h.combat.EnterCombat(a, b, 1);
     // 给 a 施加眩晕 Buff（id 1004，control=1）
     auto r = h.buffs.Apply(1, 1004, 1, 1, now);
     CHECK(r.HasValue());
-    h.combat.Update(h.Ctx(now));  // SyncControlFlags
+    (void)h.combat.Update(h.Ctx(now));  // SyncControlFlags
     CHECK(h.combat.HasFlag(a, CombatFlag::Stunned));
     CHECK(!h.combat.HasFlag(a, CombatFlag::Rooted));
     // 移除眩晕后同步标志清除
-    h.buffs.Remove(1, 1004, RemoveReason::Manual, 1);
-    h.combat.Update(h.Ctx(now));
+    (void)h.buffs.Remove(1, 1004, RemoveReason::Manual, 1);
+    (void)h.combat.Update(h.Ctx(now));
     CHECK(!h.combat.HasFlag(a, CombatFlag::Stunned));
 }
 
@@ -351,12 +351,12 @@ void test_death_clears() {
     auto now = core::MonotonicClock::Point();
     auto a = h.Spawn(1, 5000);
     auto b = h.Spawn(2, 3000);
-    h.combat.Update(h.Ctx(now));
-    h.combat.EnterCombat(a, b, 1);
-    h.combat.EnterCombat(b, a, 1);
+    (void)h.combat.Update(h.Ctx(now));
+    (void)h.combat.EnterCombat(a, b, 1);
+    (void)h.combat.EnterCombat(b, a, 1);
     CHECK(h.buffs.Apply(1, 1003, 1, 1, now).HasValue());  // 护盾 Buff
     CHECK(h.buffs.ActiveBuffCount(1) >= 1);
-    h.combat.OnDeath(a, b, 1);
+    (void)h.combat.OnDeath(a, b, 1);
     CHECK(!h.combat.HasFlag(a, CombatFlag::InCombat));
     CHECK(h.combat.HasFlag(a, CombatFlag::Dead));
     CHECK(h.combat.ThreatTop(a) == std::nullopt);  // 仇恨清空
@@ -372,8 +372,8 @@ void test_invalid_entity() {
     auto now = core::MonotonicClock::Point();
     auto a = h.Spawn(1, 1000);
     auto b = h.Spawn(2, 1000);
-    h.combat.Update(h.Ctx(now));
-    h.combat.EnterCombat(a, b, 1);
+    (void)h.combat.Update(h.Ctx(now));
+    (void)h.combat.EnterCombat(a, b, 1);
     CHECK(!h.combat.EnterCombat(0, b, 1).HasValue());     // 无效
     CHECK(!h.combat.CastSkill(CastRequest{}, h.Ctx(now)).HasValue());  // caster=0
     CHECK(h.combat.HasFlag(a, CombatFlag::InCombat));     // 其他实体不受影响
@@ -392,11 +392,11 @@ void test_integration_5v5() {
     // 5 精英为 Monster（否则玩家单体技能会因同类型被拒，§15 目标类型门）
     std::vector<EntityId> mobs;
     for (int i = 0; i < 5; ++i) mobs.push_back(h.Spawn(200 + i, 4000, 150, 80, EntityType::Monster));
-    h.combat.Update(h.Ctx(now));
+    (void)h.combat.Update(h.Ctx(now));
 
     // 全员互殴（玩家↔精英交叉类型）
-    for (auto p : players) h.combat.EnterCombat(p, mobs[0], 1);
-    for (auto m : mobs) h.combat.EnterCombat(m, players[0], 1);
+    for (auto p : players) (void)h.combat.EnterCombat(p, mobs[0], 1);
+    for (auto m : mobs) (void)h.combat.EnterCombat(m, players[0], 1);
 
     // 坦克先打 mob[0]，随后 3 名 DPS 各打一次（每位玩家仅一次，避开真实冷却）
     h.Cast(players[0], 1001, mobs[0], now);
@@ -426,13 +426,13 @@ void test_integration_5v5() {
 
     // 致死：直接驱动 OnDeath（真实致死由 DamageSystem 判定，此处验证死亡清场）
     std::size_t deaths_before = h.combat.Stats().deaths;
-    h.combat.OnDeath(mobs[0], players[1], 1);
+    (void)h.combat.OnDeath(mobs[0], players[1], 1);
     CHECK(!h.combat.HasFlag(mobs[0], CombatFlag::InCombat));
     CHECK(h.combat.ThreatTop(mobs[0]) == std::nullopt);  // 仇恨清空
     CHECK(h.combat.Stats().deaths == deaths_before + 1);
 
     // 脱战：6s 静默后全员脱战
-    h.combat.Update(h.Ctx(now + std::chrono::milliseconds(6100)));
+    (void)h.combat.Update(h.Ctx(now + std::chrono::milliseconds(6100)));
     CHECK(!h.combat.HasFlag(players[0], CombatFlag::InCombat));
     CHECK(!h.combat.HasFlag(mobs[1], CombatFlag::InCombat));
 }
