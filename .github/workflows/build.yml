@@ -7,15 +7,18 @@ name: build
 # 说明：
 #  · 原 lukka/run-vcpkg 步骤已移除——vcpkg.json 的 dependencies 为空数组，且
 #    从未向 cmake 传 vcpkg toolchain，该步骤纯属空转（约 2-5 分钟）。
-#  · 顶层 CMakeLists 的 VCPKG_TARGET_TRIPLET 缓存变量在未启用 vcpkg
-#    toolchain 时无任何副作用，保留不影响本 workflow。
 #  · Linux (ubuntu) 平台暂未纳入：网络层虽保留 POSIX 分支，但未经 Linux
 #    实机编译验证，贸然上矩阵必然红。待 Windows 通道稳定后再单独验证接入。
+#  · Build 失败时自动把日志尾部推送到 ci-logs 分支（仅诊断用，不碰 main），
+#    便于无需 admin token 即可读取原始错误。
 on:
   push:
     branches: [ main ]
   pull_request:
     branches: [ main ]
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -42,13 +45,38 @@ jobs:
             mingw-w64-x86_64-libmariadbclient
             mingw-w64-x86_64-argon2
 
+      - name: Toolchain info
+        shell: msys2 {0}
+        run: |
+          which cmake g++ ninja protoc flatc grpc_cpp_plugin pkg-config
+          g++ --version | head -1
+          cmake --version | head -1
+          protoc --version
+          flatc --version
+
       - name: Configure
         shell: msys2 {0}
         run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DMMORPG_BUILD_TESTS=ON
 
       - name: Build
         shell: msys2 {0}
-        run: cmake --build build -j
+        run: |
+          set -o pipefail
+          cmake --build build -j 2>&1 | tee build_log.txt
+
+      - name: Collect build log on failure
+        if: failure()
+        shell: msys2 {0}
+        run: |
+          tail -n 250 build_log.txt > ci_failure.log || true
+          git config user.name "ci-log-bot"
+          git config user.email "ci-bot@users.noreply.github.com"
+          git checkout -B ci-logs
+          git add -f ci_failure.log
+          git commit -m "ci: build failure log (run ${GITHUB_RUN_ID})"
+          git push --force "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" ci-logs
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Test
         shell: msys2 {0}
