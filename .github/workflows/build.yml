@@ -72,18 +72,28 @@ jobs:
           path: build_log.txt
           if-no-files-found: warn
 
-      - name: Push build log to ci-logs branch
+      - name: Push build log via Contents API
         if: failure()
         shell: msys2 {0}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          ls -la build_log.txt || true
-          tail -n 300 build_log.txt > ci_failure.log || true
-          git config user.name "ci-log-bot"
-          git config user.email "ci-bot@users.noreply.github.com"
-          git checkout -B ci-logs
-          git add -f ci_failure.log
-          git commit -m "ci: build failure log (run ${GITHUB_RUN_ID})" || true
-          git push --force origin HEAD:ci-logs
+          tail -n 400 build_log.txt > ci_failure.txt || true
+          GH="https://api.github.com/repos/${GITHUB_REPOSITORY}"
+          AUTH="Authorization: Bearer ${GITHUB_TOKEN}"
+          MAIN_SHA=$(curl -sf -H "$AUTH" "$GH/git/ref/heads/main" | sed -n 's/.*"sha": *"\([0-9a-f]*\)".*/\1/p' | head -1)
+          curl -s -X POST -H "$AUTH" "$GH/git/refs" \
+            -d "{\"ref\":\"refs/heads/ci-logs\",\"sha\":\"${MAIN_SHA}\"}" || true
+          OLD_SHA=$(curl -sf -H "$AUTH" "$GH/contents/ci_failure.txt?ref=ci-logs" | sed -n 's/.*"sha": *"\([0-9a-f]*\)".*/\1/p' | head -1)
+          B64=$(base64 -w0 ci_failure.txt)
+          if [ -n "$OLD_SHA" ]; then
+            curl -s -X PUT -H "$AUTH" "$GH/contents/ci_failure.txt" \
+              -d "{\"message\":\"ci log ${GITHUB_RUN_ID}\",\"content\":\"${B64}\",\"branch\":\"ci-logs\",\"sha\":\"${OLD_SHA}\"}"
+          else
+            curl -s -X PUT -H "$AUTH" "$GH/contents/ci_failure.txt" \
+              -d "{\"message\":\"ci log ${GITHUB_RUN_ID}\",\"content\":\"${B64}\",\"branch\":\"ci-logs\"}"
+          fi
+          echo "log upload attempted"
 
       - name: Test
         shell: msys2 {0}
