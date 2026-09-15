@@ -44,6 +44,8 @@ jobs:
             mingw-w64-x86_64-grpc
             mingw-w64-x86_64-libmariadbclient
             mingw-w64-x86_64-argon2
+            mingw-w64-x86_64-hiredis
+            mingw-w64-x86_64-zlib
 
       - name: Toolchain info
         shell: msys2 {0}
