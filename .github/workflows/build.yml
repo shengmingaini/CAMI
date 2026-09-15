@@ -66,17 +66,24 @@ jobs:
 
       - name: Collect build log on failure
         if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: build_log.txt
+          if-no-files-found: warn
+
+      - name: Push build log to ci-logs branch
+        if: failure()
         shell: msys2 {0}
         run: |
-          tail -n 250 build_log.txt > ci_failure.log || true
+          ls -la build_log.txt || true
+          tail -n 300 build_log.txt > ci_failure.log || true
           git config user.name "ci-log-bot"
           git config user.email "ci-bot@users.noreply.github.com"
           git checkout -B ci-logs
           git add -f ci_failure.log
-          git commit -m "ci: build failure log (run ${GITHUB_RUN_ID})"
-          git push --force "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" ci-logs
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          git commit -m "ci: build failure log (run ${GITHUB_RUN_ID})" || true
+          git push --force origin HEAD:ci-logs
 
       - name: Test
         shell: msys2 {0}
